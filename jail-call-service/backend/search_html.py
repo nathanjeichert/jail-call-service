@@ -1,0 +1,290 @@
+"""
+Self-contained searchable HTML page generator.
+
+All transcript data is embedded in a <script> JSON blob.
+Vanilla JS search with highlighting and expandable sections.
+No external dependencies.
+"""
+
+import json
+import logging
+from typing import List
+
+logger = logging.getLogger(__name__)
+
+
+def _build_call_data(calls) -> List[dict]:
+    result = []
+    for call in calls:
+        transcript = ""
+        if call.turns:
+            transcript = "\n".join(f"{t.speaker}: {t.text}" for t in call.turns)
+        result.append({
+            "index": call.index,
+            "filename": call.filename,
+            "duration": call.duration_seconds or 0,
+            "summary": call.summary or "",
+            "transcript": transcript,
+            "inmate": call.inmate_name or "",
+            "outside": call.outside_number_fmt or "",
+            "datetime": call.call_datetime_str or "",
+            "facility": call.facility or "",
+            "outcome": call.call_outcome or "",
+        })
+    return result
+
+
+def generate_search_html(calls, case_name: str = "") -> str:
+    call_data = _build_call_data(calls)
+    data_json = json.dumps(call_data, ensure_ascii=False)
+    title = f"Search – {case_name}" if case_name else "Search Transcripts"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title}</title>
+  <style>
+    *, *::before, *::after {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+    }}
+    .header {{
+      background: #1e293b;
+      color: #fff;
+      padding: 20px 32px;
+    }}
+    .header h1 {{ margin: 0 0 4px; font-size: 20px; font-weight: 600; }}
+    .header p {{ margin: 0; font-size: 13px; color: rgba(255,255,255,0.6); }}
+    .search-bar {{
+      padding: 20px 32px;
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }}
+    .search-input {{
+      flex: 1;
+      padding: 10px 16px;
+      font-size: 15px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      outline: none;
+      transition: border-color 0.15s;
+    }}
+    .search-input:focus {{ border-color: #334155; box-shadow: 0 0 0 3px rgba(51,65,85,.1); }}
+    .search-count {{
+      font-size: 13px;
+      color: #64748b;
+      min-width: 120px;
+    }}
+    .results {{ padding: 24px 32px; }}
+    .call-card {{
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }}
+    .call-header {{
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      gap: 12px;
+    }}
+    .call-header:hover {{ background: #f8fafc; }}
+    .call-title {{
+      font-size: 14px;
+      font-weight: 600;
+      color: #1e293b;
+      flex: 1;
+    }}
+    .call-match-count {{
+      font-size: 12px;
+      color: #64748b;
+      background: #f1f5f9;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }}
+    .call-chevron {{
+      color: #94a3b8;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }}
+    .call-card.open .call-chevron {{ transform: rotate(180deg); }}
+    .call-body {{ display: none; border-top: 1px solid #e2e8f0; padding: 16px 20px; }}
+    .call-card.open .call-body {{ display: block; }}
+    .summary-box {{
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #334155;
+    }}
+    .summary-box strong {{ display: block; margin-bottom: 6px; color: #1e293b; }}
+    .transcript-lines {{ font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.8; }}
+    .transcript-line {{ padding: 2px 0; }}
+    .transcript-line .speaker {{ color: #475569; font-weight: 600; }}
+    mark {{
+      background: #fef08a;
+      color: #1e293b;
+      border-radius: 2px;
+      padding: 0 1px;
+    }}
+    .no-results {{
+      text-align: center;
+      padding: 60px 32px;
+      color: #94a3b8;
+      font-size: 15px;
+    }}
+    .hidden {{ display: none; }}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>{title}</h1>
+    <p>{len(call_data)} calls</p>
+  </div>
+  <div class="search-bar">
+    <input type="text" class="search-input" id="searchInput" placeholder="Search transcripts..." autofocus>
+    <div class="search-count" id="searchCount"></div>
+  </div>
+  <div class="results" id="results"></div>
+  <div class="no-results hidden" id="noResults">No matches found.</div>
+
+  <script>
+  const CALLS = {data_json};
+
+  function esc(s) {{
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }}
+
+  function highlight(text, query) {{
+    if (!query) return esc(text);
+    const re = new RegExp('(' + query.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&') + ')', 'gi');
+    return esc(text).replace(re, '<mark>$1</mark>');
+  }}
+
+  function countMatches(text, query) {{
+    if (!query) return 0;
+    const re = new RegExp(query.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&'), 'gi');
+    return (text.match(re) || []).length;
+  }}
+
+  let openStates = {{}};
+
+  function render(query) {{
+    const q = query.trim();
+    const container = document.getElementById('results');
+    const noResults = document.getElementById('noResults');
+    const countEl = document.getElementById('searchCount');
+
+    let totalMatches = 0;
+    let visibleCalls = 0;
+
+    if (!q) {{
+      // Show all calls collapsed
+      container.innerHTML = CALLS.map((call, i) => {{
+        const isOpen = openStates[i] || false;
+        const lines = call.transcript.split('\\n').map(line => {{
+          const colonIdx = line.indexOf(':');
+          if (colonIdx > 0) {{
+            return `<div class="transcript-line"><span class="speaker">${{esc(line.slice(0, colonIdx))}}</span>: ${{esc(line.slice(colonIdx + 1).trim())}}</div>`;
+          }}
+          return `<div class="transcript-line">${{esc(line)}}</div>`;
+        }}).join('');
+        const metaParts = [call.datetime, call.inmate, call.facility].filter(Boolean);
+        const metaLine = metaParts.length ? `<div style="font-size:11px;color:#64748b;font-weight:400;margin-top:2px">${{esc(metaParts.join(' · '))}}</div>` : '';
+        return `<div class="call-card ${{isOpen ? 'open' : ''}}" data-idx="${{i}}">
+          <div class="call-header" onclick="toggleCall(${{i}}, this.closest('.call-card'))">
+            <div class="call-title">${{esc(call.filename)}}${{metaLine}}</div>
+            <svg class="call-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4"/></svg>
+          </div>
+          <div class="call-body">
+            ${{call.summary ? `<div class="summary-box"><strong>Summary</strong>${{esc(call.summary)}}</div>` : ''}}
+            <div class="transcript-lines">${{lines}}</div>
+          </div>
+        </div>`;
+      }}).join('');
+      countEl.textContent = `${{CALLS.length}} calls`;
+      noResults.classList.add('hidden');
+      return;
+    }}
+
+    const html = CALLS.map((call, i) => {{
+      const searchText = call.transcript + ' ' + call.summary + ' ' + call.inmate + ' ' + call.outside;
+      const count = countMatches(searchText, q);
+      if (count === 0) return '';
+      totalMatches += count;
+      visibleCalls++;
+
+      const isOpen = openStates[i] !== false; // default open when searching
+
+      const lines = call.transcript.split('\\n').map(line => {{
+        if (!line.toLowerCase().includes(q.toLowerCase())) {{
+          return '';
+        }}
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0) {{
+          return `<div class="transcript-line"><span class="speaker">${{esc(line.slice(0, colonIdx))}}</span>: ${{highlight(line.slice(colonIdx + 1).trim(), q)}}</div>`;
+        }}
+        return `<div class="transcript-line">${{highlight(line, q)}}</div>`;
+      }}).filter(Boolean).join('');
+
+      const summaryHtml = call.summary
+        ? `<div class="summary-box"><strong>Summary</strong>${{highlight(call.summary, q)}}</div>`
+        : '';
+
+      const metaPartsS = [call.datetime, call.inmate, call.facility].filter(Boolean);
+      const metaLineS = metaPartsS.length ? `<div style="font-size:11px;color:#64748b;font-weight:400;margin-top:2px">${{esc(metaPartsS.join(' · '))}}</div>` : '';
+      return `<div class="call-card ${{isOpen ? 'open' : ''}}" data-idx="${{i}}">
+        <div class="call-header" onclick="toggleCall(${{i}}, this.closest('.call-card'))">
+          <div class="call-title">${{esc(call.filename)}}${{metaLineS}}</div>
+          <span class="call-match-count">${{count}} match${{count === 1 ? '' : 'es'}}</span>
+          <svg class="call-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4"/></svg>
+        </div>
+        <div class="call-body">
+          ${{summaryHtml}}
+          <div class="transcript-lines">${{lines || '<div style="color:#94a3b8;font-size:12px">Matches in summary only</div>'}}</div>
+        </div>
+      </div>`;
+    }}).filter(Boolean).join('');
+
+    container.innerHTML = html;
+
+    if (visibleCalls === 0) {{
+      noResults.classList.remove('hidden');
+      countEl.textContent = '';
+    }} else {{
+      noResults.classList.add('hidden');
+      countEl.textContent = `${{totalMatches}} match${{totalMatches === 1 ? '' : 'es'}} in ${{visibleCalls}} call${{visibleCalls === 1 ? '' : 's'}}`;
+    }}
+  }}
+
+  function toggleCall(idx, card) {{
+    const isOpen = card.classList.toggle('open');
+    openStates[idx] = isOpen;
+  }}
+
+  let debounce = null;
+  document.getElementById('searchInput').addEventListener('input', e => {{
+    clearTimeout(debounce);
+    debounce = setTimeout(() => render(e.target.value), 200);
+  }});
+
+  render('');
+  </script>
+</body>
+</html>"""

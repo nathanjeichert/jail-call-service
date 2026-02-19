@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{CASE_NAME}} – Call Viewer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --sidebar-calls-width: 260px;
+      --sidebar-trans-width: 360px;
+      --accent: #334155;
+      --accent-hover: #1e293b;
+      --bg: #f1f5f9;
+      --bg-card: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --text-faint: #94a3b8;
+      --highlight: #fef08a;
+      --active-line: rgba(251,191,36,0.15);
+    }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
+    .app { display: flex; height: 100vh; }
+
+    /* ── Call list sidebar ── */
+    .calls-sidebar {
+      width: var(--sidebar-calls-width);
+      background: var(--accent);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .calls-header {
+      padding: 16px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .calls-header span { display: block; font-size: 11px; font-weight: 400; color: rgba(255,255,255,0.5); margin-top: 2px; }
+    .calls-list { flex: 1; overflow-y: auto; padding: 8px; }
+    .calls-list::-webkit-scrollbar { width: 4px; }
+    .calls-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+    .call-item {
+      padding: 10px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 2px;
+      color: rgba(255,255,255,0.75);
+      font-size: 12px;
+      transition: all 0.12s;
+    }
+    .call-item:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .call-item.active { background: rgba(255,255,255,0.18); color: #fff; font-weight: 500; }
+    .call-item-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .call-item-dur { font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 2px; }
+
+    /* ── Main area ── */
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .main-header {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .main-title { font-size: 13px; font-weight: 500; flex: 1; min-width: 0; }
+    .main-title-filename { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .main-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .main-dur { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+
+    /* ── Player ── */
+    .player-area {
+      background: #0f172a;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .play-btn {
+      background: none; border: none; cursor: pointer;
+      color: #fff; width: 40px; height: 40px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.12s;
+    }
+    .play-btn:hover { background: rgba(255,255,255,0.12); }
+    .play-btn svg { width: 22px; height: 22px; fill: currentColor; }
+    .time-label { font-size: 12px; color: rgba(255,255,255,0.7); font-variant-numeric: tabular-nums; min-width: 42px; }
+    .progress-wrap { flex: 1; position: relative; height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; cursor: pointer; }
+    .progress-fill { height: 100%; background: #fff; border-radius: 3px; width: 0; pointer-events: none; }
+    .progress-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; }
+    .vol-wrap { display: flex; align-items: center; gap: 6px; }
+    .vol-icon { color: rgba(255,255,255,0.7); }
+    .vol-icon svg { width: 16px; height: 16px; fill: currentColor; }
+    .vol-slider {
+      width: 70px; height: 4px;
+      -webkit-appearance: none; appearance: none;
+      background: rgba(255,255,255,0.3); border-radius: 2px; cursor: pointer;
+    }
+    .vol-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #fff; border-radius: 50%; }
+    .speed-btn {
+      background: rgba(255,255,255,0.1); border: none; color: rgba(255,255,255,0.8);
+      padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;
+    }
+    .speed-btn:hover { background: rgba(255,255,255,0.2); }
+
+    /* ── Content split ── */
+    .content-area { flex: 1; display: flex; overflow: hidden; }
+
+    /* ── Transcript pane ── */
+    .transcript-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      border-left: 1px solid var(--border);
+      min-width: 0;
+    }
+    .trans-header {
+      padding: 10px 16px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .search-input {
+      flex: 1;
+      padding: 7px 12px;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      outline: none;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(51,65,85,0.1); }
+    .search-clear {
+      background: none; border: none; cursor: pointer; color: var(--text-faint);
+      padding: 4px; border-radius: 4px; display: none;
+    }
+    .search-clear:hover { color: var(--text); }
+    .page-nav { display: flex; align-items: center; gap: 6px; }
+    .page-info { font-size: 12px; color: var(--text-muted); }
+    .page-btn {
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--text-muted); width: 28px; height: 28px; border-radius: 6px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.12s;
+    }
+    .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .page-btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+    .trans-scroll { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    .trans-page {
+      width: min(8.5in, 100%);
+      background: var(--bg-card);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      padding: 0.33in;
+      position: relative;
+      display: none;
+      margin-bottom: 16px;
+    }
+    .trans-page::before, .trans-page::after {
+      content: '';
+      position: absolute;
+      inset: 0.33in;
+      border: 1px solid #e2e8f0;
+      pointer-events: none;
+    }
+    .trans-page::after { inset: calc(0.33in + 4px); }
+    .trans-page.active { display: block; }
+
+    .trans-line {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12pt;
+      line-height: 2.0;
+      white-space: pre-wrap;
+      cursor: pointer;
+      border-radius: 2px;
+      display: flex;
+      gap: 10px;
+      padding: 0 2px;
+      transition: background 0.1s;
+    }
+    .trans-line:hover { background: rgba(0,0,0,0.03); }
+    .trans-line.active { background: var(--active-line); }
+    .trans-line mark { background: var(--highlight); border-radius: 2px; padding: 0 1px; }
+    .line-num { color: var(--text-faint); font-size: 10pt; min-width: 24px; text-align: right; user-select: none; }
+    .line-text { flex: 1; }
+
+    /* ── Summary pane ── */
+    .summary-pane {
+      width: 280px;
+      background: var(--bg-card);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .summary-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-muted); }
+    .summary-body { flex: 1; overflow-y: auto; padding: 14px; font-size: 13px; line-height: 1.7; color: var(--text); }
+    .summary-empty { color: var(--text-faint); font-style: italic; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Call list -->
+  <div class="calls-sidebar">
+    <div class="calls-header">
+      {{CASE_NAME}}
+      <span id="callCount">Loading…</span>
+    </div>
+    <div class="calls-list" id="callsList"></div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="main-header">
+      <div class="main-title" id="mainTitle">
+        <div class="main-title-filename" id="mainTitleFilename">Select a call</div>
+        <div class="main-meta" id="mainMeta"></div>
+      </div>
+      <div class="main-dur" id="mainDur"></div>
+    </div>
+
+    <!-- Audio player -->
+    <div class="player-area">
+      <!-- Play/Pause -->
+      <button class="play-btn" id="playBtn" onclick="togglePlay()">
+        <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <!-- Skip back -->
+      <button class="play-btn" onclick="skipBy(-5)" title="Back 5s">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12.5 3C8.4 3 4.9 5.1 3 8.3V5H1v7h7v-2H4.5C5.9 7.3 8.9 5 12.5 5c3.9 0 7 3.1 7 7s-3.1 7-7 7c-2.6 0-4.8-1.4-6.1-3.5L4.7 16.7C6.4 19.3 9.2 21 12.5 21c5 0 9-4 9-9s-4-9-9-9zm-.5 5v5l4 2.5.75-1.23-3.25-2.02V8H12z"/></svg>
+      </button>
+      <div class="time-label" id="timeCurrent">0:00</div>
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-fill" id="progressFill"></div>
+        <input type="range" class="progress-input" id="progressInput" min="0" max="1000" value="0">
+      </div>
+      <div class="time-label" id="timeDuration" style="text-align:right">0:00</div>
+      <!-- Volume -->
+      <div class="vol-wrap">
+        <span class="vol-icon"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg></span>
+        <input type="range" class="vol-slider" id="volSlider" min="0" max="100" value="80">
+      </div>
+      <button class="speed-btn" id="speedBtn" onclick="cycleSpeed()">1×</button>
+    </div>
+
+    <audio id="audio" style="display:none"></audio>
+
+    <!-- Content split -->
+    <div class="content-area">
+      <!-- Transcript -->
+      <div class="transcript-pane">
+        <div class="trans-header">
+          <input type="text" class="search-input" id="searchInput" placeholder="Search transcript…">
+          <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
+          <div class="page-nav">
+            <button class="page-btn" id="prevBtn" onclick="goPage(-1)" disabled>
+              <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+            </button>
+            <span class="page-info" id="pageInfo">–</span>
+            <button class="page-btn" id="nextBtn" onclick="goPage(1)" disabled>
+              <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="trans-scroll" id="transScroll"></div>
+      </div>
+
+      <!-- Summary -->
+      <div class="summary-pane">
+        <div class="summary-header">AI Summary</div>
+        <div class="summary-body" id="summaryBody"><span class="summary-empty">No call selected.</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Data injected by Python ──
+const CALLS = {{CALLS_JSON}};
+
+// ── State ──
+let currentCallIdx = -1;
+let currentPage = 1;
+let totalPages = 1;
+let lineEntries = [];  // flat array of {page, line, text, start, end}
+const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+let speedIdx = 1;
+
+const audio = document.getElementById('audio');
+const playIcon = document.getElementById('playIcon');
+const timeCurrent = document.getElementById('timeCurrent');
+const timeDuration = document.getElementById('timeDuration');
+const progressFill = document.getElementById('progressFill');
+const progressInput = document.getElementById('progressInput');
+const volSlider = document.getElementById('volSlider');
+const speedBtn = document.getElementById('speedBtn');
+const searchInput = document.getElementById('searchInput');
+const searchClear = document.getElementById('searchClear');
+const transScroll = document.getElementById('transScroll');
+const summaryBody = document.getElementById('summaryBody');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const pageInfo = document.getElementById('pageInfo');
+const mainTitleFilename = document.getElementById('mainTitleFilename');
+const mainMeta = document.getElementById('mainMeta');
+const mainDur = document.getElementById('mainDur');
+const callsList = document.getElementById('callsList');
+const callCount = document.getElementById('callCount');
+
+// ── Init call list ──
+callCount.textContent = CALLS.length + ' call' + (CALLS.length === 1 ? '' : 's');
+
+CALLS.forEach((call, i) => {
+  const item = document.createElement('div');
+  item.className = 'call-item';
+  item.dataset.idx = i;
+  item.innerHTML = `
+    <div class="call-item-name">${esc(call.filename)}</div>
+    <div class="call-item-dur">${formatDur(call.duration)}</div>
+  `;
+  item.addEventListener('click', () => loadCall(i));
+  callsList.appendChild(item);
+});
+
+function loadCall(idx) {
+  currentCallIdx = idx;
+  const call = CALLS[idx];
+
+  // Update sidebar active state
+  document.querySelectorAll('.call-item').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+
+  // Update header
+  mainTitleFilename.textContent = call.filename;
+  const metaParts = [call.datetime, call.inmate, call.facility, call.outcome].filter(Boolean);
+  mainMeta.textContent = metaParts.join(' · ');
+  mainDur.textContent = formatDur(call.duration);
+
+  // Update audio
+  audio.pause();
+  audio.src = '../audio/' + call.audio_filename;
+  audio.load();
+
+  // Update summary
+  summaryBody.innerHTML = call.summary
+    ? call.summary.replace(/\n/g, '<br>')
+    : '<span class="summary-empty">No summary available.</span>';
+
+  // Build line entries
+  lineEntries = call.lines || [];
+  totalPages = lineEntries.reduce((m, l) => Math.max(m, l.page || 1), 1);
+
+  searchInput.value = '';
+  searchClear.style.display = 'none';
+  goToPage(1);
+}
+
+// ── Transcript rendering ──
+function renderPage(page, query) {
+  const q = (query || '').trim().toLowerCase();
+  const pages = {};
+  lineEntries.forEach(l => {
+    const p = l.page || 1;
+    if (!pages[p]) pages[p] = [];
+    pages[p].push(l);
+  });
+
+  transScroll.innerHTML = '';
+  const maxPage = Math.max(...Object.keys(pages).map(Number), 1);
+
+  for (let p = 1; p <= maxPage; p++) {
+    const pageEl = document.createElement('div');
+    pageEl.className = 'trans-page' + (p === page ? ' active' : '');
+    pageEl.dataset.page = p;
+
+    const lines = (pages[p] || []).sort((a, b) => (a.line || 0) - (b.line || 0));
+    lines.forEach(entry => {
+      const div = document.createElement('div');
+      div.className = 'trans-line';
+      div.dataset.start = entry.start || 0;
+      div.dataset.end = entry.end || 0;
+      div.addEventListener('click', () => seekTo(parseFloat(entry.start) || 0));
+
+      const lineText = entry.rendered_text || entry.text || '';
+      const highlighted = q ? highlightText(lineText, q) : esc(lineText);
+
+      div.innerHTML = `<span class="line-num">${entry.line || ''}</span><span class="line-text">${highlighted}</span>`;
+      pageEl.appendChild(div);
+    });
+
+    transScroll.appendChild(pageEl);
+  }
+
+  updatePageNav(page, maxPage);
+}
+
+function goToPage(page) {
+  currentPage = Math.max(1, Math.min(page, totalPages));
+  renderPage(currentPage, searchInput.value);
+  transScroll.scrollTo({ top: 0 });
+}
+
+function goPage(delta) {
+  goToPage(currentPage + delta);
+}
+
+function updatePageNav(page, maxPage) {
+  totalPages = maxPage;
+  pageInfo.textContent = maxPage > 1 ? `Page ${page} / ${maxPage}` : `Page ${page}`;
+  prevBtn.disabled = page <= 1;
+  nextBtn.disabled = page >= maxPage;
+}
+
+// ── Search ──
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+  searchClear.style.display = q ? 'block' : 'none';
+  renderPage(currentPage, q);
+});
+
+function clearSearch() {
+  searchInput.value = '';
+  searchClear.style.display = 'none';
+  renderPage(currentPage, '');
+}
+
+// ── Playback sync ──
+audio.addEventListener('timeupdate', () => {
+  const t = audio.currentTime;
+  const dur = audio.duration || 0;
+  timeCurrent.textContent = formatTime(t);
+  if (dur > 0) {
+    progressFill.style.width = (t / dur * 100) + '%';
+    progressInput.value = Math.floor(t / dur * 1000);
+  }
+  syncActiveLines(t);
+});
+
+audio.addEventListener('loadedmetadata', () => {
+  timeDuration.textContent = formatTime(audio.duration || 0);
+  progressInput.max = 1000;
+});
+
+audio.addEventListener('play', () => {
+  playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+});
+audio.addEventListener('pause', () => {
+  playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+});
+
+function togglePlay() {
+  if (audio.paused) audio.play();
+  else audio.pause();
+}
+
+function seekTo(seconds) {
+  audio.currentTime = seconds;
+  if (audio.paused) audio.play();
+}
+
+function skipBy(delta) {
+  audio.currentTime = Math.max(0, audio.currentTime + delta);
+}
+
+function cycleSpeed() {
+  speedIdx = (speedIdx + 1) % SPEEDS.length;
+  const s = SPEEDS[speedIdx];
+  audio.playbackRate = s;
+  speedBtn.textContent = s + '×';
+}
+
+progressInput.addEventListener('input', () => {
+  const dur = audio.duration || 0;
+  if (dur > 0) audio.currentTime = (progressInput.value / 1000) * dur;
+});
+
+volSlider.addEventListener('input', () => {
+  audio.volume = volSlider.value / 100;
+});
+audio.volume = 0.8;
+
+function syncActiveLines(t) {
+  const tMs = t * 1000;
+  document.querySelectorAll('.trans-line').forEach(el => {
+    const start = parseFloat(el.dataset.start) || 0;
+    const end = parseFloat(el.dataset.end) || 0;
+    // start/end are in seconds from transcriber
+    const isActive = t >= start && t < (end || start + 5);
+    el.classList.toggle('active', isActive);
+    if (isActive) {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
+}
+
+// ── Utilities ──
+function formatTime(s) {
+  if (!isFinite(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function formatDur(seconds) {
+  if (!seconds) return '';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlightText(text, query) {
+  if (!query) return esc(text);
+  const re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+  return esc(text).replace(re, '<mark>$1</mark>');
+}
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', e => {
+  if (e.target === searchInput) return;
+  if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  if (e.key === 'ArrowLeft') skipBy(-5);
+  if (e.key === 'ArrowRight') skipBy(5);
+  if (e.key === 'ArrowUp') { e.preventDefault(); goPage(-1); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); goPage(1); }
+});
+
+// Load first call if available
+if (CALLS.length > 0) loadCall(0);
+</script>
+</body>
+</html>
