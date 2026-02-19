@@ -21,6 +21,9 @@ class DBJob(Base):
     error = Column(String, nullable=True)
     defendant_name = Column(String, nullable=True)
     skip_summary = Column(Boolean, default=False)
+    
+    file_paths = Column(JSON, nullable=True)
+    xml_metadata_path = Column(String, nullable=True)
 
     # One-to-many relationship with calls
     calls = relationship("DBCall", back_populates="job", cascade="all, delete-orphan", order_by="DBCall.index")

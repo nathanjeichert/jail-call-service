@@ -67,10 +67,12 @@ def _map_to_pydantic(db_job: DBJob) -> Job:
         error=db_job.error,
         defendant_name=db_job.defendant_name,
         skip_summary=db_job.skip_summary,
+        file_paths=db_job.file_paths,
+        xml_metadata_path=db_job.xml_metadata_path,
         calls=calls
     )
 
-def create_job(case_name: str, input_folder: str, summary_prompt: str, defendant_name: Optional[str] = None, skip_summary: bool = False) -> Job:
+def create_job(case_name: str, input_folder: str, summary_prompt: str, defendant_name: Optional[str] = None, skip_summary: bool = False, file_paths: Optional[List[str]] = None, xml_metadata_path: Optional[str] = None) -> Job:
     job_id = str(uuid.uuid4())
     _job_dir(job_id) # ensure the folder exists for output
     
@@ -83,7 +85,9 @@ def create_job(case_name: str, input_folder: str, summary_prompt: str, defendant
             stage=JobStage.CREATED.value,
             created_at=datetime.now(timezone.utc).isoformat(),
             defendant_name=defendant_name,
-            skip_summary=skip_summary
+            skip_summary=skip_summary,
+            file_paths=file_paths,
+            xml_metadata_path=xml_metadata_path
         )
         db.add(new_job)
         db.commit()

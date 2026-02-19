@@ -48,10 +48,12 @@ app.add_middleware(
 
 class CreateJobRequest(BaseModel):
     case_name: str
-    input_folder: str
+    input_folder: Optional[str] = ""
     summary_prompt: Optional[str] = None
     defendant_name: Optional[str] = None
     skip_summary: bool = False
+    file_paths: Optional[list[str]] = None
+    xml_metadata_path: Optional[str] = None
 
 
 class UpdateSummaryRequest(BaseModel):
@@ -117,14 +119,16 @@ def _call_summary(call) -> dict:
 
 @app.post("/api/jobs", status_code=201)
 def create_job(req: CreateJobRequest):
-    if not os.path.isdir(req.input_folder):
+    if not req.file_paths and not os.path.isdir(req.input_folder or ""):
         raise HTTPException(status_code=400, detail=f"Input folder not found: {req.input_folder}")
     job = job_store.create_job(
         case_name=req.case_name,
-        input_folder=req.input_folder,
+        input_folder=req.input_folder or "",
         summary_prompt=req.summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT,
         defendant_name=req.defendant_name,
         skip_summary=req.skip_summary,
+        file_paths=req.file_paths,
+        xml_metadata_path=req.xml_metadata_path,
     )
     return _job_summary(job)
 

@@ -87,6 +87,8 @@ class Job(BaseModel):
     error: Optional[str] = None
     defendant_name: Optional[str] = None
     skip_summary: bool = False
+    file_paths: Optional[List[str]] = None
+    xml_metadata_path: Optional[str] = None
 
     class Config:
         use_enum_values = True

@@ -95,15 +95,21 @@ async def _run_pipeline(job: Job) -> None:
 
     # ── Stage 0: Discover files ──
     _emit(job_id, {"type": "stage", "stage": "discovering"})
-    wav_files = _discover_wav_files(job.input_folder)
+    
+    wav_files = job.file_paths if job.file_paths else _discover_wav_files(job.input_folder)
+    
     if not wav_files:
-        raise RuntimeError(f"No WAV files found in: {job.input_folder}")
+        raise RuntimeError(f"No WAV files found in: {job.input_folder} and no files explicitly provided.")
 
     _emit(job_id, {"type": "discovered", "count": len(wav_files)})
     logger.info("Discovered %d WAV files for job %s", len(wav_files), job_id)
 
     # Load ICM report metadata if present
-    icm_xml = find_icm_report(job.input_folder)
+    if job.file_paths and job.xml_metadata_path:
+        icm_xml = job.xml_metadata_path if os.path.exists(job.xml_metadata_path) else None
+    else:
+        icm_xml = find_icm_report(job.input_folder)
+        
     icm_map = parse_icm_report(icm_xml) if icm_xml else {}
     if icm_map:
         logger.info("ICM report loaded: %d records", len(icm_map))
