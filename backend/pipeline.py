@@ -110,10 +110,11 @@ async def _run_pipeline(job: Job) -> None:
 
     # Initialize call records (skip already-done ones for resumability)
     existing = {c.original_path: c for c in job.calls}
+    calls_to_add = []
     for i, wav_path in enumerate(wav_files):
         if wav_path not in existing:
             meta = icm_map.get(os.path.basename(wav_path))
-            job.calls.append(CallResult(
+            calls_to_add.append(CallResult(
                 index=i,
                 filename=os.path.basename(wav_path),
                 original_path=wav_path,
@@ -130,37 +131,57 @@ async def _run_pipeline(job: Job) -> None:
                 xml_duration_seconds=meta.xml_duration_seconds if meta else None,
                 notes=meta.notes if meta else None,
             ))
+    
+    if calls_to_add:
+        job.calls.extend(calls_to_add)
+
     job.stage = JobStage.CONVERTING
     job.started_at = datetime.now(timezone.utc).isoformat()
     job_store.update_job(job)
+    
+    # Immediately reload to get DB-synced copies (avoid detachment issues)
+    job = job_store.get_job(job_id)
 
     # ── Stage 1: Convert ──
+    if job_store.get_job(job_id).stage == JobStage.PAUSED: return
     _emit(job_id, {"type": "stage", "stage": "converting", "total": len(wav_files)})
-    await _stage_convert(job, audio_dir)
+    await _stage_convert(job_id, audio_dir)
+    
+    if job_store.get_job(job_id).stage == JobStage.PAUSED: return
+    job = job_store.get_job(job_id)
     job.stage = JobStage.TRANSCRIBING
     job_store.update_job(job)
 
     # ── Stage 2: Transcribe ──
     _emit(job_id, {"type": "stage", "stage": "transcribing", "total": len(wav_files)})
-    await _stage_transcribe(job)
+    await _stage_transcribe(job_id)
+
+    if job_store.get_job(job_id).stage == JobStage.PAUSED: return
+    job = job_store.get_job(job_id)
     job.stage = JobStage.SUMMARIZING
     job_store.update_job(job)
 
     # ── Stage 3: Summarize ──
     _emit(job_id, {"type": "stage", "stage": "summarizing", "total": len(wav_files)})
-    await _stage_summarize(job)
+    await _stage_summarize(job_id)
+    
+    if job_store.get_job(job_id).stage == JobStage.PAUSED: return
+    job = job_store.get_job(job_id)
     job.stage = JobStage.GENERATING
     job_store.update_job(job)
 
     # ── Stage 4: Generate PDFs ──
     _emit(job_id, {"type": "stage", "stage": "generating_pdfs", "total": len(wav_files)})
-    await _stage_generate_pdfs(job, transcripts_dir)
+    await _stage_generate_pdfs(job_id, transcripts_dir)
 
+    if job_store.get_job(job_id).stage == JobStage.PAUSED: return
     # ── Stage 5: Generate indexes ──
     _emit(job_id, {"type": "stage", "stage": "generating_indexes"})
+    job = job_store.get_job(job_id)
     await _stage_generate_indexes(job, output_dir, audio_dir)
 
     # ── Stage 6: Package zip ──
+    if job_store.get_job(job_id).stage == JobStage.PAUSED: return
     job.stage = JobStage.PACKAGING
     job_store.update_job(job)
     _emit(job_id, {"type": "stage", "stage": "packaging"})
@@ -174,19 +195,20 @@ async def _run_pipeline(job: Job) -> None:
     logger.info("Job %s completed. Zip: %s", job_id, zip_path)
 
 
-async def _stage_convert(job: Job, audio_dir: str) -> None:
+async def _stage_convert(job_id: str, audio_dir: str) -> None:
+    import multiprocessing
     from .audio_converter import convert_single
 
-    job_id = job.id
+    job = job_store.get_job(job_id)
     loop = asyncio.get_event_loop()
     pending = [c for c in job.calls if c.status == CallStatus.PENDING or c.status == CallStatus.CONVERTING]
     completed_count = sum(1 for c in job.calls if c.status not in (CallStatus.PENDING, CallStatus.CONVERTING, CallStatus.ERROR))
 
-    with ThreadPoolExecutor(max_workers=None) as executor:
+    workers = max(1, multiprocessing.cpu_count() - 1)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {}
         for call in pending:
-            call.status = CallStatus.CONVERTING
-            job_store.update_job(job)
+            job_store.update_call(job_id, call.index, status=CallStatus.CONVERTING)
             stem = _call_stem(call.index, call.filename)
             fut = executor.submit(convert_single, call.index, call.original_path, audio_dir, stem)
             futures[fut] = call
@@ -196,20 +218,25 @@ async def _stage_convert(job: Job, audio_dir: str) -> None:
             try:
                 result = fut.result()
                 if result.success:
-                    call.mp3_path = result.mp3_path
-                    call.duration_seconds = result.duration_seconds
-                    call.repaired = result.repaired
+                    job_store.update_call(job_id, call.index, 
+                                          mp3_path=result.mp3_path, 
+                                          duration_seconds=result.duration_seconds,
+                                          repaired=result.repaired,
+                                          status=CallStatus.TRANSCRIBING)
                     call.status = CallStatus.TRANSCRIBING
                 else:
+                    job_store.update_call(job_id, call.index, 
+                                          status=CallStatus.ERROR, 
+                                          error=result.error)
                     call.status = CallStatus.ERROR
-                    call.error = result.error
                     logger.error("Conversion failed for %s: %s", call.filename, result.error)
             except Exception as e:
+                job_store.update_call(job_id, call.index, 
+                                      status=CallStatus.ERROR, 
+                                      error=str(e))
                 call.status = CallStatus.ERROR
-                call.error = str(e)
 
             completed_count += 1
-            job_store.update_job(job)
             _emit(job_id, {
                 "type": "call_update",
                 "index": call.index,
@@ -220,25 +247,25 @@ async def _stage_convert(job: Job, audio_dir: str) -> None:
             })
 
 
-async def _stage_transcribe(job: Job) -> None:
+async def _stage_transcribe(job_id: str) -> None:
     from .transcriber import transcribe_multichannel
 
-    job_id = job.id
+    job = job_store.get_job(job_id)
     sem = asyncio.Semaphore(cfg.MAX_TRANSCRIPTION_CONCURRENT)
     loop = asyncio.get_event_loop()
 
     async def transcribe_one(call: CallResult) -> None:
+        if job_store.get_job(job_id).stage == JobStage.PAUSED:
+            return
         if not call.mp3_path or call.status == CallStatus.ERROR:
             return
+        job_store.update_call(job_id, call.index, status=CallStatus.TRANSCRIBING)
         call.status = CallStatus.TRANSCRIBING
-        job_store.update_job(job)
 
         async with sem:
             try:
-                # ch1 (left) = inmate, ch2 (right) = outside party (industry standard for
-                # telephone recording systems; confirm empirically on first run)
                 channel_labels = {
-                    1: call.inmate_name or "INMATE",
+                    1: call.inmate_name or job.defendant_name or "INMATE",
                     2: "OUTSIDE PARTY",
                 }
                 turns = await loop.run_in_executor(
@@ -249,14 +276,13 @@ async def _stage_transcribe(job: Job) -> None:
                         channel_labels=channel_labels,
                     )
                 )
-                call.turns = turns
+                job_store.update_call(job_id, call.index, turns=turns, status=CallStatus.SUMMARIZING)
                 call.status = CallStatus.SUMMARIZING
             except Exception as e:
+                job_store.update_call(job_id, call.index, status=CallStatus.ERROR, error=f"Transcription failed: {e}")
                 call.status = CallStatus.ERROR
-                call.error = f"Transcription failed: {e}"
                 logger.error("Transcription failed for %s: %s", call.filename, e)
 
-        job_store.update_job(job)
         _emit(job_id, {"type": "call_update", "index": call.index, "status": call.status, "stage": "transcribing"})
 
     eligible = [c for c in job.calls if c.status in (CallStatus.TRANSCRIBING, CallStatus.SUMMARIZING)
@@ -264,47 +290,55 @@ async def _stage_transcribe(job: Job) -> None:
     await asyncio.gather(*[transcribe_one(c) for c in eligible])
 
 
-async def _stage_summarize(job: Job) -> None:
+async def _stage_summarize(job_id: str) -> None:
     from .summarizer import summarize_transcript
 
-    job_id = job.id
+    job = job_store.get_job(job_id)
     sem = asyncio.Semaphore(cfg.MAX_SUMMARIZATION_CONCURRENT)
     loop = asyncio.get_event_loop()
 
     async def summarize_one(call: CallResult) -> None:
+        if job_store.get_job(job_id).stage == JobStage.PAUSED:
+            return
         if not call.turns or call.status == CallStatus.ERROR:
             return
+        job_store.update_call(job_id, call.index, status=CallStatus.SUMMARIZING)
         call.status = CallStatus.SUMMARIZING
-        job_store.update_job(job)
 
         async with sem:
             try:
-                summary = await summarize_transcript(
-                    call.turns,
-                    prompt=job.summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT,
-                    metadata={"filename": call.filename, "duration_seconds": call.duration_seconds},
-                )
-                call.summary = summary
+                if job.skip_summary:
+                    summary = f"**DUMMY SUMMARY FOR {call.filename}**\n\n- The user requested to skip Gemini processing for this test job.\n- Call duration: {call.duration_seconds} sec."
+                    await asyncio.sleep(0.1) # Simulate just a tiny bit of asynchronous IO
+                else:
+                    summary = await summarize_transcript(
+                        call.turns,
+                        prompt=job.summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT,
+                        metadata={"filename": call.filename, "duration_seconds": call.duration_seconds},
+                    )
+                job_store.update_call(job_id, call.index, summary=summary, status=CallStatus.GENERATING_PDF)
                 call.status = CallStatus.GENERATING_PDF
             except Exception as e:
                 logger.error("Summarization failed for %s: %s", call.filename, e)
-                call.summary = f"[Summarization failed: {e}]"
+                err_msg = f"[Summarization failed: {e}]"
+                job_store.update_call(job_id, call.index, summary=err_msg, status=CallStatus.GENERATING_PDF)
                 call.status = CallStatus.GENERATING_PDF
 
-        job_store.update_job(job)
         _emit(job_id, {"type": "call_update", "index": call.index, "status": call.status, "stage": "summarizing"})
 
     eligible = [c for c in job.calls if c.turns and not c.summary and c.status != CallStatus.ERROR]
     await asyncio.gather(*[summarize_one(c) for c in eligible])
 
 
-async def _stage_generate_pdfs(job: Job, transcripts_dir: str) -> None:
+async def _stage_generate_pdfs(job_id: str, transcripts_dir: str) -> None:
     from .transcript_formatting import create_pdf
 
-    job_id = job.id
+    job = job_store.get_job(job_id)
     loop = asyncio.get_event_loop()
 
     def gen_pdf(call: CallResult) -> None:
+        if job_store.get_job(job_id).stage == JobStage.PAUSED:
+            return
         if not call.turns:
             return
         stem = _call_stem(call.index, call.filename)
@@ -328,8 +362,8 @@ async def _stage_generate_pdfs(job: Job, transcripts_dir: str) -> None:
         )
         with open(pdf_path, 'wb') as f:
             f.write(pdf_bytes)
-        call.pdf_path = pdf_path
         call.status = CallStatus.DONE
+        job_store.update_call(job_id, call.index, pdf_path=pdf_path, status=CallStatus.DONE)
 
     eligible = [c for c in job.calls if c.turns and c.status != CallStatus.ERROR]
     for call in eligible:
@@ -338,8 +372,8 @@ async def _stage_generate_pdfs(job: Job, transcripts_dir: str) -> None:
         except Exception as e:
             logger.error("PDF generation failed for %s: %s", call.filename, e)
             call.error = f"PDF failed: {e}"
+            job_store.update_call(job_id, call.index, error=call.error)
 
-        job_store.update_job(job)
         _emit(job_id, {"type": "call_update", "index": call.index, "status": call.status, "stage": "generating_pdf"})
 
 

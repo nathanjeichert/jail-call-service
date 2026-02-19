@@ -55,14 +55,16 @@ export default function JobsPage() {
   const [defaultPrompt, setDefaultPrompt] = useState('');
 
   const caseNameRef = useRef<HTMLInputElement>(null);
+  const defendantNameRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const skipSummaryRef = useRef<HTMLInputElement>(null);
 
   const loadJobs = async () => {
     try {
       const res = await fetch(`${API}/jobs`);
       if (res.ok) setJobs(await res.json());
-    } catch {}
+    } catch { }
     setLoading(false);
   };
 
@@ -73,7 +75,7 @@ export default function JobsPage() {
         const cfg = await res.json();
         setDefaultPrompt(cfg.default_summary_prompt || '');
       }
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -90,8 +92,10 @@ export default function JobsPage() {
 
     const body = {
       case_name: caseNameRef.current?.value.trim() || '',
+      defendant_name: defendantNameRef.current?.value.trim() || '',
       input_folder: folderRef.current?.value.trim() || '',
       summary_prompt: promptRef.current?.value.trim() || defaultPrompt,
+      skip_summary: skipSummaryRef.current?.checked || false,
     };
 
     if (!body.case_name || !body.input_folder) {
@@ -111,7 +115,9 @@ export default function JobsPage() {
         setError(err.detail || 'Failed to create job');
       } else {
         if (caseNameRef.current) caseNameRef.current.value = '';
+        if (defendantNameRef.current) defendantNameRef.current.value = '';
         if (folderRef.current) folderRef.current.value = '';
+        if (skipSummaryRef.current) skipSummaryRef.current.checked = false;
         await loadJobs();
       }
     } catch (e) {
@@ -145,6 +151,15 @@ export default function JobsPage() {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Defendant Name <span className="text-slate-400 font-normal">(Channel 1)</span></label>
+              <input
+                ref={defendantNameRef}
+                type="text"
+                placeholder="John Smith"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent"
+              />
+            </div>
+            <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Input Folder Path</label>
               <input
                 ref={folderRef}
@@ -164,6 +179,17 @@ export default function JobsPage() {
               placeholder={defaultPrompt}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none"
             />
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              type="checkbox"
+              id="skipSummary"
+              ref={skipSummaryRef}
+              className="rounded border-slate-300 text-slate-800 focus:ring-slate-400"
+            />
+            <label htmlFor="skipSummary" className="text-sm font-medium text-slate-700">
+              Skip Gemini Summary (Generate Dummy Summary for Testing)
+            </label>
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex justify-end">

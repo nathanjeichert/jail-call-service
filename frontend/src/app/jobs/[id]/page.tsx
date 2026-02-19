@@ -87,11 +87,10 @@ function StageIndicator({ stage }: { stage: string }) {
         const isActive = step.key === stage;
         return (
           <div key={step.key} className="flex items-center">
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              isDone ? 'bg-green-100 text-green-700' :
-              isActive ? 'bg-slate-800 text-white' :
-              'bg-slate-100 text-slate-400'
-            }`}>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${isDone ? 'bg-green-100 text-green-700' :
+                isActive ? 'bg-slate-800 text-white' :
+                  'bg-slate-100 text-slate-400'
+              }`}>
               {isDone && <span>✓</span>}
               {step.label}
             </div>
@@ -114,6 +113,9 @@ export default function JobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [packaging, setPackaging] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const loadJob = async () => {
@@ -121,7 +123,7 @@ export default function JobDetailPage() {
       const res = await fetch(`${API}/jobs/${jobId}`);
       if (!res.ok) { router.push('/'); return; }
       setJob(await res.json());
-    } catch {}
+    } catch { }
     setLoading(false);
   };
 
@@ -154,7 +156,7 @@ export default function JobDetailPage() {
         connectSSE();
         await loadJob();
       }
-    } catch {}
+    } catch { }
     setStarting(false);
   };
 
@@ -166,8 +168,35 @@ export default function JobDetailPage() {
         connectSSE();
         await loadJob();
       }
-    } catch {}
+    } catch { }
     setPackaging(false);
+  };
+
+  const handlePause = async () => {
+    setPausing(true);
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}/pause`, { method: 'POST' });
+      if (res.ok) await loadJob();
+    } catch { }
+    setPausing(false);
+  };
+
+  const handleResume = async () => {
+    setResuming(true);
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}/resume`, { method: 'POST' });
+      if (res.ok) { connectSSE(); await loadJob(); }
+    } catch { }
+    setResuming(false);
+  };
+
+  const handleRetryErrors = async () => {
+    setRetrying(true);
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}/retry-errors`, { method: 'POST' });
+      if (res.ok) { connectSSE(); await loadJob(); }
+    } catch { }
+    setRetrying(false);
   };
 
   if (loading) {
@@ -178,7 +207,7 @@ export default function JobDetailPage() {
     return <div className="flex items-center justify-center h-64 text-red-500">Job not found.</div>;
   }
 
-  const isRunning = !['created', 'done', 'error'].includes(job.stage);
+  const isRunning = !['created', 'done', 'error', 'paused'].includes(job.stage);
   const pct = job.total_calls > 0 ? Math.round((job.done_calls / job.total_calls) * 100) : 0;
 
   return (
@@ -205,6 +234,33 @@ export default function JobDetailPage() {
                 className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors"
               >
                 {starting ? 'Starting…' : 'Start Processing'}
+              </button>
+            )}
+            {isRunning && (
+              <button
+                onClick={handlePause}
+                disabled={pausing}
+                className="px-4 py-2 bg-amber-100 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-200 disabled:opacity-50 transition-colors"
+              >
+                {pausing ? 'Pausing…' : 'Pause'}
+              </button>
+            )}
+            {job.stage === 'paused' && (
+              <button
+                onClick={handleResume}
+                disabled={resuming}
+                className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors"
+              >
+                {resuming ? 'Resuming…' : 'Resume Processing'}
+              </button>
+            )}
+            {job.error_calls > 0 && !isRunning && (
+              <button
+                onClick={handleRetryErrors}
+                disabled={retrying}
+                className="px-4 py-2 bg-red-100 text-red-800 text-sm font-medium rounded-lg hover:bg-red-200 disabled:opacity-50 transition-colors"
+              >
+                {retrying ? 'Retrying…' : `Retry ${job.error_calls} Errors`}
               </button>
             )}
             {job.stage === 'done' && (
@@ -241,7 +297,7 @@ export default function JobDetailPage() {
         </div>
 
         {/* Progress bar */}
-        {isRunning && (
+        {(isRunning || job.stage === 'paused') && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-slate-500 mb-1">
               <span>{job.done_calls} / {job.total_calls} calls done</span>

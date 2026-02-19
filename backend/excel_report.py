@@ -114,7 +114,12 @@ def generate_excel(calls) -> bytes:
         write(3, call.inmate_name or "")
         write(4, call.outside_number_fmt or "")
         write(5, call.facility or "")
-        write(6, call.filename)
+        
+        # Link filename to viewer
+        fn_cell = write(6, call.filename)
+        fn_cell.hyperlink = f"viewer/index.html?call={call.filename}"
+        fn_cell.font = Font(underline="single", color="0563C1")
+
         write(7, _format_duration(call.duration_seconds))
         write(8, call.call_outcome or "")
         write(9, call.notes or "")

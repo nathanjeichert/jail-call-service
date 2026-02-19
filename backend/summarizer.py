@@ -9,12 +9,15 @@ import asyncio
 import logging
 import os
 from typing import List, Optional
+from tenacity import retry, wait_random_exponential, stop_after_attempt
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROMPT = (
     "Summarize this jail call transcript. Note key topics, mentions of the case, "
-    "legal matters, names, dates, locations. Keep under 300 words."
+    "legal matters, names, dates, locations. Keep under 300 words. "
+    "IMPORTANT: When referring to specific quotes or key statements, you MUST cite the timestamp "
+    "in bracket format, matching the transcript precisely (e.g. [01:23])."
 )
 
 _SEMAPHORE: Optional[asyncio.Semaphore] = None
@@ -31,7 +34,8 @@ def _build_transcript_text(turns) -> str:
     """Convert TranscriptTurn list to plain text for the LLM."""
     lines = []
     for turn in turns:
-        lines.append(f"{turn.speaker}: {turn.text}")
+        ts = turn.timestamp or "[00:00]"
+        lines.append(f"{ts} {turn.speaker}: {turn.text}")
     return "\n".join(lines)
 
 
@@ -85,10 +89,14 @@ async def summarize_transcript(
     sem = _get_semaphore(10)
     async with sem:
         client = genai.Client(api_key=api_key)
-        try:
-            # Run sync SDK call in thread to avoid blocking event loop
+        
+        @retry(
+            wait=wait_random_exponential(min=2, max=60),
+            stop=stop_after_attempt(6)
+        )
+        async def _call_gemini():
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
+            return await loop.run_in_executor(
                 None,
                 lambda: client.models.generate_content(
                     model=model,
@@ -99,6 +107,9 @@ async def summarize_transcript(
                     ),
                 ),
             )
+
+        try:
+            response = await _call_gemini()
             text = getattr(response, "text", None)
             if not text and getattr(response, "candidates", None):
                 try:

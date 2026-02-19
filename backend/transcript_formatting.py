@@ -166,10 +166,46 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
         wrapped.extend(wrap_text(para, chars_per_line) if para.strip() else [""])
 
     line_height = 16
+    TIMESTAMP_RE = re.compile(r"(\[(?:\d{1,2}:)?\d{2}:\d{2}\])")
+    
     for line in wrapped:
         if y < PDF_MARGIN_BOTTOM + 0.3 * inch:
             break
-        c.drawString(PDF_MARGIN_LEFT, y, line)
+            
+        current_x = PDF_MARGIN_LEFT
+        last_idx = 0
+        
+        for match in TIMESTAMP_RE.finditer(line):
+            ts_str = match.group(1)
+            start_idx = match.start()
+            
+            # draw text before timestamp
+            prefix = line[last_idx:start_idx]
+            if prefix:
+                c.setFillColor(colors.black)
+                c.drawString(current_x, y, prefix)
+                current_x += c.stringWidth(prefix, PDF_TEXT_FONT, 11)
+                
+            # draw timestamp link
+            c.setFillColor(colors.Color(0.02, 0.39, 0.76)) # Blue hyperlink
+            c.drawString(current_x, y, ts_str)
+            x1 = current_x
+            current_x += c.stringWidth(ts_str, PDF_TEXT_FONT, 11)
+            x2 = current_x
+            
+            if filename:
+                # relative link format to go up one directory out of transcripts/ then into viewer/
+                url = f"../viewer/index.html?call={filename}&t={ts_str[1:-1]}"
+                c.linkURL(url, (x1, y - 2, x2, y + 10), relative=1)
+                
+            last_idx = match.end()
+            
+        # Draw remainder
+        remainder = line[last_idx:]
+        if remainder:
+            c.setFillColor(colors.black)
+            c.drawString(current_x, y, remainder)
+
         y -= line_height
 
     # Page number

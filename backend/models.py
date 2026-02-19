@@ -70,6 +70,7 @@ class JobStage(str, Enum):
     PACKAGING = "packaging"
     DONE = "done"
     ERROR = "error"
+    PAUSED = "paused"
 
 
 class Job(BaseModel):
@@ -84,6 +85,8 @@ class Job(BaseModel):
     completed_at: Optional[str] = None
     zip_path: Optional[str] = None
     error: Optional[str] = None
+    defendant_name: Optional[str] = None
+    skip_summary: bool = False
 
     class Config:
         use_enum_values = True

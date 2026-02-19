@@ -50,6 +50,8 @@ class CreateJobRequest(BaseModel):
     case_name: str
     input_folder: str
     summary_prompt: Optional[str] = None
+    defendant_name: Optional[str] = None
+    skip_summary: bool = False
 
 
 class UpdateSummaryRequest(BaseModel):
@@ -89,6 +91,7 @@ def _job_summary(job: Job) -> dict:
         "completed_at": job.completed_at,
         "has_zip": job.zip_path is not None and os.path.exists(job.zip_path or ""),
         "error": job.error,
+        "defendant_name": job.defendant_name,
     }
 
 
@@ -120,6 +123,8 @@ def create_job(req: CreateJobRequest):
         case_name=req.case_name,
         input_folder=req.input_folder,
         summary_prompt=req.summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT,
+        defendant_name=req.defendant_name,
+        skip_summary=req.skip_summary,
     )
     return _job_summary(job)
 
@@ -140,11 +145,60 @@ def get_job(job_id: str):
 @app.post("/api/jobs/{job_id}/start")
 def start_job(job_id: str, background_tasks: BackgroundTasks):
     job = _job_or_404(job_id)
-    if job.stage not in ("created", "error"):
+    if job.stage not in ("created", "error", "paused"):
         raise HTTPException(status_code=409, detail=f"Job is already in stage: {job.stage}")
 
     background_tasks.add_task(_run_job_async, job_id)
     return {"status": "started", "job_id": job_id}
+
+
+@app.post("/api/jobs/{job_id}/pause")
+def pause_job(job_id: str):
+    job = _job_or_404(job_id)
+    if job.stage in ("done", "error", "created", "paused", "packaging"):
+        raise HTTPException(status_code=409, detail=f"Cannot pause job in stage: {job.stage}")
+    
+    pipeline._emit(job_id, {"type": "stage", "stage": "paused"})
+    job.stage = "paused"
+    job_store.update_job(job)
+    return {"status": "paused", "job_id": job_id}
+
+
+@app.post("/api/jobs/{job_id}/resume")
+def resume_job(job_id: str, background_tasks: BackgroundTasks):
+    job = _job_or_404(job_id)
+    if job.stage != "paused":
+        raise HTTPException(status_code=409, detail=f"Job is not paused, mostly in: {job.stage}")
+        
+    background_tasks.add_task(_run_job_async, job_id)
+    return {"status": "resumed", "job_id": job_id}
+
+
+@app.post("/api/jobs/{job_id}/retry-errors")
+def retry_errors(job_id: str, background_tasks: BackgroundTasks):
+    job = _job_or_404(job_id)
+    
+    # reset all error calls to appropriate stage
+    for c in job.calls:
+        if c.status == CallStatus.ERROR:
+            if not c.mp3_path:
+                new_status = CallStatus.PENDING
+            elif not c.turns:
+                new_status = CallStatus.TRANSCRIBING
+            elif not c.summary:
+                new_status = CallStatus.SUMMARIZING
+            else:
+                new_status = CallStatus.GENERATING_PDF
+                
+            job_store.update_call(job_id, c.index, status=new_status, error=None)
+    
+    job.stage = "converting" # The pipeline will skip what's already done
+    job.error = None
+    job_store.update_job(job)
+    
+    pipeline._emit(job_id, {"type": "stage", "stage": "retrying_errors"})
+    background_tasks.add_task(_run_job_async, job_id)
+    return {"status": "retrying", "job_id": job_id}
 
 
 def _run_job_async(job_id: str):
@@ -199,9 +253,8 @@ def get_summary(job_id: str, call_index: int):
 def update_summary(job_id: str, call_index: int, req: UpdateSummaryRequest):
     job = _job_or_404(job_id)
     call = _call_or_404(job, call_index)
-    call.summary = req.summary
-    job_store.update_job(job)
-    return {"index": call.index, "summary": call.summary}
+    job_store.update_call(job_id, call_index, summary=req.summary)
+    return {"index": call.index, "summary": req.summary}
 
 
 @app.post("/api/jobs/{job_id}/package")
