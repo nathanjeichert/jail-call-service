@@ -119,15 +119,32 @@ def _call_summary(call) -> dict:
 
 @app.get("/api/browse/folder")
 def browse_folder():
-    """Opens a native OS folder dialog on the server and returns the path."""
+    """Opens a native OS folder/file dialog on the server and returns the path(s)."""
     import tkinter as tk
-    from tkinter import filedialog
+    from tkinter import filedialog, messagebox
     
     def _open_dialog():
         root = tk.Tk()
         root.withdraw() # Hide the main window
         root.attributes('-topmost', True) # Bring dialog to front
-        path = filedialog.askdirectory(title="Select Folder")
+        
+        # Ask user if they want a folder or specific files
+        choice = messagebox.askyesno(
+            "Selection Type", 
+            "Do you want to scan an entire folder for WAVs?\n\n(Click 'Yes' for a folder, or 'No' to pick specific audio files)",
+            parent=root
+        )
+        
+        if choice:
+            path = filedialog.askdirectory(title="Select Folder", parent=root)
+        else:
+            paths = filedialog.askopenfilenames(
+                title="Select Audio Files",
+                filetypes=(("WAV Files", "*.wav"), ("Audio Files", "*.mp3 *.m4a"), ("All Files", "*.*")),
+                parent=root
+            )
+            path = ",\n".join(paths) if paths else ""
+            
         root.destroy()
         return path
         
