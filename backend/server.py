@@ -117,6 +117,43 @@ def _call_summary(call) -> dict:
 
 # ── Endpoints ──
 
+@app.get("/api/browse/folder")
+def browse_folder():
+    """Opens a native OS folder dialog on the server and returns the path."""
+    import tkinter as tk
+    from tkinter import filedialog
+    
+    def _open_dialog():
+        root = tk.Tk()
+        root.withdraw() # Hide the main window
+        root.attributes('-topmost', True) # Bring dialog to front
+        path = filedialog.askdirectory(title="Select Folder")
+        root.destroy()
+        return path
+        
+    path = _open_dialog()
+    return {"path": path}
+
+@app.get("/api/browse/file")
+def browse_file():
+    """Opens a native OS file dialog on the server and returns the path."""
+    import tkinter as tk
+    from tkinter import filedialog
+    
+    def _open_dialog():
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        path = filedialog.askopenfilename(
+            title="Select File",
+            filetypes=(("XML Files", "*.xml"), ("WAV Files", "*.wav"), ("All Files", "*.*"))
+        )
+        root.destroy()
+        return path
+        
+    path = _open_dialog()
+    return {"path": path}
+
 @app.post("/api/jobs", status_code=201)
 def create_job(req: CreateJobRequest):
     if not req.file_paths and not os.path.isdir(req.input_folder or ""):

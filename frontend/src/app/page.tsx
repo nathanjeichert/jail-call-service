@@ -146,6 +146,34 @@ export default function JobsPage() {
     setSubmitting(false);
   };
 
+  const handleBrowseFolder = async () => {
+    try {
+      const res = await fetch(`${API}/browse/folder`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.path && pathsRef.current) {
+          pathsRef.current.value = data.path;
+        }
+      }
+    } catch (err) {
+      console.error('Browse folder failed', err);
+    }
+  };
+
+  const handleBrowseFile = async () => {
+    try {
+      const res = await fetch(`${API}/browse/file`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.path && xmlRef.current) {
+          xmlRef.current.value = data.path;
+        }
+      }
+    } catch (err) {
+      console.error('Browse file failed', err);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Header */}
@@ -181,21 +209,39 @@ export default function JobsPage() {
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Audio Files Path(s)</label>
-              <textarea
-                ref={pathsRef}
-                rows={3}
-                placeholder="Paste the absolute path to a folder (e.g. C:\calls) OR paste specific file paths separated by commas/newlines (e.g. C:\calls\1.wav, C:\calls\2.wav)"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono resize-none"
-              />
+              <div className="flex gap-2 items-start">
+                <textarea
+                  ref={pathsRef}
+                  rows={3}
+                  placeholder="Paste the absolute path to a folder (e.g. C:\calls) OR paste specific file paths separated by commas/newlines (e.g. C:\calls\1.wav, C:\calls\2.wav)"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono resize-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleBrowseFolder}
+                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0"
+                >
+                  Browse Folder…
+                </button>
+              </div>
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">ICM Metadata XML Path <span className="text-slate-400 font-normal">(optional)</span></label>
-              <input
-                ref={xmlRef}
-                type="text"
-                placeholder="C:\calls\ICM_report.xml"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono"
-              />
+              <div className="flex gap-2 items-center">
+                <input
+                  ref={xmlRef}
+                  type="text"
+                  placeholder="C:\calls\ICM_report.xml"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={handleBrowseFile}
+                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0 whitespace-nowrap"
+                >
+                  Browse XML…
+                </button>
+              </div>
             </div>
           </div>
           <div>
