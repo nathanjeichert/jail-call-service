@@ -20,20 +20,34 @@ logger = logging.getLogger(__name__)
 
 
 def _find_ffmpeg() -> Optional[str]:
+    if os.getenv("FFMPEG_PATH") and os.path.exists(os.getenv("FFMPEG_PATH")):
+        return os.getenv("FFMPEG_PATH")
     path = shutil.which('ffmpeg')
     if path:
         return path
-    for candidate in ['/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/bin/ffmpeg']:
+    for candidate in [
+        '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/bin/ffmpeg',
+        r'C:\ffmpeg\bin\ffmpeg.exe',
+        r'C:\Users\natha\ffmpeg\ffmpeg-8.0-essentials_build\bin\ffmpeg.exe',
+        r'C:\Users\natha\Downloads\ffmpeg-release-essentials\ffmpeg-8.0.1-essentials_build\bin\ffmpeg.exe',
+    ]:
         if os.path.exists(candidate):
             return candidate
     return None
 
 
 def _find_ffprobe() -> Optional[str]:
+    if os.getenv("FFPROBE_PATH") and os.path.exists(os.getenv("FFPROBE_PATH")):
+        return os.getenv("FFPROBE_PATH")
     path = shutil.which('ffprobe')
     if path:
         return path
-    for candidate in ['/usr/local/bin/ffprobe', '/opt/homebrew/bin/ffprobe', '/usr/bin/ffprobe']:
+    for candidate in [
+        '/usr/local/bin/ffprobe', '/opt/homebrew/bin/ffprobe', '/usr/bin/ffprobe',
+        r'C:\ffmpeg\bin\ffprobe.exe',
+        r'C:\Users\natha\ffmpeg\ffmpeg-8.0-essentials_build\bin\ffprobe.exe',
+        r'C:\Users\natha\Downloads\ffmpeg-release-essentials\ffmpeg-8.0.1-essentials_build\bin\ffprobe.exe',
+    ]:
         if os.path.exists(candidate):
             return candidate
     return None
