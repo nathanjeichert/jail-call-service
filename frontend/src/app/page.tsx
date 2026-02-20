@@ -56,12 +56,10 @@ export default function JobsPage() {
 
   const caseNameRef = useRef<HTMLInputElement>(null);
   const defendantNameRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const xmlInputRef = useRef<HTMLInputElement>(null);
+  const pathsRef = useRef<HTMLTextAreaElement>(null);
+  const xmlRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const skipSummaryRef = useRef<HTMLInputElement>(null);
-
-  const [selectionType, setSelectionType] = useState<'folder' | 'files'>('folder');
 
   const loadJobs = async () => {
     try {
@@ -93,22 +91,34 @@ export default function JobsPage() {
     setError('');
     setSubmitting(true);
 
-    const filePaths = Array.from(fileInputRef.current?.files || []).map(f => (f as any).path || f.webkitRelativePath || f.name).filter(p => p.toLowerCase().endsWith('.wav'));
-    const xmlPath = xmlInputRef.current?.files?.[0] ? ((xmlInputRef.current.files[0] as any).path || xmlInputRef.current.files[0].name) : '';
-    const inputFolder = selectionType === 'folder' && filePaths.length > 0 ? filePaths[0].substring(0, filePaths[0].lastIndexOf('\\') !== -1 ? filePaths[0].lastIndexOf('\\') : filePaths[0].lastIndexOf('/')) : '';
+    const pathsStr = pathsRef.current?.value.trim() || '';
+    const xmlPath = xmlRef.current?.value.trim() || '';
+
+    // If the input is a comma-separated or newline-separated list, or a single path
+    const parsedPaths = pathsStr.split(/[\n,]+/).map(p => p.trim()).filter(Boolean);
+
+    let inputFolder = '';
+    let filePaths: string[] = [];
+
+    // Simple heuristic: if there's only one path and it doesn't end with .wav, treat it as a folder
+    if (parsedPaths.length === 1 && !parsedPaths[0].toLowerCase().endsWith('.wav')) {
+      inputFolder = parsedPaths[0];
+    } else {
+      filePaths = parsedPaths;
+    }
 
     const body = {
       case_name: caseNameRef.current?.value.trim() || '',
       defendant_name: defendantNameRef.current?.value.trim() || '',
       input_folder: inputFolder,
-      file_paths: selectionType === 'files' ? filePaths : [],
-      xml_metadata_path: selectionType === 'files' ? xmlPath : undefined,
+      file_paths: filePaths.length > 0 ? filePaths : undefined,
+      xml_metadata_path: xmlPath || undefined,
       summary_prompt: promptRef.current?.value.trim() || defaultPrompt,
       skip_summary: skipSummaryRef.current?.checked || false,
     };
 
-    if (!body.case_name || (selectionType === 'folder' && !body.input_folder) || (selectionType === 'files' && body.file_paths.length === 0)) {
-      setError('Case name and input files/folder are required.');
+    if (!body.case_name || (!body.input_folder && (!body.file_paths || body.file_paths.length === 0))) {
+      setError('Case name and input path(s) are required.');
       setSubmitting(false);
       return;
     }
@@ -125,8 +135,8 @@ export default function JobsPage() {
       } else {
         if (caseNameRef.current) caseNameRef.current.value = '';
         if (defendantNameRef.current) defendantNameRef.current.value = '';
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        if (xmlInputRef.current) xmlInputRef.current.value = '';
+        if (pathsRef.current) pathsRef.current.value = '';
+        if (xmlRef.current) xmlRef.current.value = '';
         if (skipSummaryRef.current) skipSummaryRef.current.checked = false;
         await loadJobs();
       }
@@ -170,51 +180,22 @@ export default function JobsPage() {
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-2">Audio Input Method</label>
-              <div className="flex gap-4 mb-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="inputType" checked={selectionType === 'folder'} onChange={() => setSelectionType('folder')} className="text-slate-800 focus:ring-slate-400" />
-                  <span className="text-sm text-slate-700">Scan entire folder (auto-detects XML)</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="inputType" checked={selectionType === 'files'} onChange={() => setSelectionType('files')} className="text-slate-800 focus:ring-slate-400" />
-                  <span className="text-sm text-slate-700">Select specific local files</span>
-                </label>
-              </div>
-
-              {selectionType === 'folder' ? (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Select Folder</label>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    {...{ webkitdirectory: "", directory: "" } as any}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-50 file:text-slate-700 hover:file:bg-slate-100"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Select WAV Files</label>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      accept=".wav"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-50 file:text-slate-700 hover:file:bg-slate-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Select ICM Metadata XML <span className="text-slate-400 font-normal">(optional)</span></label>
-                    <input
-                      ref={xmlInputRef}
-                      type="file"
-                      accept=".xml"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-50 file:text-slate-700 hover:file:bg-slate-100"
-                    />
-                  </div>
-                </div>
-              )}
+              <label className="block text-sm font-medium text-slate-700 mb-1">Audio Files Path(s)</label>
+              <textarea
+                ref={pathsRef}
+                rows={3}
+                placeholder="Paste the absolute path to a folder (e.g. C:\calls) OR paste specific file paths separated by commas/newlines (e.g. C:\calls\1.wav, C:\calls\2.wav)"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono resize-none"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">ICM Metadata XML Path <span className="text-slate-400 font-normal">(optional)</span></label>
+              <input
+                ref={xmlRef}
+                type="text"
+                placeholder="C:\calls\ICM_report.xml"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono"
+              />
             </div>
           </div>
           <div>

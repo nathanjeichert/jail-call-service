@@ -194,7 +194,8 @@ def retry_errors(job_id: str, background_tasks: BackgroundTasks):
             else:
                 new_status = CallStatus.GENERATING_PDF
                 
-            job_store.update_call(job_id, c.index, status=new_status, error=None)
+            c.status = new_status
+            c.error = None
     
     job.stage = "converting" # The pipeline will skip what's already done
     job.error = None

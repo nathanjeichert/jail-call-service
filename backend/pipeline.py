@@ -50,13 +50,17 @@ def _emit(job_id: str, event: dict) -> None:
 
 
 def _discover_wav_files(input_folder: str) -> List[str]:
-    """Find all .wav files in the input folder (non-recursive)."""
-    pattern = os.path.join(input_folder, "*.wav")
-    files = sorted(glob.glob(pattern))
-    # Also check uppercase
-    files += [f for f in sorted(glob.glob(os.path.join(input_folder, "*.WAV")))
-              if f not in files]
-    return files
+    """Find all .wav files in the input folder (recursive)."""
+    if not input_folder or not os.path.isdir(input_folder):
+        return []
+    
+    wav_files = []
+    for root, dirs, files in os.walk(input_folder):
+        for f in files:
+            if f.lower().endswith(".wav"):
+                wav_files.append(os.path.join(root, f))
+                
+    return sorted(wav_files)
 
 
 def _call_stem(index: int, filename: str) -> str:
@@ -105,10 +109,10 @@ async def _run_pipeline(job: Job) -> None:
     logger.info("Discovered %d WAV files for job %s", len(wav_files), job_id)
 
     # Load ICM report metadata if present
-    if job.file_paths and job.xml_metadata_path:
-        icm_xml = job.xml_metadata_path if os.path.exists(job.xml_metadata_path) else None
+    if job.xml_metadata_path and os.path.exists(job.xml_metadata_path):
+        icm_xml = job.xml_metadata_path
     else:
-        icm_xml = find_icm_report(job.input_folder)
+        icm_xml = find_icm_report(job.input_folder) if job.input_folder else None
         
     icm_map = parse_icm_report(icm_xml) if icm_xml else {}
     if icm_map:
