@@ -102,6 +102,7 @@ def _draw_border(c: canvas.Canvas) -> None:
 
 
 def _draw_title_page(c: canvas.Canvas, title_data: dict) -> None:
+    _draw_border(c)
     cx = PDF_PAGE_WIDTH / 2
     y = PDF_PAGE_HEIGHT - 1.7 * inch
 

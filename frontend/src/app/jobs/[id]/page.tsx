@@ -36,6 +36,7 @@ type JobDetail = {
   has_zip: boolean;
   error?: string;
   calls: CallSummary[];
+  defendant_name?: string;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -51,11 +52,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
-  repairing: 'Repairing header…',
-  converting: 'Converting…',
-  transcribing: 'Transcribing…',
-  summarizing: 'Summarizing…',
-  generating_pdf: 'Generating PDF…',
+  repairing: 'Repairing header...',
+  converting: 'Converting...',
+  transcribing: 'Transcribing...',
+  summarizing: 'Summarizing...',
+  generating_pdf: 'Generating PDF...',
   done: 'Done',
   error: 'Error',
 };
@@ -70,28 +71,46 @@ const STAGE_STEPS = [
 ];
 
 function formatDuration(s?: number): string {
-  if (!s) return '–';
+  if (!s) return '-';
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
+function formatElapsed(startedAt?: string): string {
+  if (!startedAt) return '';
+  const start = new Date(startedAt).getTime();
+  if (isNaN(start)) return '';
+  const elapsed = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s = elapsed % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 function StageIndicator({ stage }: { stage: string }) {
   const stageOrder = STAGE_STEPS.map(s => s.key);
-  const currentIdx = stageOrder.indexOf(stage);
+  // For "paused" state, find where we were paused (keep that step highlighted)
+  const effectiveStage = stage === 'paused' || stage === 'error' ? stage : stage;
+  const currentIdx = stageOrder.indexOf(effectiveStage);
 
   return (
-    <div className="flex items-center gap-0">
+    <div className="flex items-center gap-0 flex-wrap">
       {STAGE_STEPS.map((step, idx) => {
-        const isDone = idx < currentIdx || stage === 'done';
+        const isDone = stage === 'done' || (currentIdx >= 0 && idx < currentIdx);
         const isActive = step.key === stage;
+        const isPaused = stage === 'paused' && idx === 0; // show first incomplete step
         return (
           <div key={step.key} className="flex items-center">
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${isDone ? 'bg-green-100 text-green-700' :
-                isActive ? 'bg-slate-800 text-white' :
-                  'bg-slate-100 text-slate-400'
-              }`}>
-              {isDone && <span>✓</span>}
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              isDone ? 'bg-green-100 text-green-700' :
+              isActive ? 'bg-slate-800 text-white' :
+              isPaused ? 'bg-yellow-100 text-yellow-800' :
+              'bg-slate-100 text-slate-400'
+            }`}>
+              {isDone && <span>&#10003;</span>}
               {step.label}
             </div>
             {idx < STAGE_STEPS.length - 1 && (
@@ -100,6 +119,11 @@ function StageIndicator({ stage }: { stage: string }) {
           </div>
         );
       })}
+      {stage === 'paused' && (
+        <div className="ml-3 px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded-lg text-xs font-medium">
+          PAUSED
+        </div>
+      )}
     </div>
   );
 }
@@ -116,15 +140,19 @@ export default function JobDetailPage() {
   const [pausing, setPausing] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [elapsed, setElapsed] = useState('');
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const loadJob = async () => {
     try {
       const res = await fetch(`${API}/jobs/${jobId}`);
-      if (!res.ok) { router.push('/'); return; }
-      setJob(await res.json());
+      if (!res.ok) { router.push('/'); return null; }
+      const data = await res.json();
+      setJob(data);
+      return data;
     } catch { }
     setLoading(false);
+    return null;
   };
 
   const connectSSE = () => {
@@ -134,18 +162,55 @@ export default function JobDetailPage() {
       const event = JSON.parse(e.data);
       if (event.type === 'done' || event.type === 'error') {
         es.close();
+        eventSourceRef.current = null;
         await loadJob();
       } else if (event.type !== 'ping') {
         await loadJob();
       }
     };
-    es.onerror = () => es.close();
+    es.onerror = () => {
+      es.close();
+      eventSourceRef.current = null;
+    };
     eventSourceRef.current = es;
   };
 
   useEffect(() => {
-    loadJob();
-    return () => { eventSourceRef.current?.close(); };
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let elapsedInterval: ReturnType<typeof setInterval> | null = null;
+
+    loadJob().then(data => {
+      setLoading(false);
+      if (data && !['created', 'done', 'error'].includes(data.stage)) {
+        connectSSE();
+      }
+      // Polling fallback
+      pollInterval = setInterval(() => { loadJob(); }, 3000);
+      // Elapsed time ticker
+      elapsedInterval = setInterval(() => {
+        setJob(prev => {
+          if (prev?.started_at && !['created', 'done'].includes(prev.stage)) {
+            setElapsed(formatElapsed(prev.started_at));
+          } else if (prev?.started_at && prev?.completed_at) {
+            // Show final elapsed
+            const start = new Date(prev.started_at).getTime();
+            const end = new Date(prev.completed_at).getTime();
+            const secs = Math.max(0, Math.floor((end - start) / 1000));
+            const h = Math.floor(secs / 3600);
+            const m = Math.floor((secs % 3600) / 60);
+            const s = secs % 60;
+            setElapsed(h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`);
+          }
+          return prev;
+        });
+      }, 1000);
+    });
+
+    return () => {
+      eventSourceRef.current?.close();
+      if (pollInterval) clearInterval(pollInterval);
+      if (elapsedInterval) clearInterval(elapsedInterval);
+    };
   }, [jobId]);
 
   const handleStart = async () => {
@@ -199,8 +264,16 @@ export default function JobDetailPage() {
     setRetrying(false);
   };
 
+  const handleDelete = async () => {
+    if (!confirm('Delete this job and all its files?')) return;
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}`, { method: 'DELETE' });
+      if (res.ok) router.push('/');
+    } catch { }
+  };
+
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-slate-400">Loading…</div>;
+    return <div className="flex items-center justify-center h-64 text-slate-400">Loading...</div>;
   }
 
   if (!job) {
@@ -213,10 +286,20 @@ export default function JobDetailPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Breadcrumb */}
-      <div className="mb-6 flex items-center gap-2 text-sm text-slate-500">
-        <Link href="/" className="hover:text-slate-900 transition-colors">Jobs</Link>
-        <span>/</span>
-        <span className="text-slate-900 font-medium">{job.case_name}</span>
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Link href="/" className="hover:text-slate-900 transition-colors">Jobs</Link>
+          <span>/</span>
+          <span className="text-slate-900 font-medium">{job.case_name}</span>
+        </div>
+        {['created', 'done', 'error'].includes(job.stage) && (
+          <button
+            onClick={handleDelete}
+            className="text-xs text-slate-400 hover:text-red-600 transition-colors"
+          >
+            Delete Job
+          </button>
+        )}
       </div>
 
       {/* Header */}
@@ -233,7 +316,7 @@ export default function JobDetailPage() {
                 disabled={starting}
                 className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors"
               >
-                {starting ? 'Starting…' : 'Start Processing'}
+                {starting ? 'Starting...' : 'Start Processing'}
               </button>
             )}
             {isRunning && (
@@ -242,7 +325,7 @@ export default function JobDetailPage() {
                 disabled={pausing}
                 className="px-4 py-2 bg-amber-100 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-200 disabled:opacity-50 transition-colors"
               >
-                {pausing ? 'Pausing…' : 'Pause'}
+                {pausing ? 'Pausing...' : 'Pause'}
               </button>
             )}
             {job.stage === 'paused' && (
@@ -251,7 +334,7 @@ export default function JobDetailPage() {
                 disabled={resuming}
                 className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors"
               >
-                {resuming ? 'Resuming…' : 'Resume Processing'}
+                {resuming ? 'Resuming...' : 'Resume Processing'}
               </button>
             )}
             {job.error_calls > 0 && !isRunning && (
@@ -260,7 +343,7 @@ export default function JobDetailPage() {
                 disabled={retrying}
                 className="px-4 py-2 bg-red-100 text-red-800 text-sm font-medium rounded-lg hover:bg-red-200 disabled:opacity-50 transition-colors"
               >
-                {retrying ? 'Retrying…' : `Retry ${job.error_calls} Errors`}
+                {retrying ? 'Retrying...' : `Retry ${job.error_calls} Errors`}
               </button>
             )}
             {job.stage === 'done' && (
@@ -270,7 +353,7 @@ export default function JobDetailPage() {
                   disabled={packaging}
                   className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
                 >
-                  {packaging ? 'Packaging…' : 'Re-package'}
+                  {packaging ? 'Packaging...' : 'Re-package'}
                 </button>
                 <Link
                   href={`/jobs/${jobId}/review`}
@@ -301,11 +384,14 @@ export default function JobDetailPage() {
           <div className="mt-4">
             <div className="flex justify-between text-xs text-slate-500 mb-1">
               <span>{job.done_calls} / {job.total_calls} calls done</span>
-              <span>{pct}%</span>
+              <div className="flex gap-4">
+                {elapsed && <span className="tabular-nums">{elapsed}</span>}
+                <span>{pct}%</span>
+              </div>
             </div>
             <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
               <div
-                className="h-full bg-slate-700 rounded-full transition-all duration-500"
+                className={`h-full rounded-full transition-all duration-500 ${job.stage === 'paused' ? 'bg-yellow-500' : 'bg-slate-700'}`}
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -324,6 +410,9 @@ export default function JobDetailPage() {
           <div><span className="text-slate-400">Done:</span> <span className="font-medium text-green-700">{job.done_calls}</span></div>
           {job.error_calls > 0 && (
             <div><span className="text-slate-400">Errors:</span> <span className="font-medium text-red-600">{job.error_calls}</span></div>
+          )}
+          {elapsed && (job.stage === 'done' || job.stage === 'error') && (
+            <div><span className="text-slate-400">Elapsed:</span> <span className="font-medium tabular-nums">{elapsed}</span></div>
           )}
         </div>
       </div>
@@ -352,9 +441,9 @@ export default function JobDetailPage() {
                 {job.calls.map(call => (
                   <tr key={call.index} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-2.5 text-slate-400 tabular-nums">{call.index + 1}</td>
-                    <td className="px-4 py-2.5 text-slate-600 tabular-nums text-xs">{call.call_datetime_str || '–'}</td>
-                    <td className="px-4 py-2.5 text-slate-700 text-xs">{call.inmate_name || '–'}</td>
-                    <td className="px-4 py-2.5 text-slate-500 text-xs tabular-nums">{call.outside_number_fmt || '–'}</td>
+                    <td className="px-4 py-2.5 text-slate-600 tabular-nums text-xs">{call.call_datetime_str || '-'}</td>
+                    <td className="px-4 py-2.5 text-slate-700 text-xs">{call.inmate_name || '-'}</td>
+                    <td className="px-4 py-2.5 text-slate-500 text-xs tabular-nums">{call.outside_number_fmt || '-'}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-slate-700">{call.filename}</td>
                     <td className="px-4 py-2.5 text-slate-500 tabular-nums">{formatDuration(call.duration_seconds)}</td>
                     <td className={`px-4 py-2.5 font-medium ${STATUS_COLORS[call.status] || 'text-slate-500'}`}>

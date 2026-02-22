@@ -10,15 +10,16 @@ Stages:
   5. Generate Excel, search HTML, viewer, README
   6. Package zip
 
-SSE progress is broadcast via an asyncio.Queue per job.
+SSE progress is broadcast via a thread-safe queue per job.
 """
 
 import asyncio
-import glob
 import json
 import logging
 import os
+import queue
 import shutil
+import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -30,22 +31,27 @@ from . import job_store, config as cfg
 
 logger = logging.getLogger(__name__)
 
-# Per-job SSE event queues: job_id -> asyncio.Queue
-_event_queues: Dict[str, asyncio.Queue] = {}
+# Per-job SSE event queues using thread-safe stdlib queue.Queue.
+# The pipeline runs in a background thread (via asyncio.run in BackgroundTasks),
+# while the SSE endpoint reads from the server's main event loop — so we
+# cannot use asyncio.Queue which is bound to a single loop.
+_event_queues: Dict[str, queue.Queue] = {}
+_queue_lock = threading.Lock()
 
 
-def get_event_queue(job_id: str) -> asyncio.Queue:
-    if job_id not in _event_queues:
-        _event_queues[job_id] = asyncio.Queue(maxsize=1000)
-    return _event_queues[job_id]
+def get_event_queue(job_id: str) -> queue.Queue:
+    with _queue_lock:
+        if job_id not in _event_queues:
+            _event_queues[job_id] = queue.Queue(maxsize=2000)
+        return _event_queues[job_id]
 
 
 def _emit(job_id: str, event: dict) -> None:
-    """Put an event on the job's SSE queue (non-blocking)."""
+    """Put an event on the job's SSE queue (non-blocking, thread-safe)."""
     q = get_event_queue(job_id)
     try:
         q.put_nowait(event)
-    except asyncio.QueueFull:
+    except queue.Full:
         pass
 
 

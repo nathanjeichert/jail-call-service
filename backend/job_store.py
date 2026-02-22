@@ -16,7 +16,7 @@ from .db_models import DBJob, DBCall
 
 logger = logging.getLogger(__name__)
 
-# Initialize DB tabales
+# Initialize DB tables
 Base.metadata.create_all(bind=engine)
 
 def _job_dir(job_id: str) -> str:
@@ -189,6 +189,23 @@ def update_call(job_id: str, call_index: int, **kwargs) -> Optional[Job]:
         # Return updated job
         job = get_job(job_id)
         return job
+
+def delete_job(job_id: str) -> bool:
+    """Delete a job from the database and remove its output directory."""
+    import shutil
+    with SessionLocal() as db:
+        db_job = db.query(DBJob).filter(DBJob.id == job_id).first()
+        if not db_job:
+            return False
+        db.delete(db_job)
+        db.commit()
+
+    # Remove output files from disk
+    job_dir = os.path.join(cfg.JOBS_DIR, job_id)
+    if os.path.isdir(job_dir):
+        shutil.rmtree(job_dir, ignore_errors=True)
+    return True
+
 
 def get_job_output_dir(job_id: str) -> str:
     d = os.path.join(_job_dir(job_id), "output")

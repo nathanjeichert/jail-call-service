@@ -117,58 +117,70 @@ def _call_summary(call) -> dict:
 
 # ── Endpoints ──
 
+def _run_tk_dialog(fn):
+    """Run a tkinter dialog on a dedicated thread (tkinter must be on its own thread)."""
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(fn).result(timeout=120)
+
+
 @app.get("/api/browse/folder")
 def browse_folder():
     """Opens a native OS folder/file dialog on the server and returns the path(s)."""
-    import tkinter as tk
-    from tkinter import filedialog, messagebox
-    
     def _open_dialog():
+        import tkinter as tk
+        from tkinter import filedialog, messagebox
         root = tk.Tk()
-        root.withdraw() # Hide the main window
-        root.attributes('-topmost', True) # Bring dialog to front
-        
-        # Ask user if they want a folder or specific files
+        root.withdraw()
+        root.attributes('-topmost', True)
+
         choice = messagebox.askyesno(
-            "Selection Type", 
-            "Do you want to scan an entire folder for WAVs?\n\n(Click 'Yes' for a folder, or 'No' to pick specific audio files)",
-            parent=root
+            "Selection Type",
+            "Do you want to scan an entire folder for WAVs?\n\n"
+            "(Click 'Yes' for a folder, or 'No' to pick specific audio files)",
+            parent=root,
         )
-        
+
         if choice:
             path = filedialog.askdirectory(title="Select Folder", parent=root)
         else:
             paths = filedialog.askopenfilenames(
                 title="Select Audio Files",
                 filetypes=(("WAV Files", "*.wav"), ("Audio Files", "*.mp3 *.m4a"), ("All Files", "*.*")),
-                parent=root
+                parent=root,
             )
             path = ",\n".join(paths) if paths else ""
-            
+
         root.destroy()
         return path
-        
-    path = _open_dialog()
+
+    try:
+        path = _run_tk_dialog(_open_dialog)
+    except Exception:
+        path = ""
     return {"path": path}
+
 
 @app.get("/api/browse/file")
 def browse_file():
     """Opens a native OS file dialog on the server and returns the path."""
-    import tkinter as tk
-    from tkinter import filedialog
-    
     def _open_dialog():
+        import tkinter as tk
+        from tkinter import filedialog
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
         path = filedialog.askopenfilename(
             title="Select File",
-            filetypes=(("XML Files", "*.xml"), ("WAV Files", "*.wav"), ("All Files", "*.*"))
+            filetypes=(("XML Files", "*.xml"), ("WAV Files", "*.wav"), ("All Files", "*.*")),
         )
         root.destroy()
         return path
-        
-    path = _open_dialog()
+
+    try:
+        path = _run_tk_dialog(_open_dialog)
+    except Exception:
+        path = ""
     return {"path": path}
 
 @app.post("/api/jobs", status_code=201)
@@ -271,13 +283,20 @@ async def job_events(job_id: str):
     q = pipeline.get_event_queue(job_id)
 
     async def event_generator():
+        import queue as _queue
+        loop = asyncio.get_event_loop()
         while True:
             try:
-                event = await asyncio.wait_for(q.get(), timeout=30)
+                # q is a thread-safe stdlib queue.Queue — read via executor
+                # so we don't block the event loop.
+                event = await asyncio.wait_for(
+                    loop.run_in_executor(None, q.get, True, 25),
+                    timeout=30,
+                )
                 yield {"data": json.dumps(event)}
                 if event.get("type") in ("done", "error"):
                     break
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, _queue.Empty):
                 yield {"data": json.dumps({"type": "ping"})}
 
     return EventSourceResponse(event_generator())
@@ -363,12 +382,25 @@ def download_zip(job_id: str):
     )
 
 
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: str):
+    """Delete a job and all its output files."""
+    job = _job_or_404(job_id)
+    if job.stage not in ("created", "done", "error"):
+        raise HTTPException(status_code=409, detail="Cannot delete a running job. Pause or wait for it to finish.")
+    job_store.delete_job(job_id)
+    return {"status": "deleted", "job_id": job_id}
+
+
 @app.get("/api/config")
 def get_config():
-    """Return safe config for the frontend (no secret values)."""
+    """Return safe config and readiness checks for the frontend."""
+    from .audio_converter import FFMPEG_PATH
     return {
         "assemblyai_configured": bool(cfg.ASSEMBLYAI_API_KEY),
         "gemini_configured": bool(cfg.GEMINI_API_KEY),
+        "ffmpeg_found": bool(FFMPEG_PATH),
+        "ffmpeg_path": FFMPEG_PATH or "",
         "default_summary_prompt": cfg.DEFAULT_SUMMARY_PROMPT,
         "gemini_model": cfg.GEMINI_MODEL,
     }

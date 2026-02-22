@@ -16,20 +16,31 @@ type JobSummary = {
   created_at: string;
   has_zip: boolean;
   error?: string;
+  defendant_name?: string;
+};
+
+type AppConfig = {
+  assemblyai_configured: boolean;
+  gemini_configured: boolean;
+  ffmpeg_found: boolean;
+  ffmpeg_path: string;
+  default_summary_prompt: string;
+  gemini_model: string;
 };
 
 const STAGE_LABELS: Record<string, string> = {
   created: 'Created',
-  converting: 'Converting audio…',
-  transcribing: 'Transcribing…',
-  summarizing: 'Summarizing…',
-  generating: 'Generating PDFs…',
-  packaging: 'Packaging…',
+  converting: 'Converting audio...',
+  transcribing: 'Transcribing...',
+  summarizing: 'Summarizing...',
+  generating: 'Generating PDFs...',
+  packaging: 'Packaging...',
   done: 'Done',
   error: 'Error',
+  paused: 'Paused',
 };
 
-function StatusBadge({ stage, error }: { stage: string; error?: string }) {
+function StatusBadge({ stage }: { stage: string }) {
   const colors: Record<string, string> = {
     created: 'bg-slate-200 text-slate-700',
     converting: 'bg-blue-100 text-blue-800',
@@ -39,6 +50,7 @@ function StatusBadge({ stage, error }: { stage: string; error?: string }) {
     packaging: 'bg-cyan-100 text-cyan-800',
     done: 'bg-green-100 text-green-800',
     error: 'bg-red-100 text-red-800',
+    paused: 'bg-yellow-100 text-yellow-800',
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[stage] || 'bg-slate-100 text-slate-600'}`}>
@@ -49,10 +61,10 @@ function StatusBadge({ stage, error }: { stage: string; error?: string }) {
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
+  const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [defaultPrompt, setDefaultPrompt] = useState('');
 
   const caseNameRef = useRef<HTMLInputElement>(null);
   const defendantNameRef = useRef<HTMLInputElement>(null);
@@ -72,10 +84,7 @@ export default function JobsPage() {
   const loadConfig = async () => {
     try {
       const res = await fetch(`${API}/config`);
-      if (res.ok) {
-        const cfg = await res.json();
-        setDefaultPrompt(cfg.default_summary_prompt || '');
-      }
+      if (res.ok) setConfig(await res.json());
     } catch { }
   };
 
@@ -93,14 +102,11 @@ export default function JobsPage() {
 
     const pathsStr = pathsRef.current?.value.trim() || '';
     const xmlPath = xmlRef.current?.value.trim() || '';
-
-    // If the input is a comma-separated or newline-separated list, or a single path
     const parsedPaths = pathsStr.split(/[\n,]+/).map(p => p.trim()).filter(Boolean);
 
     let inputFolder = '';
     let filePaths: string[] = [];
 
-    // Simple heuristic: if there's only one path and it doesn't end with .wav, treat it as a folder
     if (parsedPaths.length === 1 && !parsedPaths[0].toLowerCase().endsWith('.wav')) {
       inputFolder = parsedPaths[0];
     } else {
@@ -113,7 +119,7 @@ export default function JobsPage() {
       input_folder: inputFolder,
       file_paths: filePaths.length > 0 ? filePaths : undefined,
       xml_metadata_path: xmlPath || undefined,
-      summary_prompt: promptRef.current?.value.trim() || defaultPrompt,
+      summary_prompt: promptRef.current?.value.trim() || (config?.default_summary_prompt ?? ''),
       skip_summary: skipSummaryRef.current?.checked || false,
     };
 
@@ -146,6 +152,16 @@ export default function JobsPage() {
     setSubmitting(false);
   };
 
+  const handleDelete = async (e: React.MouseEvent, jobId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm('Delete this job and all its files?')) return;
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}`, { method: 'DELETE' });
+      if (res.ok) await loadJobs();
+    } catch { }
+  };
+
   const handleBrowseFolder = async () => {
     try {
       const res = await fetch(`${API}/browse/folder`);
@@ -174,6 +190,13 @@ export default function JobsPage() {
     }
   };
 
+  const warnings: string[] = [];
+  if (config) {
+    if (!config.ffmpeg_found) warnings.push('ffmpeg not found. Set FFMPEG_PATH in .env or install ffmpeg to PATH.');
+    if (!config.assemblyai_configured) warnings.push('ASSEMBLYAI_API_KEY not set in .env. Transcription will fail.');
+    if (!config.gemini_configured) warnings.push('GEMINI_API_KEY not set in .env. Summaries will fail (use Skip Gemini for testing).');
+  }
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Header */}
@@ -183,6 +206,18 @@ export default function JobsPage() {
           Batch transcription and packaging for G.729 jail call recordings.
         </p>
       </div>
+
+      {/* Warnings */}
+      {warnings.length > 0 && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
+          {warnings.map((w, i) => (
+            <div key={i} className="flex items-start gap-2 text-sm text-amber-800">
+              <span className="mt-0.5 flex-shrink-0">!</span>
+              <span>{w}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* New Job Form */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm mb-8 p-6">
@@ -213,7 +248,7 @@ export default function JobsPage() {
                 <textarea
                   ref={pathsRef}
                   rows={3}
-                  placeholder="Paste the absolute path to a folder (e.g. C:\calls) OR paste specific file paths separated by commas/newlines (e.g. C:\calls\1.wav, C:\calls\2.wav)"
+                  placeholder={'Paste the absolute path to a folder (e.g. C:\\calls) OR paste specific file paths separated by commas/newlines (e.g. C:\\calls\\1.wav, C:\\calls\\2.wav)'}
                   className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono resize-none"
                 />
                 <button
@@ -221,7 +256,7 @@ export default function JobsPage() {
                   onClick={handleBrowseFolder}
                   className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0"
                 >
-                  Browse Folder…
+                  Browse...
                 </button>
               </div>
             </div>
@@ -231,7 +266,7 @@ export default function JobsPage() {
                 <input
                   ref={xmlRef}
                   type="text"
-                  placeholder="C:\calls\ICM_report.xml"
+                  placeholder={'C:\\calls\\ICM_report.xml'}
                   className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono"
                 />
                 <button
@@ -239,19 +274,19 @@ export default function JobsPage() {
                   onClick={handleBrowseFile}
                   className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0 whitespace-nowrap"
                 >
-                  Browse XML…
+                  Browse XML...
                 </button>
               </div>
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Summary Prompt <span className="text-slate-400 font-normal">(optional – uses default if blank)</span>
+              Summary Prompt <span className="text-slate-400 font-normal">(optional - uses default if blank)</span>
             </label>
             <textarea
               ref={promptRef}
               rows={3}
-              placeholder={defaultPrompt}
+              placeholder={config?.default_summary_prompt || ''}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none"
             />
           </div>
@@ -273,7 +308,7 @@ export default function JobsPage() {
               disabled={submitting}
               className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {submitting ? 'Creating…' : 'Create Job'}
+              {submitting ? 'Creating...' : 'Create Job'}
             </button>
           </div>
         </form>
@@ -283,7 +318,7 @@ export default function JobsPage() {
       <div>
         <h2 className="text-base font-semibold text-slate-800 mb-3">Jobs</h2>
         {loading ? (
-          <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>
+          <div className="text-center py-12 text-slate-400 text-sm">Loading...</div>
         ) : jobs.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-400 text-sm">
             No jobs yet. Create one above.
@@ -299,7 +334,9 @@ export default function JobsPage() {
                         <span className="font-semibold text-slate-900">{job.case_name}</span>
                         <StatusBadge stage={job.stage} />
                       </div>
-                      <div className="mt-1 text-xs text-slate-400 font-mono truncate">{job.input_folder}</div>
+                      <div className="mt-1 text-xs text-slate-400 font-mono truncate">
+                        {job.defendant_name ? `${job.defendant_name} - ` : ''}{job.input_folder}
+                      </div>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className="text-sm text-slate-600">
@@ -312,17 +349,28 @@ export default function JobsPage() {
                         {new Date(job.created_at).toLocaleDateString()}
                       </div>
                     </div>
-                    {job.has_zip && (
-                      <a
-                        href={`/api/jobs/${job.id}/download`}
-                        onClick={e => e.stopPropagation()}
-                        className="flex-shrink-0 px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-medium hover:bg-green-100 transition-colors"
-                      >
-                        Download
-                      </a>
-                    )}
+                    <div className="flex gap-2 flex-shrink-0">
+                      {job.has_zip && (
+                        <a
+                          href={`/api/jobs/${job.id}/download`}
+                          onClick={e => e.stopPropagation()}
+                          className="px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-medium hover:bg-green-100 transition-colors"
+                        >
+                          Download
+                        </a>
+                      )}
+                      {['created', 'done', 'error'].includes(job.stage) && (
+                        <button
+                          onClick={e => handleDelete(e, job.id)}
+                          className="px-2 py-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg text-xs transition-colors"
+                          title="Delete job"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {job.stage !== 'created' && job.stage !== 'done' && job.stage !== 'error' && (
+                  {!['created', 'done', 'error'].includes(job.stage) && (
                     <div className="mt-3">
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                         <div

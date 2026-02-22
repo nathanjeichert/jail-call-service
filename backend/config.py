@@ -19,7 +19,9 @@ MAX_SUMMARIZATION_CONCURRENT = 10
 # Default summary prompt
 DEFAULT_SUMMARY_PROMPT = (
     "Summarize this jail call transcript. Note key topics, mentions of the case, "
-    "legal matters, names, dates, locations. Keep under 300 words."
+    "legal matters, names, dates, locations. Keep under 300 words. "
+    "IMPORTANT: When referring to specific quotes or key statements, cite the timestamp "
+    "in bracket format matching the transcript (e.g. [01:23])."
 )
 
 # Gemini model
