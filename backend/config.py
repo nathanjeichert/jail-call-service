@@ -24,5 +24,6 @@ DEFAULT_SUMMARY_PROMPT = (
     "in bracket format matching the transcript (e.g. [01:23])."
 )
 
-# Gemini model
+# Models
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+ASSEMBLYAI_MODEL = os.getenv("ASSEMBLYAI_MODEL", "universal-3-pro")

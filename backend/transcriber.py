@@ -56,7 +56,7 @@ def mark_continuation_turns(turns: List[TranscriptTurn]) -> List[TranscriptTurn]
     return turns
 
 
-def build_multichannel_config() -> "aai.TranscriptionConfig":
+def build_multichannel_config(speech_model: str = "universal-3-pro") -> "aai.TranscriptionConfig":
     """AssemblyAI config for 2-channel jail call audio."""
     if not ASSEMBLYAI_AVAILABLE:
         raise RuntimeError("AssemblyAI SDK not installed. Run: pip install assemblyai")
@@ -69,7 +69,7 @@ def build_multichannel_config() -> "aai.TranscriptionConfig":
     )
 
     kwargs = {
-        "speech_models": ["universal-3-pro"],
+        "speech_models": [speech_model],
         "prompt": prompt,
         "format_text": True,
         "multichannel": True,
@@ -85,6 +85,7 @@ def transcribe_multichannel(
     audio_path: str,
     api_key: str,
     channel_labels: Optional[Dict[int, str]] = None,
+    speech_model: str = "universal-3-pro",
 ) -> List[TranscriptTurn]:
     """
     Transcribe a 2-channel audio file using AssemblyAI multichannel mode.
@@ -93,6 +94,7 @@ def transcribe_multichannel(
         audio_path: Path to the MP3/WAV file
         api_key: AssemblyAI API key
         channel_labels: Optional {1: "Inmate", 2: "Outside Party"} label override
+        speech_model: AssemblyAI speech model to use
 
     Returns:
         List of TranscriptTurn objects
@@ -106,7 +108,7 @@ def transcribe_multichannel(
     logger.info("Starting multichannel transcription: %s", audio_path)
 
     transcriber = aai.Transcriber()
-    config = build_multichannel_config()
+    config = build_multichannel_config(speech_model=speech_model)
     response = transcriber.transcribe(audio_path, config=config)
 
     if response.status == aai.TranscriptStatus.error:

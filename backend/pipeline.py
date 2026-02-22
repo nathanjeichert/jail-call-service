@@ -290,6 +290,7 @@ async def _stage_transcribe(job_id: str) -> None:
                         call.mp3_path,
                         api_key=cfg.ASSEMBLYAI_API_KEY,
                         channel_labels=channel_labels,
+                        speech_model=cfg.ASSEMBLYAI_MODEL,
                     )
                 )
                 job_store.update_call(job_id, call.index, turns=turns, status=CallStatus.SUMMARIZING)
