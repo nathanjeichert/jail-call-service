@@ -66,12 +66,16 @@ export default function JobsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  const [uploading, setUploading] = useState(false);
+
   const caseNameRef = useRef<HTMLInputElement>(null);
   const defendantNameRef = useRef<HTMLInputElement>(null);
   const pathsRef = useRef<HTMLTextAreaElement>(null);
   const xmlRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const skipSummaryRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const xmlInputRef = useRef<HTMLInputElement>(null);
 
   const loadJobs = async () => {
     try {
@@ -144,6 +148,8 @@ export default function JobsPage() {
         if (pathsRef.current) pathsRef.current.value = '';
         if (xmlRef.current) xmlRef.current.value = '';
         if (skipSummaryRef.current) skipSummaryRef.current.checked = false;
+        if (audioInputRef.current) audioInputRef.current.value = '';
+        if (xmlInputRef.current) xmlInputRef.current.value = '';
         await loadJobs();
       }
     } catch (e) {
@@ -162,32 +168,58 @@ export default function JobsPage() {
     } catch { }
   };
 
-  const handleBrowseFolder = async () => {
+  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError('');
     try {
-      const res = await fetch(`${API}/browse/folder`);
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+      }
+      const res = await fetch(`${API}/upload/audio`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
-        if (data.path && pathsRef.current) {
-          pathsRef.current.value = data.path;
+        if (data.paths && pathsRef.current) {
+          const existing = pathsRef.current.value.trim();
+          const newPaths = (data.paths as string[]).join(',\n');
+          pathsRef.current.value = existing ? `${existing},\n${newPaths}` : newPaths;
         }
+      } else {
+        const err = await res.json();
+        setError(err.detail || 'Upload failed');
       }
     } catch (err) {
-      console.error('Browse folder failed', err);
+      setError(String(err));
     }
+    setUploading(false);
+    if (audioInputRef.current) audioInputRef.current.value = '';
   };
 
-  const handleBrowseFile = async () => {
+  const handleXmlUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError('');
     try {
-      const res = await fetch(`${API}/browse/file`);
+      const formData = new FormData();
+      formData.append('file', files[0]);
+      const res = await fetch(`${API}/upload/xml`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         if (data.path && xmlRef.current) {
           xmlRef.current.value = data.path;
         }
+      } else {
+        const err = await res.json();
+        setError(err.detail || 'Upload failed');
       }
     } catch (err) {
-      console.error('Browse file failed', err);
+      setError(String(err));
     }
+    setUploading(false);
+    if (xmlInputRef.current) xmlInputRef.current.value = '';
   };
 
   const warnings: string[] = [];
@@ -248,15 +280,24 @@ export default function JobsPage() {
                 <textarea
                   ref={pathsRef}
                   rows={3}
-                  placeholder={'Paste the absolute path to a folder (e.g. C:\\calls) OR paste specific file paths separated by commas/newlines (e.g. C:\\calls\\1.wav, C:\\calls\\2.wav)'}
+                  placeholder={'Upload audio files or paste an absolute folder path (e.g. /Users/you/calls) or specific file paths separated by commas/newlines'}
                   className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono resize-none"
+                />
+                <input
+                  ref={audioInputRef}
+                  type="file"
+                  multiple
+                  accept=".wav,.mp3,.m4a"
+                  onChange={handleAudioUpload}
+                  className="hidden"
                 />
                 <button
                   type="button"
-                  onClick={handleBrowseFolder}
-                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0"
+                  onClick={() => audioInputRef.current?.click()}
+                  disabled={uploading}
+                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Browse...
+                  {uploading ? 'Uploading...' : 'Choose Audio Files...'}
                 </button>
               </div>
             </div>
@@ -266,15 +307,23 @@ export default function JobsPage() {
                 <input
                   ref={xmlRef}
                   type="text"
-                  placeholder={'C:\\calls\\ICM_report.xml'}
+                  placeholder={'Upload XML or paste path (e.g. /Users/you/calls/ICM_report.xml)'}
                   className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono"
+                />
+                <input
+                  ref={xmlInputRef}
+                  type="file"
+                  accept=".xml"
+                  onChange={handleXmlUpload}
+                  className="hidden"
                 />
                 <button
                   type="button"
-                  onClick={handleBrowseFile}
-                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0 whitespace-nowrap"
+                  onClick={() => xmlInputRef.current?.click()}
+                  disabled={uploading}
+                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Browse XML...
+                  {uploading ? 'Uploading...' : 'Upload XML...'}
                 </button>
               </div>
             </div>
@@ -305,10 +354,10 @@ export default function JobsPage() {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || uploading}
               className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {submitting ? 'Creating...' : 'Create Job'}
+              {uploading ? 'Uploading...' : submitting ? 'Creating...' : 'Create Job'}
             </button>
           </div>
         </form>

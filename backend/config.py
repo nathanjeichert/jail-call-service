@@ -11,6 +11,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", 
 JOBS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "jobs")
 os.makedirs(JOBS_DIR, exist_ok=True)
 
+UPLOADS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
 # Processing
 DEFAULT_LINES_PER_PAGE = 25
 MAX_TRANSCRIPTION_CONCURRENT = 5

@@ -2,6 +2,8 @@
 FastAPI server for the jail-call-service.
 
 Endpoints:
+  POST   /api/upload/audio                  Upload audio files
+  POST   /api/upload/xml                    Upload XML metadata
   POST   /api/jobs                          Create job
   GET    /api/jobs                          List jobs
   GET    /api/jobs/{id}                     Job detail
@@ -18,9 +20,10 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -117,71 +120,51 @@ def _call_summary(call) -> dict:
 
 # ── Endpoints ──
 
-def _run_tk_dialog(fn):
-    """Run a tkinter dialog on a dedicated thread (tkinter must be on its own thread)."""
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(fn).result(timeout=120)
+AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a"}
+XML_EXTENSIONS = {".xml"}
 
 
-@app.get("/api/browse/folder")
-def browse_folder():
-    """Opens a native OS folder/file dialog on the server and returns the path(s)."""
-    def _open_dialog():
-        import tkinter as tk
-        from tkinter import filedialog, messagebox
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
+@app.post("/api/upload/audio")
+async def upload_audio(files: list[UploadFile] = File(...)):
+    """Accept multiple audio files, save to uploads/<uuid>/, return absolute paths."""
+    batch_id = str(uuid.uuid4())
+    dest_dir = os.path.join(cfg.UPLOADS_DIR, batch_id)
+    os.makedirs(dest_dir, exist_ok=True)
 
-        choice = messagebox.askyesno(
-            "Selection Type",
-            "Do you want to scan an entire folder for WAVs?\n\n"
-            "(Click 'Yes' for a folder, or 'No' to pick specific audio files)",
-            parent=root,
-        )
+    saved_paths: list[str] = []
+    for f in files:
+        ext = os.path.splitext(f.filename or "")[1].lower()
+        if ext not in AUDIO_EXTENSIONS:
+            raise HTTPException(status_code=400, detail=f"Unsupported audio format: {f.filename}")
+        safe_name = f.filename or f"audio_{len(saved_paths)}{ext}"
+        dest_path = os.path.join(dest_dir, safe_name)
+        content = await f.read()
+        with open(dest_path, "wb") as fp:
+            fp.write(content)
+        saved_paths.append(os.path.abspath(dest_path))
 
-        if choice:
-            path = filedialog.askdirectory(title="Select Folder", parent=root)
-        else:
-            paths = filedialog.askopenfilenames(
-                title="Select Audio Files",
-                filetypes=(("WAV Files", "*.wav"), ("Audio Files", "*.mp3 *.m4a"), ("All Files", "*.*")),
-                parent=root,
-            )
-            path = ",\n".join(paths) if paths else ""
-
-        root.destroy()
-        return path
-
-    try:
-        path = _run_tk_dialog(_open_dialog)
-    except Exception:
-        path = ""
-    return {"path": path}
+    return {"paths": saved_paths}
 
 
-@app.get("/api/browse/file")
-def browse_file():
-    """Opens a native OS file dialog on the server and returns the path."""
-    def _open_dialog():
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-        path = filedialog.askopenfilename(
-            title="Select File",
-            filetypes=(("XML Files", "*.xml"), ("WAV Files", "*.wav"), ("All Files", "*.*")),
-        )
-        root.destroy()
-        return path
+@app.post("/api/upload/xml")
+async def upload_xml(file: UploadFile = File(...)):
+    """Accept a single XML file, save to uploads/<uuid>/, return absolute path."""
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in XML_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Expected an XML file, got: {file.filename}")
 
-    try:
-        path = _run_tk_dialog(_open_dialog)
-    except Exception:
-        path = ""
-    return {"path": path}
+    batch_id = str(uuid.uuid4())
+    dest_dir = os.path.join(cfg.UPLOADS_DIR, batch_id)
+    os.makedirs(dest_dir, exist_ok=True)
+
+    safe_name = file.filename or "metadata.xml"
+    dest_path = os.path.join(dest_dir, safe_name)
+    content = await file.read()
+    with open(dest_path, "wb") as fp:
+        fp.write(content)
+
+    return {"path": os.path.abspath(dest_path)}
+
 
 @app.post("/api/jobs", status_code=201)
 def create_job(req: CreateJobRequest):
