@@ -8,6 +8,7 @@ No external dependencies.
 
 import json
 import logging
+import os
 from typing import List
 
 logger = logging.getLogger(__name__)
@@ -19,15 +20,18 @@ def _build_call_data(calls) -> List[dict]:
         transcript = ""
         if call.turns:
             transcript = "\n".join(f"{t.speaker}: {t.text}" for t in call.turns)
+        mp3_filename = os.path.basename(call.mp3_path) if call.mp3_path else ""
         result.append({
             "index": call.index,
             "filename": call.filename,
+            "audio_filename": mp3_filename,
             "duration": call.duration_seconds or 0,
             "summary": call.summary or "",
             "transcript": transcript,
             "inmate": call.inmate_name or "",
             "outside": call.outside_number_fmt or "",
             "datetime": call.call_datetime_str or "",
+            "call_date": call.call_date or "",
             "facility": call.facility or "",
             "outcome": call.call_outcome or "",
         })
@@ -84,6 +88,54 @@ def generate_search_html(calls, case_name: str = "") -> str:
       color: #64748b;
       min-width: 120px;
     }}
+    .filter-bar {{
+      padding: 12px 32px;
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }}
+    .filter-label {{
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }}
+    .filter-input {{
+      padding: 6px 10px;
+      font-size: 13px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      outline: none;
+      color: #1e293b;
+    }}
+    .filter-input:focus {{ border-color: #334155; }}
+    .filter-select {{
+      padding: 6px 10px;
+      font-size: 13px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      outline: none;
+      color: #1e293b;
+      background: #fff;
+      min-width: 160px;
+    }}
+    .filter-select:focus {{ border-color: #334155; }}
+    .clear-filters-btn {{
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }}
+    .clear-filters-btn:hover {{ background: #e2e8f0; color: #334155; }}
     .results {{ padding: 24px 32px; }}
     .call-card {{
       background: #fff;
@@ -115,6 +167,21 @@ def generate_search_html(calls, case_name: str = "") -> str:
       padding: 3px 10px;
       border-radius: 20px;
     }}
+    .open-viewer-btn {{
+      font-size: 11px;
+      color: #3b82f6;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 3px 10px;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }}
+    .open-viewer-btn:hover {{ background: #dbeafe; }}
     .call-chevron {{
       color: #94a3b8;
       transition: transform 0.2s;
@@ -161,6 +228,16 @@ def generate_search_html(calls, case_name: str = "") -> str:
     <input type="text" class="search-input" id="searchInput" placeholder="Search transcripts..." autofocus>
     <div class="search-count" id="searchCount"></div>
   </div>
+  <div class="filter-bar">
+    <span class="filter-label">Filters:</span>
+    <input type="date" class="filter-input" id="dateFrom" title="From date">
+    <span style="color:#94a3b8;font-size:13px">to</span>
+    <input type="date" class="filter-input" id="dateTo" title="To date">
+    <select class="filter-select" id="phoneFilter">
+      <option value="">All phone numbers</option>
+    </select>
+    <button class="clear-filters-btn" id="clearFilters">Clear filters</button>
+  </div>
   <div class="results" id="results"></div>
   <div class="no-results hidden" id="noResults">No matches found.</div>
 
@@ -183,6 +260,39 @@ def generate_search_html(calls, case_name: str = "") -> str:
     return (text.match(re) || []).length;
   }}
 
+  // Populate phone filter dropdown from unique values
+  (function populatePhoneFilter() {{
+    const phones = new Set();
+    CALLS.forEach(c => {{ if (c.outside) phones.add(c.outside); }});
+    const sel = document.getElementById('phoneFilter');
+    Array.from(phones).sort().forEach(p => {{
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      sel.appendChild(opt);
+    }});
+  }})();
+
+  function getFilteredCalls() {{
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const phone = document.getElementById('phoneFilter').value;
+
+    return CALLS.filter(call => {{
+      if (dateFrom || dateTo) {{
+        if (!call.call_date) return false;
+        if (dateFrom && call.call_date < dateFrom) return false;
+        if (dateTo && call.call_date > dateTo) return false;
+      }}
+      if (phone && call.outside !== phone) return false;
+      return true;
+    }});
+  }}
+
+  function openInViewer(audioFilename) {{
+    window.open('viewer/index.html?call=' + encodeURIComponent(audioFilename), '_blank');
+  }}
+
   let openStates = {{}};
 
   function render(query) {{
@@ -190,14 +300,16 @@ def generate_search_html(calls, case_name: str = "") -> str:
     const container = document.getElementById('results');
     const noResults = document.getElementById('noResults');
     const countEl = document.getElementById('searchCount');
+    const filtered = getFilteredCalls();
 
     let totalMatches = 0;
     let visibleCalls = 0;
 
     if (!q) {{
-      // Show all calls collapsed
-      container.innerHTML = CALLS.map((call, i) => {{
-        const isOpen = openStates[i] || false;
+      // Show all filtered calls collapsed
+      container.innerHTML = filtered.map(call => {{
+        const idx = call.index;
+        const isOpen = openStates[idx] || false;
         const lines = call.transcript.split('\\n').map(line => {{
           const colonIdx = line.indexOf(':');
           if (colonIdx > 0) {{
@@ -207,9 +319,11 @@ def generate_search_html(calls, case_name: str = "") -> str:
         }}).join('');
         const metaParts = [call.datetime, call.inmate, call.facility].filter(Boolean);
         const metaLine = metaParts.length ? `<div style="font-size:11px;color:#64748b;font-weight:400;margin-top:2px">${{esc(metaParts.join(' · '))}}</div>` : '';
-        return `<div class="call-card ${{isOpen ? 'open' : ''}}" data-idx="${{i}}">
-          <div class="call-header" onclick="toggleCall(${{i}}, this.closest('.call-card'))">
+        const viewerBtn = call.audio_filename ? `<a class="open-viewer-btn" onclick="event.stopPropagation(); openInViewer('${{call.audio_filename.replace(/'/g, "\\\\'")}}')" title="Open in Viewer">Viewer</a>` : '';
+        return `<div class="call-card ${{isOpen ? 'open' : ''}}" data-idx="${{idx}}" data-audio="${{esc(call.audio_filename)}}">
+          <div class="call-header" onclick="toggleCall(${{idx}}, this.closest('.call-card'))">
             <div class="call-title">${{esc(call.filename)}}${{metaLine}}</div>
+            ${{viewerBtn}}
             <svg class="call-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4"/></svg>
           </div>
           <div class="call-body">
@@ -218,19 +332,20 @@ def generate_search_html(calls, case_name: str = "") -> str:
           </div>
         </div>`;
       }}).join('');
-      countEl.textContent = `${{CALLS.length}} calls`;
+      countEl.textContent = `${{filtered.length}} call${{filtered.length === 1 ? '' : 's'}}`;
       noResults.classList.add('hidden');
       return;
     }}
 
-    const html = CALLS.map((call, i) => {{
+    const html = filtered.map(call => {{
+      const idx = call.index;
       const searchText = call.transcript + ' ' + call.summary + ' ' + call.inmate + ' ' + call.outside;
       const count = countMatches(searchText, q);
       if (count === 0) return '';
       totalMatches += count;
       visibleCalls++;
 
-      const isOpen = openStates[i] !== false; // default open when searching
+      const isOpen = openStates[idx] !== false; // default open when searching
 
       const lines = call.transcript.split('\\n').map(line => {{
         if (!line.toLowerCase().includes(q.toLowerCase())) {{
@@ -249,10 +364,12 @@ def generate_search_html(calls, case_name: str = "") -> str:
 
       const metaPartsS = [call.datetime, call.inmate, call.facility].filter(Boolean);
       const metaLineS = metaPartsS.length ? `<div style="font-size:11px;color:#64748b;font-weight:400;margin-top:2px">${{esc(metaPartsS.join(' · '))}}</div>` : '';
-      return `<div class="call-card ${{isOpen ? 'open' : ''}}" data-idx="${{i}}">
-        <div class="call-header" onclick="toggleCall(${{i}}, this.closest('.call-card'))">
+      const viewerBtnS = call.audio_filename ? `<a class="open-viewer-btn" onclick="event.stopPropagation(); openInViewer('${{call.audio_filename.replace(/'/g, "\\\\'")}}')" title="Open in Viewer">Viewer</a>` : '';
+      return `<div class="call-card ${{isOpen ? 'open' : ''}}" data-idx="${{idx}}" data-audio="${{esc(call.audio_filename)}}">
+        <div class="call-header" onclick="toggleCall(${{idx}}, this.closest('.call-card'))">
           <div class="call-title">${{esc(call.filename)}}${{metaLineS}}</div>
           <span class="call-match-count">${{count}} match${{count === 1 ? '' : 'es'}}</span>
+          ${{viewerBtnS}}
           <svg class="call-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4"/></svg>
         </div>
         <div class="call-body">
@@ -278,10 +395,29 @@ def generate_search_html(calls, case_name: str = "") -> str:
     openStates[idx] = isOpen;
   }}
 
+  // Double-click on a call card opens viewer
+  document.getElementById('results').addEventListener('dblclick', function(e) {{
+    const card = e.target.closest('.call-card');
+    if (!card) return;
+    const audio = card.getAttribute('data-audio');
+    if (audio) openInViewer(audio);
+  }});
+
   let debounce = null;
   document.getElementById('searchInput').addEventListener('input', e => {{
     clearTimeout(debounce);
     debounce = setTimeout(() => render(e.target.value), 200);
+  }});
+
+  // Filter change listeners
+  document.getElementById('dateFrom').addEventListener('change', () => render(document.getElementById('searchInput').value));
+  document.getElementById('dateTo').addEventListener('change', () => render(document.getElementById('searchInput').value));
+  document.getElementById('phoneFilter').addEventListener('change', () => render(document.getElementById('searchInput').value));
+  document.getElementById('clearFilters').addEventListener('click', () => {{
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value = '';
+    document.getElementById('phoneFilter').value = '';
+    render(document.getElementById('searchInput').value);
   }});
 
   render('');

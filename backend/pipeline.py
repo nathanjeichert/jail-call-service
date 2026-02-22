@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import queue
+import re
 import shutil
 import threading
 import zipfile
@@ -70,8 +71,13 @@ def _discover_wav_files(input_folder: str) -> List[str]:
 
 
 def _call_stem(index: int, filename: str) -> str:
-    """Generate a zero-padded output stem like call-001."""
-    return f"call-{index + 1:03d}"
+    """Generate an output stem like 001-originalname from the WAV filename."""
+    base = filename
+    if base.lower().endswith('.wav'):
+        base = base[:-4]
+    safe = re.sub(r'[^\w.\-]', '_', base)
+    safe = re.sub(r'_+', '_', safe).strip('_') or "call"
+    return f"{index + 1:03d}-{safe}"
 
 
 async def run_job(job_id: str) -> None:
