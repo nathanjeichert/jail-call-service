@@ -77,10 +77,15 @@ export default function JobsPage() {
   const audioInputRef = useRef<HTMLInputElement>(null);
   const xmlInputRef = useRef<HTMLInputElement>(null);
 
+  const safeJson = async (res: Response) => {
+    const text = await res.text();
+    try { return JSON.parse(text); } catch { return null; }
+  };
+
   const loadJobs = async () => {
     try {
       const res = await fetch(`${API}/jobs`);
-      if (res.ok) setJobs(await res.json());
+      if (res.ok) { const data = await safeJson(res); if (data) setJobs(data); }
     } catch { }
     setLoading(false);
   };
@@ -88,7 +93,7 @@ export default function JobsPage() {
   const loadConfig = async () => {
     try {
       const res = await fetch(`${API}/config`);
-      if (res.ok) setConfig(await res.json());
+      if (res.ok) { const data = await safeJson(res); if (data) setConfig(data); }
     } catch { }
   };
 
@@ -140,8 +145,8 @@ export default function JobsPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const err = await res.json();
-        setError(err.detail || 'Failed to create job');
+        const err = await safeJson(res);
+        setError(err?.detail || 'Failed to create job');
       } else {
         if (caseNameRef.current) caseNameRef.current.value = '';
         if (defendantNameRef.current) defendantNameRef.current.value = '';
@@ -180,15 +185,15 @@ export default function JobsPage() {
       }
       const res = await fetch(`${API}/upload/audio`, { method: 'POST', body: formData });
       if (res.ok) {
-        const data = await res.json();
-        if (data.paths && pathsRef.current) {
+        const data = await safeJson(res);
+        if (data?.paths && pathsRef.current) {
           const existing = pathsRef.current.value.trim();
           const newPaths = (data.paths as string[]).join(',\n');
           pathsRef.current.value = existing ? `${existing},\n${newPaths}` : newPaths;
         }
       } else {
-        const err = await res.json();
-        setError(err.detail || 'Upload failed');
+        const err = await safeJson(res);
+        setError(err?.detail || 'Upload failed');
       }
     } catch (err) {
       setError(String(err));
@@ -207,19 +212,47 @@ export default function JobsPage() {
       formData.append('file', files[0]);
       const res = await fetch(`${API}/upload/xml`, { method: 'POST', body: formData });
       if (res.ok) {
-        const data = await res.json();
-        if (data.path && xmlRef.current) {
+        const data = await safeJson(res);
+        if (data?.path && xmlRef.current) {
           xmlRef.current.value = data.path;
         }
       } else {
-        const err = await res.json();
-        setError(err.detail || 'Upload failed');
+        const err = await safeJson(res);
+        setError(err?.detail || 'Upload failed');
       }
     } catch (err) {
       setError(String(err));
     }
     setUploading(false);
     if (xmlInputRef.current) xmlInputRef.current.value = '';
+  };
+
+  const handleScanFolder = async () => {
+    const folder = pathsRef.current?.value.trim();
+    if (!folder) { setError('Paste a folder path first, then click Scan.'); return; }
+    setUploading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API}/scan/folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: folder }),
+      });
+      if (res.ok) {
+        const data = await safeJson(res);
+        if (data?.paths?.length && pathsRef.current) {
+          pathsRef.current.value = (data.paths as string[]).join(',\n');
+        } else {
+          setError('No audio files found in that folder.');
+        }
+      } else {
+        const err = await safeJson(res);
+        setError(err?.detail || 'Scan failed');
+      }
+    } catch (err) {
+      setError(String(err));
+    }
+    setUploading(false);
   };
 
   const warnings: string[] = [];
@@ -291,14 +324,24 @@ export default function JobsPage() {
                   onChange={handleAudioUpload}
                   className="hidden"
                 />
-                <button
-                  type="button"
-                  onClick={() => audioInputRef.current?.click()}
-                  disabled={uploading}
-                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {uploading ? 'Uploading...' : 'Choose Audio Files...'}
-                </button>
+                <div className="flex flex-col gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => audioInputRef.current?.click()}
+                    disabled={uploading}
+                    className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {uploading ? 'Working...' : 'Upload Files...'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleScanFolder}
+                    disabled={uploading}
+                    className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Scan Folder
+                  </button>
+                </div>
               </div>
             </div>
             <div className="col-span-2">

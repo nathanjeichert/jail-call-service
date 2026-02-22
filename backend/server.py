@@ -124,6 +124,24 @@ AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a"}
 XML_EXTENSIONS = {".xml"}
 
 
+class ScanFolderRequest(BaseModel):
+    path: str
+
+
+@app.post("/api/scan/folder")
+def scan_folder(req: ScanFolderRequest):
+    """List audio files in a local directory. Returns absolute paths."""
+    folder = req.path.strip()
+    if not os.path.isdir(folder):
+        raise HTTPException(status_code=400, detail=f"Not a valid folder: {folder}")
+    paths: list[str] = []
+    for root, _dirs, files in os.walk(folder):
+        for fname in sorted(files):
+            if os.path.splitext(fname)[1].lower() in AUDIO_EXTENSIONS:
+                paths.append(os.path.abspath(os.path.join(root, fname)))
+    return {"paths": paths}
+
+
 @app.post("/api/upload/audio")
 async def upload_audio(files: list[UploadFile] = File(...)):
     """Accept multiple audio files, save to uploads/<uuid>/, return absolute paths."""
