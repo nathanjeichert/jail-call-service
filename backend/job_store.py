@@ -168,13 +168,13 @@ def update_job(job: Job) -> None:
                 
         db.commit()
 
-def update_call(job_id: str, call_index: int, **kwargs) -> Optional[Job]:
-    """Granular update of a specific call without fetching the full job Pydantic object."""
+def update_call(job_id: str, call_index: int, **kwargs) -> None:
+    """Granular update of a specific call."""
     with SessionLocal() as db:
         db_call = db.query(DBCall).filter(DBCall.job_id == job_id, DBCall.index == call_index).first()
         if not db_call:
-            return None
-            
+            return
+
         for k, v in kwargs.items():
             if k == 'turns' and v is not None:
                 # Ensure turns are dicts for JSON
@@ -183,12 +183,8 @@ def update_call(job_id: str, call_index: int, **kwargs) -> Optional[Job]:
                 setattr(db_call, k, v.value)
             else:
                 setattr(db_call, k, v)
-                
+
         db.commit()
-        
-        # Return updated job
-        job = get_job(job_id)
-        return job
 
 def delete_job(job_id: str) -> bool:
     """Delete a job from the database and remove its output directory."""
