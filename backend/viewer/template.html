@@ -479,6 +479,7 @@
       font-style: italic;
     }
   </style>
+  <script src="https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
 </head>
 
 <body>
@@ -634,9 +635,15 @@
       ws.load('../audio/' + call.audio_filename);
 
       // Update summary
-      summaryBody.innerHTML = call.summary
-        ? call.summary.replace(/\n/g, '<br>')
-        : '<span class="summary-empty">No summary available.</span>';
+      if (call.summary) {
+        summaryBody.textContent = '';
+        call.summary.split('\n').forEach((line, i, arr) => {
+          summaryBody.appendChild(document.createTextNode(line));
+          if (i < arr.length - 1) summaryBody.appendChild(document.createElement('br'));
+        });
+      } else {
+        summaryBody.innerHTML = '<span class="summary-empty">No summary available.</span>';
+      }
 
       // Build line entries
       lineEntries = call.lines || [];

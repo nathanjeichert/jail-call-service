@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Per-job SSE event queues: job_id -> asyncio.Queue
 _event_queues: Dict[str, asyncio.Queue] = {}
+_event_loops: Dict[str, asyncio.AbstractEventLoop] = {}
 
 
 def get_event_queue(job_id: str) -> asyncio.Queue:
@@ -40,13 +41,23 @@ def get_event_queue(job_id: str) -> asyncio.Queue:
     return _event_queues[job_id]
 
 
+def cleanup_event_queue(job_id: str) -> None:
+    """Remove event queue for a completed job to prevent memory leaks."""
+    _event_queues.pop(job_id, None)
+    _event_loops.pop(job_id, None)
+
+
 def _emit(job_id: str, event: dict) -> None:
-    """Put an event on the job's SSE queue (non-blocking)."""
+    """Put an event on the job's SSE queue (thread-safe)."""
     q = get_event_queue(job_id)
-    try:
-        q.put_nowait(event)
-    except asyncio.QueueFull:
-        pass
+    loop = _event_loops.get(job_id)
+    if loop and loop.is_running():
+        loop.call_soon_threadsafe(q.put_nowait, event)
+    else:
+        try:
+            q.put_nowait(event)
+        except asyncio.QueueFull:
+            pass
 
 
 def _discover_wav_files(input_folder: str) -> List[str]:
@@ -78,6 +89,7 @@ async def run_job(job_id: str) -> None:
         logger.error("Job not found: %s", job_id)
         return
 
+    _event_loops[job_id] = asyncio.get_event_loop()
     try:
         await _run_pipeline(job)
     except Exception as e:
@@ -87,6 +99,8 @@ async def run_job(job_id: str) -> None:
         job.error = str(e)
         job_store.update_job(job)
         _emit(job_id, {"type": "error", "message": str(e)})
+    finally:
+        cleanup_event_queue(job_id)
 
 
 async def _run_pipeline(job: Job) -> None:
@@ -224,6 +238,10 @@ async def _stage_convert(job_id: str, audio_dir: str) -> None:
             futures[fut] = call
 
         for fut in as_completed(futures):
+            if job_store.get_job(job_id).stage == JobStage.PAUSED:
+                for pending_fut in futures:
+                    pending_fut.cancel()
+                return
             call = futures[fut]
             try:
                 result = fut.result()

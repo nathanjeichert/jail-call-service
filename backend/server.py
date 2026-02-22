@@ -36,6 +36,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Jail Call Service", version="1.0.0")
+cfg.validate_api_keys()
 
 app.add_middleware(
     CORSMiddleware,
@@ -120,23 +121,25 @@ def _call_summary(call) -> dict:
 # ── Endpoints ──
 
 @app.get("/api/browse/folder")
-def browse_folder():
+async def browse_folder():
     """Opens a native OS folder/file dialog on the server and returns the path(s)."""
+    import threading
     import tkinter as tk
     from tkinter import filedialog, messagebox
-    
+
+    result = {}
+
     def _open_dialog():
         root = tk.Tk()
-        root.withdraw() # Hide the main window
-        root.attributes('-topmost', True) # Bring dialog to front
-        
-        # Ask user if they want a folder or specific files
+        root.withdraw()
+        root.attributes('-topmost', True)
+
         choice = messagebox.askyesno(
-            "Selection Type", 
+            "Selection Type",
             "Do you want to scan an entire folder for WAVs?\n\n(Click 'Yes' for a folder, or 'No' to pick specific audio files)",
             parent=root
         )
-        
+
         if choice:
             path = filedialog.askdirectory(title="Select Folder", parent=root)
         else:
@@ -146,19 +149,23 @@ def browse_folder():
                 parent=root
             )
             path = ",\n".join(paths) if paths else ""
-            
+
         root.destroy()
-        return path
-        
-    path = _open_dialog()
-    return {"path": path}
+        result["path"] = path
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: (t := threading.Thread(target=_open_dialog), t.start(), t.join()))
+    return {"path": result.get("path", "")}
 
 @app.get("/api/browse/file")
-def browse_file():
+async def browse_file():
     """Opens a native OS file dialog on the server and returns the path."""
+    import threading
     import tkinter as tk
     from tkinter import filedialog
-    
+
+    result = {}
+
     def _open_dialog():
         root = tk.Tk()
         root.withdraw()
@@ -168,10 +175,11 @@ def browse_file():
             filetypes=(("XML Files", "*.xml"), ("WAV Files", "*.wav"), ("All Files", "*.*"))
         )
         root.destroy()
-        return path
-        
-    path = _open_dialog()
-    return {"path": path}
+        result["path"] = path
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: (t := threading.Thread(target=_open_dialog), t.start(), t.join()))
+    return {"path": result.get("path", "")}
 
 @app.post("/api/jobs", status_code=201)
 def create_job(req: CreateJobRequest):

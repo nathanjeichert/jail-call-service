@@ -116,6 +116,7 @@ export default function JobDetailPage() {
   const [pausing, setPausing] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [fetchError, setFetchError] = useState('');
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const loadJob = async () => {
@@ -123,79 +124,125 @@ export default function JobDetailPage() {
       const res = await fetch(`${API}/jobs/${jobId}`);
       if (!res.ok) { router.push('/'); return; }
       setJob(await res.json());
-    } catch { }
+      setFetchError('');
+    } catch (e) {
+      setFetchError(`Failed to load job: ${e instanceof Error ? e.message : String(e)}`);
+    }
     setLoading(false);
+  };
+
+  const sseRetriesRef = useRef(0);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPollingFallback = () => {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+  };
+
+  const startPollingFallback = () => {
+    stopPollingFallback();
+    pollingRef.current = setInterval(loadJob, 3000);
   };
 
   const connectSSE = () => {
     if (eventSourceRef.current) eventSourceRef.current.close();
+    stopPollingFallback();
     const es = new EventSource(`${API}/jobs/${jobId}/events`);
     es.onmessage = async (e) => {
+      sseRetriesRef.current = 0;
       const event = JSON.parse(e.data);
       if (event.type === 'done' || event.type === 'error') {
         es.close();
+        stopPollingFallback();
         await loadJob();
       } else if (event.type !== 'ping') {
         await loadJob();
       }
     };
-    es.onerror = () => es.close();
+    es.onerror = () => {
+      es.close();
+      sseRetriesRef.current += 1;
+      if (sseRetriesRef.current < 5) {
+        setTimeout(connectSSE, Math.min(1000 * sseRetriesRef.current, 5000));
+      } else {
+        startPollingFallback();
+      }
+    };
     eventSourceRef.current = es;
   };
 
   useEffect(() => {
-    loadJob();
-    return () => { eventSourceRef.current?.close(); };
+    loadJob().then(() => {
+      // Auto-connect SSE if job is running
+      setJob(prev => {
+        if (prev && !['created', 'done', 'error', 'paused'].includes(prev.stage)) {
+          connectSSE();
+        }
+        return prev;
+      });
+    });
+    return () => { eventSourceRef.current?.close(); stopPollingFallback(); };
   }, [jobId]);
 
   const handleStart = async () => {
     setStarting(true);
+    setFetchError('');
     try {
       const res = await fetch(`${API}/jobs/${jobId}/start`, { method: 'POST' });
       if (res.ok) {
         connectSSE();
         await loadJob();
+      } else {
+        setFetchError(`Failed to start job: ${res.statusText}`);
       }
-    } catch { }
+    } catch (e) { setFetchError(`Failed to start job: ${e instanceof Error ? e.message : String(e)}`); }
     setStarting(false);
   };
 
   const handlePackage = async () => {
     setPackaging(true);
+    setFetchError('');
     try {
       const res = await fetch(`${API}/jobs/${jobId}/package`, { method: 'POST' });
       if (res.ok) {
         connectSSE();
         await loadJob();
+      } else {
+        setFetchError(`Failed to package: ${res.statusText}`);
       }
-    } catch { }
+    } catch (e) { setFetchError(`Failed to package: ${e instanceof Error ? e.message : String(e)}`); }
     setPackaging(false);
   };
 
   const handlePause = async () => {
     setPausing(true);
+    setFetchError('');
     try {
       const res = await fetch(`${API}/jobs/${jobId}/pause`, { method: 'POST' });
       if (res.ok) await loadJob();
-    } catch { }
+      else setFetchError(`Failed to pause: ${res.statusText}`);
+    } catch (e) { setFetchError(`Failed to pause: ${e instanceof Error ? e.message : String(e)}`); }
     setPausing(false);
   };
 
   const handleResume = async () => {
     setResuming(true);
+    setFetchError('');
     try {
       const res = await fetch(`${API}/jobs/${jobId}/resume`, { method: 'POST' });
       if (res.ok) { connectSSE(); await loadJob(); }
-    } catch { }
+      else setFetchError(`Failed to resume: ${res.statusText}`);
+    } catch (e) { setFetchError(`Failed to resume: ${e instanceof Error ? e.message : String(e)}`); }
     setResuming(false);
   };
 
   const handleRetryErrors = async () => {
     setRetrying(true);
+    setFetchError('');
     try {
       const res = await fetch(`${API}/jobs/${jobId}/retry-errors`, { method: 'POST' });
       if (res.ok) { connectSSE(); await loadJob(); }
-    } catch { }
+      else setFetchError(`Failed to retry: ${res.statusText}`);
+    } catch (e) { setFetchError(`Failed to retry: ${e instanceof Error ? e.message : String(e)}`); }
     setRetrying(false);
   };
 
@@ -315,6 +362,13 @@ export default function JobDetailPage() {
         {job.error && (
           <div className="mt-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
             {job.error}
+          </div>
+        )}
+
+        {fetchError && (
+          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-700 flex items-center justify-between">
+            <span>{fetchError}</span>
+            <button onClick={() => setFetchError('')} className="text-amber-500 hover:text-amber-700 ml-2">&times;</button>
           </div>
         )}
 

@@ -61,11 +61,14 @@ export default function JobsPage() {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const skipSummaryRef = useRef<HTMLInputElement>(null);
 
+  const [loadError, setLoadError] = useState('');
+
   const loadJobs = async () => {
     try {
       const res = await fetch(`${API}/jobs`);
-      if (res.ok) setJobs(await res.json());
-    } catch { }
+      if (res.ok) { setJobs(await res.json()); setLoadError(''); }
+      else setLoadError(`Failed to load jobs: ${res.statusText}`);
+    } catch (e) { setLoadError(`Cannot connect to backend: ${e instanceof Error ? e.message : String(e)}`); }
     setLoading(false);
   };
 
@@ -146,7 +149,11 @@ export default function JobsPage() {
     setSubmitting(false);
   };
 
+  const [browsingFolder, setBrowsingFolder] = useState(false);
+  const [browsingFile, setBrowsingFile] = useState(false);
+
   const handleBrowseFolder = async () => {
+    setBrowsingFolder(true);
     try {
       const res = await fetch(`${API}/browse/folder`);
       if (res.ok) {
@@ -156,11 +163,13 @@ export default function JobsPage() {
         }
       }
     } catch (err) {
-      console.error('Browse folder failed', err);
+      setLoadError('Browse folder failed. Is the backend running?');
     }
+    setBrowsingFolder(false);
   };
 
   const handleBrowseFile = async () => {
+    setBrowsingFile(true);
     try {
       const res = await fetch(`${API}/browse/file`);
       if (res.ok) {
@@ -170,8 +179,9 @@ export default function JobsPage() {
         }
       }
     } catch (err) {
-      console.error('Browse file failed', err);
+      setLoadError('Browse file failed. Is the backend running?');
     }
+    setBrowsingFile(false);
   };
 
   return (
@@ -219,9 +229,10 @@ export default function JobsPage() {
                 <button
                   type="button"
                   onClick={handleBrowseFolder}
-                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0"
+                  disabled={browsingFolder}
+                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-50 transition-colors shrink-0"
                 >
-                  Browse Folder…
+                  {browsingFolder ? 'Opening…' : 'Browse Folder…'}
                 </button>
               </div>
             </div>
@@ -237,9 +248,10 @@ export default function JobsPage() {
                 <button
                   type="button"
                   onClick={handleBrowseFile}
-                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-colors shrink-0 whitespace-nowrap"
+                  disabled={browsingFile}
+                  className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-50 transition-colors shrink-0 whitespace-nowrap"
                 >
-                  Browse XML…
+                  {browsingFile ? 'Opening…' : 'Browse XML…'}
                 </button>
               </div>
             </div>
@@ -278,6 +290,12 @@ export default function JobsPage() {
           </div>
         </form>
       </div>
+
+      {loadError && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-700">
+          {loadError}
+        </div>
+      )}
 
       {/* Jobs List */}
       <div>

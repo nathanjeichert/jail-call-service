@@ -57,6 +57,7 @@ export default function ReviewPage() {
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [approvedAll, setApprovedAll] = useState(false);
   const [packaging, setPackaging] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   useEffect(() => {
     fetch(`${API}/jobs/${jobId}`)
@@ -88,7 +89,7 @@ export default function ReviewPage() {
         setSummary(sumData.summary || '');
         setEditedSummary(sumData.summary || '');
       }
-    } catch {}
+    } catch (e) { setFetchError(`Failed to load call: ${e instanceof Error ? e.message : String(e)}`); }
     setLoadingTranscript(false);
   };
 
@@ -96,6 +97,7 @@ export default function ReviewPage() {
     if (selectedIndex === null) return;
     setSaving(true);
     setSaveMsg('');
+    setFetchError('');
     try {
       const res = await fetch(`${API}/jobs/${jobId}/calls/${selectedIndex}/summary`, {
         method: 'PUT',
@@ -106,21 +108,37 @@ export default function ReviewPage() {
         setSummary(editedSummary);
         setSaveMsg('Saved!');
         setTimeout(() => setSaveMsg(''), 2000);
+      } else {
+        setFetchError(`Failed to save summary: ${res.statusText}`);
       }
-    } catch {}
+    } catch (e) { setFetchError(`Failed to save summary: ${e instanceof Error ? e.message : String(e)}`); }
     setSaving(false);
   };
 
   const handleApproveAndPackage = async () => {
     setPackaging(true);
+    setFetchError('');
     try {
       const res = await fetch(`${API}/jobs/${jobId}/package`, { method: 'POST' });
       if (res.ok) {
         setApprovedAll(true);
+      } else {
+        setFetchError(`Failed to package: ${res.statusText}`);
       }
-    } catch {}
+    } catch (e) { setFetchError(`Failed to package: ${e instanceof Error ? e.message : String(e)}`); }
     setPackaging(false);
   };
+
+  // Warn on unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (editedSummary !== summary) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [editedSummary, summary]);
 
   if (!job) {
     return <div className="flex items-center justify-center h-64 text-slate-400">Loading…</div>;
@@ -186,6 +204,13 @@ export default function ReviewPage() {
           <div className="flex items-center justify-center h-full text-slate-400 text-sm">Loading…</div>
         ) : (
           <>
+            {fetchError && (
+              <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-700 flex items-center justify-between">
+                <span>{fetchError}</span>
+                <button onClick={() => setFetchError('')} className="text-amber-500 hover:text-amber-700 ml-2">&times;</button>
+              </div>
+            )}
+
             {/* Header */}
             <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
               <div>

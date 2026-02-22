@@ -5,6 +5,7 @@ Renders template.html with all call data embedded as JSON.
 Audio references use relative paths (../audio/<filename>.mp3).
 """
 
+import html as html_mod
 import json
 import os
 import logging
@@ -68,7 +69,8 @@ def render_viewer(calls, case_name: str = "") -> str:
         call_data.append(_build_call_entry(call, line_entries))
 
     calls_json = json.dumps(call_data, ensure_ascii=False)
-    html = template.replace("{{CALLS_JSON}}", calls_json)
-    html = html.replace("{{CASE_NAME}}", case_name or "Jail Calls")
+    escaped_case_name = html_mod.escape(case_name or "Jail Calls")
+    result = template.replace("{{CALLS_JSON}}", calls_json)
+    result = result.replace("{{CASE_NAME}}", escaped_case_name)
 
-    return html
+    return result

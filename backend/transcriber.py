@@ -13,6 +13,8 @@ import shutil
 import subprocess
 from typing import Dict, List, Optional
 
+from tenacity import retry, wait_random_exponential, stop_after_attempt
+
 from .models import TranscriptTurn, WordTimestamp
 
 logger = logging.getLogger(__name__)
@@ -105,9 +107,16 @@ def transcribe_multichannel(
 
     logger.info("Starting multichannel transcription: %s", audio_path)
 
-    transcriber = aai.Transcriber()
-    config = build_multichannel_config()
-    response = transcriber.transcribe(audio_path, config=config)
+    @retry(
+        wait=wait_random_exponential(min=2, max=60),
+        stop=stop_after_attempt(4),
+    )
+    def _transcribe_with_retry():
+        t = aai.Transcriber()
+        c = build_multichannel_config()
+        return t.transcribe(audio_path, config=c)
+
+    response = _transcribe_with_retry()
 
     if response.status == aai.TranscriptStatus.error:
         raise RuntimeError(f"AssemblyAI error: {response.error}")
