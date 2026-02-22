@@ -13,7 +13,7 @@ import shutil
 import subprocess
 from typing import Dict, List, Optional
 
-from tenacity import retry, wait_random_exponential, stop_after_attempt
+from tenacity import retry, retry_if_exception_type, wait_random_exponential, stop_after_attempt
 
 from .models import TranscriptTurn, WordTimestamp
 
@@ -110,6 +110,7 @@ def transcribe_multichannel(
     @retry(
         wait=wait_random_exponential(min=2, max=60),
         stop=stop_after_attempt(4),
+        retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
     )
     def _transcribe_with_retry():
         t = aai.Transcriber()
