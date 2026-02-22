@@ -142,11 +142,16 @@ export default function JobDetailPage() {
   const [retrying, setRetrying] = useState(false);
   const [elapsed, setElapsed] = useState('');
   const eventSourceRef = useRef<EventSource | null>(null);
+  const initialLoadDone = useRef(false);
 
   const loadJob = async () => {
     try {
       const res = await fetch(`${API}/jobs/${jobId}`);
-      if (!res.ok) { router.push('/'); return null; }
+      if (!res.ok) {
+        // Only redirect on the initial load — polling 404s should not bounce the user
+        if (!initialLoadDone.current) { router.push('/'); }
+        return null;
+      }
       const data = await res.json();
       setJob(data);
       return data;
@@ -180,6 +185,7 @@ export default function JobDetailPage() {
     let elapsedInterval: ReturnType<typeof setInterval> | null = null;
 
     loadJob().then(data => {
+      initialLoadDone.current = true;
       setLoading(false);
       if (data && !['created', 'done', 'error'].includes(data.stage)) {
         connectSSE();
