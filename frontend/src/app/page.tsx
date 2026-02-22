@@ -281,7 +281,23 @@ export default function JobsPage() {
 
       {/* Jobs List */}
       <div>
-        <h2 className="text-base font-semibold text-slate-800 mb-3">Jobs</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-slate-800">Jobs</h2>
+          {jobs.length > 0 && (
+            <button
+              onClick={async () => {
+                if (!confirm('Clear all completed and errored jobs?')) return;
+                try {
+                  const res = await fetch(`${API}/jobs`, { method: 'DELETE' });
+                  if (res.ok) await loadJobs();
+                } catch {}
+              }}
+              className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+            >
+              Clear History
+            </button>
+          )}
+        </div>
         {loading ? (
           <div className="text-center py-12 text-slate-400 text-sm">Loading…</div>
         ) : jobs.length === 0 ? (
@@ -320,6 +336,23 @@ export default function JobsPage() {
                       >
                         Download
                       </a>
+                    )}
+                    {['created', 'done', 'error'].includes(job.stage) && (
+                      <button
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!confirm(`Delete "${job.case_name}"?`)) return;
+                          try {
+                            const res = await fetch(`${API}/jobs/${job.id}`, { method: 'DELETE' });
+                            if (res.ok) await loadJobs();
+                          } catch {}
+                        }}
+                        className="flex-shrink-0 px-2 py-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg text-xs transition-colors"
+                        title="Delete job"
+                      >
+                        &times;
+                      </button>
                     )}
                   </div>
                   {job.stage !== 'created' && job.stage !== 'done' && job.stage !== 'error' && (

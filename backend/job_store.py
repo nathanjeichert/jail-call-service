@@ -168,13 +168,13 @@ def update_job(job: Job) -> None:
                 
         db.commit()
 
-def update_call(job_id: str, call_index: int, **kwargs) -> Optional[Job]:
+def update_call(job_id: str, call_index: int, **kwargs) -> None:
     """Granular update of a specific call without fetching the full job Pydantic object."""
     with SessionLocal() as db:
         db_call = db.query(DBCall).filter(DBCall.job_id == job_id, DBCall.index == call_index).first()
         if not db_call:
-            return None
-            
+            return
+
         for k, v in kwargs.items():
             if k == 'turns' and v is not None:
                 # Ensure turns are dicts for JSON
@@ -183,12 +183,48 @@ def update_call(job_id: str, call_index: int, **kwargs) -> Optional[Job]:
                 setattr(db_call, k, v.value)
             else:
                 setattr(db_call, k, v)
-                
+
         db.commit()
-        
-        # Return updated job
-        job = get_job(job_id)
-        return job
+
+def delete_job(job_id: str) -> bool:
+    """Delete a job and all its calls from the database. Returns True if found and deleted."""
+    with SessionLocal() as db:
+        db_job = db.query(DBJob).filter(DBJob.id == job_id).first()
+        if not db_job:
+            return False
+        db.query(DBCall).filter(DBCall.job_id == job_id).delete()
+        db.delete(db_job)
+        db.commit()
+
+    # Clean up the job's output directory
+    import shutil
+    job_dir = os.path.join(cfg.JOBS_DIR, job_id)
+    if os.path.isdir(job_dir):
+        shutil.rmtree(job_dir, ignore_errors=True)
+
+    return True
+
+
+def delete_completed_jobs() -> int:
+    """Delete all jobs with stage 'done' or 'error'. Returns count deleted."""
+    with SessionLocal() as db:
+        completed = db.query(DBJob).filter(DBJob.stage.in_(["done", "error"])).all()
+        job_ids = [j.id for j in completed]
+        if not job_ids:
+            return 0
+        db.query(DBCall).filter(DBCall.job_id.in_(job_ids)).delete(synchronize_session=False)
+        db.query(DBJob).filter(DBJob.id.in_(job_ids)).delete(synchronize_session=False)
+        db.commit()
+
+    # Clean up output directories
+    import shutil
+    for jid in job_ids:
+        job_dir = os.path.join(cfg.JOBS_DIR, jid)
+        if os.path.isdir(job_dir):
+            shutil.rmtree(job_dir, ignore_errors=True)
+
+    return len(job_ids)
+
 
 def get_job_output_dir(job_id: str) -> str:
     d = os.path.join(_job_dir(job_id), "output")

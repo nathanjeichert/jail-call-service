@@ -4,6 +4,8 @@ FastAPI server for the jail-call-service.
 Endpoints:
   POST   /api/jobs                          Create job
   GET    /api/jobs                          List jobs
+  DELETE /api/jobs                          Clear completed/errored jobs
+  DELETE /api/jobs/{id}                     Delete a single job
   GET    /api/jobs/{id}                     Job detail
   POST   /api/jobs/{id}/start               Start processing
   GET    /api/jobs/{id}/events              SSE progress stream
@@ -190,6 +192,22 @@ def create_job(req: CreateJobRequest):
 @app.get("/api/jobs")
 def list_jobs():
     return [_job_summary(j) for j in job_store.list_jobs()]
+
+
+@app.delete("/api/jobs", status_code=200)
+def clear_completed_jobs():
+    """Delete all completed/errored jobs and their output files."""
+    count = job_store.delete_completed_jobs()
+    return {"deleted": count}
+
+
+@app.delete("/api/jobs/{job_id}", status_code=200)
+def delete_job(job_id: str):
+    job = _job_or_404(job_id)
+    if job.stage not in ("created", "done", "error"):
+        raise HTTPException(status_code=409, detail=f"Cannot delete job in stage: {job.stage}")
+    job_store.delete_job(job_id)
+    return {"deleted": job_id}
 
 
 @app.get("/api/jobs/{job_id}")
