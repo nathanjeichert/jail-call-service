@@ -62,10 +62,8 @@ def build_multichannel_config(speech_model: str = "universal-3-pro") -> "aai.Tra
         raise RuntimeError("AssemblyAI SDK not installed. Run: pip install assemblyai")
 
     prompt = (
-        "Produce a verbatim transcript. Include disfluencies and fillers "
-        "(um, uh, er, ah, hmm, mhm, like, you know, I mean), "
-        "repetitions (I I, the the), restarts (I was- I went), "
-        "stutters (th-that, b-but), and informal speech (gonna, wanna, gotta)."
+        "Produce a verbatim transcript of this phone call. "
+        "Preserve the speakers' exact words and phrasing."
     )
 
     kwargs = {

@@ -194,9 +194,10 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
             current_x += c.stringWidth(ts_str, PDF_TEXT_FONT, 11)
             x2 = current_x
             
-            if filename:
+            audio_fn = _safe_text(title_data.get("AUDIO_FILENAME")) or filename
+            if audio_fn:
                 # relative link format to go up one directory out of transcripts/ then into viewer/
-                url = f"../viewer/index.html?call={filename}&t={ts_str[1:-1]}"
+                url = f"../viewer/index.html?call={audio_fn}&t={ts_str[1:-1]}"
                 c.linkURL(url, (x1, y - 2, x2, y + 10), relative=1)
                 
             last_idx = match.end()

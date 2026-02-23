@@ -126,9 +126,17 @@ async def _run_pipeline(job: Job) -> None:
     else:
         icm_xml = find_icm_report(job.input_folder) if job.input_folder else None
         
-    icm_map = parse_icm_report(icm_xml) if icm_xml else {}
+    icm_map = {}
+    if icm_xml:
+        try:
+            icm_map = parse_icm_report(icm_xml)
+        except Exception as e:
+            logger.warning("ICM XML parsing failed: %s", e)
+            _emit(job_id, {"type": "warning", "message": f"Metadata file found but could not be read: {os.path.basename(icm_xml)}. Call details (inmate name, phone, date) will be blank."})
     if icm_map:
         logger.info("ICM report loaded: %d records", len(icm_map))
+    elif icm_xml:
+        _emit(job_id, {"type": "warning", "message": f"Metadata file ({os.path.basename(icm_xml)}) contained no matching call records. Call details will be blank."})
 
     # Initialize call records (skip already-done ones for resumability)
     existing = {c.original_path: c for c in job.calls}
@@ -343,7 +351,7 @@ async def _stage_summarize(job_id: str) -> None:
                 call.status = CallStatus.GENERATING_PDF
             except Exception as e:
                 logger.error("Summarization failed for %s: %s", call.filename, e)
-                err_msg = f"[Summarization failed: {e}]"
+                err_msg = "Summary unavailable for this call."
                 job_store.update_call(job_id, call.index, summary=err_msg, status=CallStatus.GENERATING_PDF)
                 call.status = CallStatus.GENERATING_PDF
 
@@ -365,10 +373,12 @@ async def _stage_generate_pdfs(job_id: str, transcripts_dir: str) -> None:
         if not call.turns:
             return
         stem = _call_stem(call.index, call.filename)
+        audio_filename = os.path.basename(call.mp3_path) if call.mp3_path else f"{stem}.mp3"
         pdf_path = os.path.join(transcripts_dir, f"{stem}.pdf")
         title_data = {
             "CASE_NAME": job.case_name,
             "FILE_NAME": call.filename,
+            "AUDIO_FILENAME": audio_filename,
             "FILE_DURATION": _format_duration(call.duration_seconds),
             "INMATE_NAME": call.inmate_name or "",
             "CALL_DATETIME": call.call_datetime_str or "",

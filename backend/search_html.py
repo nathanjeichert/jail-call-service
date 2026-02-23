@@ -216,7 +216,38 @@ def generate_search_html(calls, case_name: str = "") -> str:
       color: #94a3b8;
       font-size: 15px;
     }}
+    .pagination {{
+      padding: 12px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }}
+    .pagination button {{
+      padding: 6px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }}
+    .pagination button:hover:not(:disabled) {{ background: #f1f5f9; }}
+    .pagination button:disabled {{ opacity: 0.4; cursor: default; }}
+    .pagination .page-info {{ font-size: 13px; color: #64748b; }}
     .hidden {{ display: none; }}
+
+    @media print {{
+      body {{ background: #fff; }}
+      .search-bar, .filter-bar, .pagination, .open-viewer-btn, .call-chevron {{ display: none !important; }}
+      .results {{ padding: 0; }}
+      .call-card {{ border: 1px solid #ccc; break-inside: avoid; margin-bottom: 12px; }}
+      .call-card .call-body {{ display: block !important; border-top: 1px solid #ccc; }}
+      .call-header {{ cursor: default; }}
+      .transcript-lines {{ font-size: 11px; line-height: 1.5; }}
+    }}
   </style>
 </head>
 <body>
@@ -237,6 +268,11 @@ def generate_search_html(calls, case_name: str = "") -> str:
       <option value="">All phone numbers</option>
     </select>
     <button class="clear-filters-btn" id="clearFilters">Clear filters</button>
+  </div>
+  <div class="pagination hidden" id="pagination">
+    <button id="prevPage">Previous</button>
+    <span class="page-info" id="pageInfo"></span>
+    <button id="nextPage">Next</button>
   </div>
   <div class="results" id="results"></div>
   <div class="no-results hidden" id="noResults">No matches found.</div>
@@ -294,6 +330,18 @@ def generate_search_html(calls, case_name: str = "") -> str:
   }}
 
   let openStates = {{}};
+  const CALLS_PER_PAGE = 25;
+  let currentPage = 1;
+
+  function updatePagination(totalItems) {{
+    const pag = document.getElementById('pagination');
+    const totalPages = Math.ceil(totalItems / CALLS_PER_PAGE);
+    if (totalPages <= 1) {{ pag.classList.add('hidden'); return; }}
+    pag.classList.remove('hidden');
+    document.getElementById('pageInfo').textContent = `Page ${{currentPage}} of ${{totalPages}}`;
+    document.getElementById('prevPage').disabled = currentPage <= 1;
+    document.getElementById('nextPage').disabled = currentPage >= totalPages;
+  }}
 
   function render(query) {{
     const q = query.trim();
@@ -306,8 +354,14 @@ def generate_search_html(calls, case_name: str = "") -> str:
     let visibleCalls = 0;
 
     if (!q) {{
-      // Show all filtered calls collapsed
-      container.innerHTML = filtered.map(call => {{
+      // Show paginated filtered calls collapsed
+      const totalPages = Math.ceil(filtered.length / CALLS_PER_PAGE);
+      if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
+      const startIdx = (currentPage - 1) * CALLS_PER_PAGE;
+      const pageSlice = filtered.slice(startIdx, startIdx + CALLS_PER_PAGE);
+      updatePagination(filtered.length);
+
+      container.innerHTML = pageSlice.map(call => {{
         const idx = call.index;
         const isOpen = openStates[idx] || false;
         const lines = call.transcript.split('\\n').map(line => {{
@@ -332,7 +386,11 @@ def generate_search_html(calls, case_name: str = "") -> str:
           </div>
         </div>`;
       }}).join('');
-      countEl.textContent = `${{filtered.length}} call${{filtered.length === 1 ? '' : 's'}}`;
+      const showStart = filtered.length > 0 ? (currentPage - 1) * CALLS_PER_PAGE + 1 : 0;
+      const showEnd = Math.min(currentPage * CALLS_PER_PAGE, filtered.length);
+      countEl.textContent = filtered.length <= CALLS_PER_PAGE
+        ? `${{filtered.length}} call${{filtered.length === 1 ? '' : 's'}}`
+        : `Showing ${{showStart}}-${{showEnd}} of ${{filtered.length}} calls`;
       noResults.classList.add('hidden');
       return;
     }}
@@ -380,6 +438,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
     }}).filter(Boolean).join('');
 
     container.innerHTML = html;
+    document.getElementById('pagination').classList.add('hidden');
 
     if (visibleCalls === 0) {{
       noResults.classList.remove('hidden');
@@ -406,17 +465,28 @@ def generate_search_html(calls, case_name: str = "") -> str:
   let debounce = null;
   document.getElementById('searchInput').addEventListener('input', e => {{
     clearTimeout(debounce);
+    currentPage = 1;
     debounce = setTimeout(() => render(e.target.value), 200);
   }});
 
-  // Filter change listeners
-  document.getElementById('dateFrom').addEventListener('change', () => render(document.getElementById('searchInput').value));
-  document.getElementById('dateTo').addEventListener('change', () => render(document.getElementById('searchInput').value));
-  document.getElementById('phoneFilter').addEventListener('change', () => render(document.getElementById('searchInput').value));
+  // Pagination buttons
+  document.getElementById('prevPage').addEventListener('click', () => {{
+    if (currentPage > 1) {{ currentPage--; render(document.getElementById('searchInput').value); }}
+  }});
+  document.getElementById('nextPage').addEventListener('click', () => {{
+    currentPage++;
+    render(document.getElementById('searchInput').value);
+  }});
+
+  // Filter change listeners (reset page on filter change)
+  document.getElementById('dateFrom').addEventListener('change', () => {{ currentPage = 1; render(document.getElementById('searchInput').value); }});
+  document.getElementById('dateTo').addEventListener('change', () => {{ currentPage = 1; render(document.getElementById('searchInput').value); }});
+  document.getElementById('phoneFilter').addEventListener('change', () => {{ currentPage = 1; render(document.getElementById('searchInput').value); }});
   document.getElementById('clearFilters').addEventListener('click', () => {{
     document.getElementById('dateFrom').value = '';
     document.getElementById('dateTo').value = '';
     document.getElementById('phoneFilter').value = '';
+    currentPage = 1;
     render(document.getElementById('searchInput').value);
   }});
 
