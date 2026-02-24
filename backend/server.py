@@ -190,10 +190,18 @@ async def upload_xml(file: UploadFile = File(...)):
 def create_job(req: CreateJobRequest):
     if not req.file_paths and not os.path.isdir(req.input_folder or ""):
         raise HTTPException(status_code=400, detail=f"Input folder not found: {req.input_folder}")
+    # Build the full prompt: always start with the default, then append any
+    # case-specific context the user provided (rather than letting it replace).
+    case_context = (req.summary_prompt or "").strip()
+    if case_context:
+        full_prompt = cfg.DEFAULT_SUMMARY_PROMPT + "\n\nCASE CONTEXT:\n" + case_context
+    else:
+        full_prompt = cfg.DEFAULT_SUMMARY_PROMPT
+
     job = job_store.create_job(
         case_name=req.case_name,
         input_folder=req.input_folder or "",
-        summary_prompt=req.summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT,
+        summary_prompt=full_prompt,
         defendant_name=req.defendant_name,
         skip_summary=req.skip_summary,
         file_paths=req.file_paths,

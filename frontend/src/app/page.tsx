@@ -131,7 +131,7 @@ export default function JobsPage() {
       input_folder: inputFolder,
       file_paths: filePaths.length > 0 ? filePaths : undefined,
       xml_metadata_path: xmlPath || undefined,
-      summary_prompt: promptRef.current?.value.trim() || (config?.default_summary_prompt ?? ''),
+      summary_prompt: promptRef.current?.value.trim() || '',
       skip_summary: skipSummaryRef.current?.checked || false,
     };
 
@@ -376,12 +376,12 @@ export default function JobsPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Summary Prompt <span className="text-slate-400 font-normal">(optional - uses default if blank)</span>
+              Case Context <span className="text-slate-400 font-normal">(optional — appended to the default prompt to guide the AI)</span>
             </label>
             <textarea
               ref={promptRef}
               rows={3}
-              placeholder={config?.default_summary_prompt || ''}
+              placeholder="E.g. Defendant is charged with first-degree murder. The alleged victim is John Smith. Focus on any references to the night of March 4th, contact with witnesses, or discussion of physical evidence."
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none"
             />
           </div>
