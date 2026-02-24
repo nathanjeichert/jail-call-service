@@ -7,9 +7,9 @@ import os
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer, joinedload
 
-from .models import Job, JobStage, CallResult, CallStatus
+from .models import Job, JobStage, CallResult, CallStatus, TranscriptTurn
 from . import config as cfg
 from .db import SessionLocal, engine, Base
 from .db_models import DBJob, DBCall
@@ -24,35 +24,38 @@ def _job_dir(job_id: str) -> str:
     os.makedirs(d, exist_ok=True)
     return d
 
+def _map_single_call(c: DBCall) -> CallResult:
+    """Map a single DB Call to a Pydantic CallResult."""
+    return CallResult(
+        index=c.index,
+        filename=c.filename,
+        original_path=c.original_path,
+        mp3_path=c.mp3_path,
+        duration_seconds=c.duration_seconds,
+        turns=c.turns,
+        summary=c.summary,
+        pdf_path=c.pdf_path,
+        status=c.status,
+        error=c.error,
+        repaired=c.repaired,
+        inmate_name=c.inmate_name,
+        inmate_pin=c.inmate_pin,
+        outside_number=c.outside_number,
+        outside_number_fmt=c.outside_number_fmt,
+        call_date=c.call_date,
+        call_time=c.call_time,
+        call_datetime_str=c.call_datetime_str,
+        facility=c.facility,
+        call_outcome=c.call_outcome,
+        call_type=c.call_type,
+        xml_duration_seconds=c.xml_duration_seconds,
+        notes=c.notes,
+    )
+
+
 def _map_to_pydantic(db_job: DBJob) -> Job:
     """Map DB Job (with calls) to Pydantic Job."""
-    calls = []
-    for c in db_job.calls:
-        calls.append(CallResult(
-            index=c.index,
-            filename=c.filename,
-            original_path=c.original_path,
-            mp3_path=c.mp3_path,
-            duration_seconds=c.duration_seconds,
-            turns=c.turns,
-            summary=c.summary,
-            pdf_path=c.pdf_path,
-            status=c.status,
-            error=c.error,
-            repaired=c.repaired,
-            inmate_name=c.inmate_name,
-            inmate_pin=c.inmate_pin,
-            outside_number=c.outside_number,
-            outside_number_fmt=c.outside_number_fmt,
-            call_date=c.call_date,
-            call_time=c.call_time,
-            call_datetime_str=c.call_datetime_str,
-            facility=c.facility,
-            call_outcome=c.call_outcome,
-            call_type=c.call_type,
-            xml_duration_seconds=c.xml_duration_seconds,
-            notes=c.notes
-        ))
+    calls = [_map_single_call(c) for c in db_job.calls]
 
     return Job(
         id=db_job.id,
@@ -69,7 +72,7 @@ def _map_to_pydantic(db_job: DBJob) -> Job:
         skip_summary=db_job.skip_summary,
         file_paths=db_job.file_paths,
         xml_metadata_path=db_job.xml_metadata_path,
-        calls=calls
+        calls=calls,
     )
 
 def create_job(case_name: str, input_folder: str, summary_prompt: str, defendant_name: Optional[str] = None, skip_summary: bool = False, file_paths: Optional[List[str]] = None, xml_metadata_path: Optional[str] = None) -> Job:
@@ -101,10 +104,42 @@ def get_job(job_id: str) -> Optional[Job]:
             return None
         return _map_to_pydantic(db_job)
 
+
+def get_call(job_id: str, call_index: int) -> Optional[CallResult]:
+    """Fetch a single call without loading the entire job's data."""
+    with SessionLocal() as db:
+        db_call = db.query(DBCall).filter(
+            DBCall.job_id == job_id, DBCall.index == call_index
+        ).first()
+        if not db_call:
+            return None
+        return _map_single_call(db_call)
+
+
+def get_job_lite(job_id: str) -> Optional[Job]:
+    """Load job + call metadata WITHOUT the heavy turns JSON column."""
+    with SessionLocal() as db:
+        db_job = db.query(DBJob).filter(DBJob.id == job_id).options(
+            joinedload(DBJob.calls).defer(DBCall.turns)
+        ).first()
+        if not db_job:
+            return None
+        return _map_to_pydantic(db_job)
+
+
 def list_jobs() -> List[Job]:
     with SessionLocal() as db:
         db_jobs = db.query(DBJob).order_by(DBJob.created_at.desc()).all()
         return [_map_to_pydantic(j) for j in db_jobs]
+
+def update_job_stage(job_id: str, stage) -> None:
+    """Lightweight update: only change the job stage column without touching calls."""
+    with SessionLocal() as db:
+        db_job = db.query(DBJob).filter(DBJob.id == job_id).first()
+        if db_job:
+            db_job.stage = stage.value if isinstance(stage, JobStage) else stage
+            db.commit()
+
 
 def update_job(job: Job) -> None:
     """Updates a job and all its calls using the passed Pydantic Job model."""

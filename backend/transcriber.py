@@ -6,6 +6,7 @@ We use AssemblyAI's multichannel mode which keeps them separate and
 provides clean speaker attribution.
 """
 
+import asyncio
 import inspect
 import logging
 import re
@@ -16,6 +17,7 @@ from typing import Dict, List, Optional
 from tenacity import retry, retry_if_exception_type, wait_random_exponential, stop_after_attempt
 
 from .models import TranscriptTurn, WordTimestamp
+from . import config as cfg
 
 logger = logging.getLogger(__name__)
 
@@ -195,3 +197,68 @@ def _turns_from_multichannel_response(
     if not text_value:
         return []
     return [TranscriptTurn(speaker="CHANNEL 1", text=text_value, timestamp="[00:00]")]
+
+
+async def transcribe_multichannel_async(
+    audio_path: str,
+    api_key: str,
+    channel_labels: Optional[Dict[int, str]] = None,
+    speech_model: str = "universal-3-pro",
+    polling_interval: int = 15,
+) -> List[TranscriptTurn]:
+    """
+    Async submit-then-poll transcription. Submits the job to AssemblyAI
+    and polls for completion using asyncio.sleep, freeing the thread
+    for other work between polls.
+
+    Args:
+        audio_path: Path to the MP3/WAV file
+        api_key: AssemblyAI API key
+        channel_labels: Optional {1: "Inmate", 2: "Outside Party"} label override
+        speech_model: AssemblyAI speech model to use
+        polling_interval: Seconds between status polls
+
+    Returns:
+        List of TranscriptTurn objects
+    """
+    if not ASSEMBLYAI_AVAILABLE:
+        raise RuntimeError("AssemblyAI SDK not installed")
+
+    aai.settings.api_key = api_key
+    aai.settings.http_timeout = 600.0
+
+    logger.info("Starting async multichannel transcription: %s", audio_path)
+
+    loop = asyncio.get_event_loop()
+    config = build_multichannel_config(speech_model=speech_model)
+
+    @retry(
+        wait=wait_random_exponential(min=2, max=60),
+        stop=stop_after_attempt(4),
+        retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
+    )
+    def _submit():
+        t = aai.Transcriber()
+        return t.submit(audio_path, config=config)
+
+    # Submit in a thread (uploads the file, returns immediately with queued transcript)
+    transcript = await loop.run_in_executor(None, _submit)
+
+    # Poll until completed or errored
+    while True:
+        status = transcript.status
+        if status == aai.TranscriptStatus.completed:
+            break
+        if status == aai.TranscriptStatus.error:
+            raise RuntimeError(f"AssemblyAI error: {transcript.error}")
+        await asyncio.sleep(polling_interval)
+        # Refresh status in a thread (capture id by value to avoid closure issue)
+        tid = transcript.id
+        transcript = await loop.run_in_executor(
+            None,
+            lambda tid=tid: aai.Transcript.get_by_id(tid),
+        )
+
+    logger.info("Async transcription done, converting utterances: %s", audio_path)
+    turns = _turns_from_multichannel_response(transcript, channel_labels)
+    return mark_continuation_turns(turns)

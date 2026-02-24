@@ -225,7 +225,10 @@ def delete_job(job_id: str):
 
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str):
-    job = _job_or_404(job_id)
+    # Use lite query — skips loading heavy transcript JSON blobs
+    job = job_store.get_job_lite(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
     summary = _job_summary(job)
     summary["calls"] = [_call_summary(c) for c in sorted(job.calls, key=lambda c: c.index)]
     return summary
@@ -323,8 +326,9 @@ async def job_events(job_id: str):
 
 @app.get("/api/jobs/{job_id}/calls/{call_index}/transcript")
 def get_transcript(job_id: str, call_index: int):
-    job = _job_or_404(job_id)
-    call = _call_or_404(job, call_index)
+    call = job_store.get_call(job_id, call_index)
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
     if not call.turns:
         raise HTTPException(status_code=404, detail="Transcript not yet available")
     return {
@@ -337,8 +341,9 @@ def get_transcript(job_id: str, call_index: int):
 
 @app.get("/api/jobs/{job_id}/calls/{call_index}/summary")
 def get_summary(job_id: str, call_index: int):
-    job = _job_or_404(job_id)
-    call = _call_or_404(job, call_index)
+    call = job_store.get_call(job_id, call_index)
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
     return {
         "index": call.index,
         "filename": call.filename,

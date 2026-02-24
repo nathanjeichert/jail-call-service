@@ -2,7 +2,7 @@
 Gemini Flash summarization for jail call transcripts.
 
 Text-only: sends transcript text + prompt, no audio upload.
-Uses asyncio.Semaphore for rate limiting parallel calls.
+Concurrency is controlled by the pipeline's own semaphore.
 """
 
 import asyncio
@@ -14,15 +14,6 @@ from tenacity import retry, wait_random_exponential, stop_after_attempt
 from . import config as cfg
 
 logger = logging.getLogger(__name__)
-
-_SEMAPHORE: Optional[asyncio.Semaphore] = None
-
-
-def _get_semaphore(limit: int = 10) -> asyncio.Semaphore:
-    global _SEMAPHORE
-    if _SEMAPHORE is None:
-        _SEMAPHORE = asyncio.Semaphore(limit)
-    return _SEMAPHORE
 
 
 def _build_transcript_text(turns) -> str:
@@ -80,48 +71,46 @@ async def summarize_transcript(
     context = "\n".join(context_lines)
     full_prompt = f"{prompt}\n\n{context}\n\nTRANSCRIPT:\n{transcript_text}" if context else f"{prompt}\n\nTRANSCRIPT:\n{transcript_text}"
 
-    sem = _get_semaphore(10)
-    async with sem:
-        client = genai.Client(api_key=api_key)
-        
-        @retry(
-            wait=wait_random_exponential(min=2, max=60),
-            stop=stop_after_attempt(6)
-        )
-        async def _call_gemini():
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: client.models.generate_content(
-                    model=model,
-                    contents=full_prompt,
-                    config=genai_types.GenerateContentConfig(
-                        temperature=0.3,
-                        max_output_tokens=800,
-                        safety_settings=[
-                            genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
-                            genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
-                            genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
-                            genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
-                        ],
-                    ),
-                ),
-            )
+    client = genai.Client(api_key=api_key)
 
-        try:
-            response = await _call_gemini()
-            text = getattr(response, "text", None)
-            if not text and getattr(response, "candidates", None):
-                try:
-                    text = response.candidates[0].content.parts[0].text
-                except Exception:
-                    text = None
-            return (text or "").strip()
-        finally:
+    @retry(
+        wait=wait_random_exponential(min=2, max=60),
+        stop=stop_after_attempt(6)
+    )
+    async def _call_gemini():
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: client.models.generate_content(
+                model=model,
+                contents=full_prompt,
+                config=genai_types.GenerateContentConfig(
+                    temperature=0.3,
+                    max_output_tokens=800,
+                    safety_settings=[
+                        genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
+                        genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
+                        genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
+                        genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
+                    ],
+                ),
+            ),
+        )
+
+    try:
+        response = await _call_gemini()
+        text = getattr(response, "text", None)
+        if not text and getattr(response, "candidates", None):
             try:
-                client.close()
+                text = response.candidates[0].content.parts[0].text
             except Exception:
-                pass
+                text = None
+        return (text or "").strip()
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
 
 
 async def batch_summarize(
