@@ -275,6 +275,18 @@
       background: rgba(255, 255, 255, 0.2);
     }
 
+    .speed-btn.modified {
+      background: rgba(251, 191, 36, 0.25);
+      color: #fef08a;
+    }
+
+    .kb-hint {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.35);
+      white-space: nowrap;
+      user-select: none;
+    }
+
     /* ── Content split ── */
     .content-area {
       flex: 1;
@@ -443,6 +455,14 @@
       user-select: none;
     }
 
+    .line-ts {
+      color: var(--text-faint);
+      font-size: 9pt;
+      min-width: 44px;
+      user-select: none;
+      opacity: 0.6;
+    }
+
     .line-text {
       flex: 1;
     }
@@ -532,7 +552,8 @@
             </svg></span>
           <input type="range" class="vol-slider" id="volSlider" min="0" max="100" value="80">
         </div>
-        <button class="speed-btn" id="speedBtn" onclick="cycleSpeed()">1×</button>
+        <button class="speed-btn" id="speedBtn" onclick="cycleSpeed()" title="Playback speed (click to cycle)">1×</button>
+        <span class="kb-hint">Space: play · ←→: skip · ↑↓: page</span>
       </div>
 
       <audio id="audio" style="display:none"></audio>
@@ -683,7 +704,8 @@
           const lineText = entry.rendered_text || entry.text || '';
           const highlighted = q ? highlightText(lineText, q) : esc(lineText);
 
-          div.innerHTML = `<span class="line-num">${entry.line || ''}</span><span class="line-text">${highlighted}</span>`;
+          const ts = formatTime(parseFloat(entry.start) || 0);
+          div.innerHTML = `<span class="line-num">${entry.line || ''}</span><span class="line-ts">${ts}</span><span class="line-text">${highlighted}</span>`;
           pageEl.appendChild(div);
         });
 
@@ -784,6 +806,7 @@
       const s = SPEEDS[speedIdx];
       ws.setPlaybackRate(s);
       speedBtn.textContent = s + '×';
+      speedBtn.classList.toggle('modified', s !== 1);
     }
 
     volSlider.addEventListener('input', () => {
@@ -847,7 +870,7 @@
     let startIdx = 0;
     if (CALLS.length > 0) {
       if (callParam) {
-        const foundIdx = CALLS.findIndex(c => c.filename === callParam || c.filename.startsWith(callParam));
+        const foundIdx = CALLS.findIndex(c => c.filename === callParam || c.audio_filename === callParam || c.filename.startsWith(callParam) || (c.audio_filename && c.audio_filename.startsWith(callParam)));
         if (foundIdx !== -1) startIdx = foundIdx;
       }
 

@@ -7,6 +7,7 @@ One row per call:
 """
 
 import logging
+import os
 from typing import List, Optional
 
 from openpyxl import Workbook
@@ -36,7 +37,7 @@ COL_WIDTHS = {
     "H": 18,   # Outcome
     "I": 30,   # Notes
     "J": 60,   # Summary
-    "K": 80,   # Full Transcript
+    "K": 40,   # Full Transcript
 }
 
 THIN = Side(border_style="thin", color="CBD5E1")
@@ -117,7 +118,8 @@ def generate_excel(calls) -> bytes:
         
         # Link filename to viewer
         fn_cell = write(6, call.filename)
-        fn_cell.hyperlink = f"viewer/index.html?call={call.filename}"
+        audio_name = os.path.basename(call.mp3_path) if call.mp3_path else call.filename
+        fn_cell.hyperlink = f"viewer/index.html?call={audio_name}"
         fn_cell.font = Font(underline="single", color="0563C1")
 
         write(7, _format_duration(call.duration_seconds))

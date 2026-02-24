@@ -11,14 +11,9 @@ import os
 from typing import List, Optional
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 
-logger = logging.getLogger(__name__)
+from . import config as cfg
 
-DEFAULT_PROMPT = (
-    "Summarize this jail call transcript. Note key topics, mentions of the case, "
-    "legal matters, names, dates, locations. Keep under 300 words. "
-    "IMPORTANT: When referring to specific quotes or key statements, you MUST cite the timestamp "
-    "in bracket format, matching the transcript precisely (e.g. [01:23])."
-)
+logger = logging.getLogger(__name__)
 
 _SEMAPHORE: Optional[asyncio.Semaphore] = None
 
@@ -41,7 +36,7 @@ def _build_transcript_text(turns) -> str:
 
 async def summarize_transcript(
     turns,
-    prompt: str = DEFAULT_PROMPT,
+    prompt: str = None,
     metadata: Optional[dict] = None,
     api_key: Optional[str] = None,
     model: Optional[str] = None,
@@ -59,9 +54,8 @@ async def summarize_transcript(
     Returns:
         Summary string
     """
-    from . import config as cfg
-
     api_key = api_key or cfg.GEMINI_API_KEY
+    prompt = prompt or cfg.DEFAULT_SUMMARY_PROMPT
     model = model or cfg.GEMINI_MODEL
 
     if not api_key:
@@ -103,7 +97,13 @@ async def summarize_transcript(
                     contents=full_prompt,
                     config=genai_types.GenerateContentConfig(
                         temperature=0.3,
-                        max_output_tokens=600,
+                        max_output_tokens=800,
+                        safety_settings=[
+                            genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
+                            genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
+                            genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
+                            genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
+                        ],
                     ),
                 ),
             )
@@ -126,7 +126,7 @@ async def summarize_transcript(
 
 async def batch_summarize(
     calls,
-    prompt: str = DEFAULT_PROMPT,
+    prompt: str = None,
     api_key: Optional[str] = None,
     model: Optional[str] = None,
     progress_callback=None,

@@ -19,38 +19,62 @@ from .wav_repair import repair_file_in_place
 logger = logging.getLogger(__name__)
 
 
-def _find_ffmpeg() -> Optional[str]:
-    if os.getenv("FFMPEG_PATH") and os.path.exists(os.getenv("FFMPEG_PATH")):
-        return os.getenv("FFMPEG_PATH")
-    path = shutil.which('ffmpeg')
+def _find_binary(name: str, env_var: str) -> Optional[str]:
+    """Search for an ffmpeg/ffprobe binary via env var, PATH, and common locations."""
+    # 1. Explicit env override
+    env_path = os.getenv(env_var)
+    if env_path and os.path.isfile(env_path):
+        return env_path
+
+    # 2. System PATH
+    path = shutil.which(name)
     if path:
         return path
-    for candidate in [
-        '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/bin/ffmpeg',
-        r'C:\ffmpeg\bin\ffmpeg.exe',
-        r'C:\Users\natha\ffmpeg\ffmpeg-8.0-essentials_build\bin\ffmpeg.exe',
-        r'C:\Users\natha\Downloads\ffmpeg-release-essentials\ffmpeg-8.0.1-essentials_build\bin\ffmpeg.exe',
-    ]:
-        if os.path.exists(candidate):
-            return candidate
+
+    # 3. Common install locations
+    candidates = [
+        '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin',
+        r'C:\ffmpeg\bin',
+    ]
+
+    # 4. Auto-discover ffmpeg installs under user home (Windows)
+    if os.name == 'nt':
+        home = os.path.expanduser("~")
+        for search_dir in [home, os.path.join(home, "Downloads")]:
+            if not os.path.isdir(search_dir):
+                continue
+            try:
+                for entry in os.scandir(search_dir):
+                    if not entry.is_dir() or 'ffmpeg' not in entry.name.lower():
+                        continue
+                    bin_dir = os.path.join(entry.path, 'bin')
+                    if os.path.isdir(bin_dir):
+                        candidates.append(bin_dir)
+                    try:
+                        for sub in os.scandir(entry.path):
+                            if sub.is_dir() and 'build' in sub.name.lower():
+                                nested_bin = os.path.join(sub.path, 'bin')
+                                if os.path.isdir(nested_bin):
+                                    candidates.append(nested_bin)
+                    except OSError:
+                        pass
+            except OSError:
+                pass
+
+    ext = '.exe' if os.name == 'nt' else ''
+    for d in candidates:
+        full = os.path.join(d, f'{name}{ext}')
+        if os.path.isfile(full):
+            return full
     return None
+
+
+def _find_ffmpeg() -> Optional[str]:
+    return _find_binary('ffmpeg', 'FFMPEG_PATH')
 
 
 def _find_ffprobe() -> Optional[str]:
-    if os.getenv("FFPROBE_PATH") and os.path.exists(os.getenv("FFPROBE_PATH")):
-        return os.getenv("FFPROBE_PATH")
-    path = shutil.which('ffprobe')
-    if path:
-        return path
-    for candidate in [
-        '/usr/local/bin/ffprobe', '/opt/homebrew/bin/ffprobe', '/usr/bin/ffprobe',
-        r'C:\ffmpeg\bin\ffprobe.exe',
-        r'C:\Users\natha\ffmpeg\ffmpeg-8.0-essentials_build\bin\ffprobe.exe',
-        r'C:\Users\natha\Downloads\ffmpeg-release-essentials\ffmpeg-8.0.1-essentials_build\bin\ffprobe.exe',
-    ]:
-        if os.path.exists(candidate):
-            return candidate
-    return None
+    return _find_binary('ffprobe', 'FFPROBE_PATH')
 
 
 FFMPEG_PATH = _find_ffmpeg()

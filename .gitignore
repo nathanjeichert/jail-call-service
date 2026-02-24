@@ -8,6 +8,7 @@ node_modules/
 *.egg-info/
 dist/
 build/
+uploads/
 
 # Runtime job data
 jobs/*/

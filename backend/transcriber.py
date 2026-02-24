@@ -58,20 +58,18 @@ def mark_continuation_turns(turns: List[TranscriptTurn]) -> List[TranscriptTurn]
     return turns
 
 
-def build_multichannel_config() -> "aai.TranscriptionConfig":
+def build_multichannel_config(speech_model: str = "universal-3-pro") -> "aai.TranscriptionConfig":
     """AssemblyAI config for 2-channel jail call audio."""
     if not ASSEMBLYAI_AVAILABLE:
         raise RuntimeError("AssemblyAI SDK not installed. Run: pip install assemblyai")
 
     prompt = (
-        "Produce a verbatim transcript. Include disfluencies and fillers "
-        "(um, uh, er, ah, hmm, mhm, like, you know, I mean), "
-        "repetitions (I I, the the), restarts (I was- I went), "
-        "stutters (th-that, b-but), and informal speech (gonna, wanna, gotta)."
+        "Produce a verbatim transcript of this phone call. "
+        "Preserve the speakers' exact words and phrasing."
     )
 
     kwargs = {
-        "speech_models": ["universal-3-pro"],
+        "speech_models": [speech_model],
         "prompt": prompt,
         "format_text": True,
         "multichannel": True,
@@ -87,6 +85,7 @@ def transcribe_multichannel(
     audio_path: str,
     api_key: str,
     channel_labels: Optional[Dict[int, str]] = None,
+    speech_model: str = "universal-3-pro",
 ) -> List[TranscriptTurn]:
     """
     Transcribe a 2-channel audio file using AssemblyAI multichannel mode.
@@ -95,6 +94,7 @@ def transcribe_multichannel(
         audio_path: Path to the MP3/WAV file
         api_key: AssemblyAI API key
         channel_labels: Optional {1: "Inmate", 2: "Outside Party"} label override
+        speech_model: AssemblyAI speech model to use
 
     Returns:
         List of TranscriptTurn objects
@@ -114,7 +114,7 @@ def transcribe_multichannel(
     )
     def _transcribe_with_retry():
         t = aai.Transcriber()
-        c = build_multichannel_config()
+        c = build_multichannel_config(speech_model=speech_model)
         return t.transcribe(audio_path, config=c)
 
     response = _transcribe_with_retry()

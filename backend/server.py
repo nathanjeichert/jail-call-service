@@ -2,6 +2,8 @@
 FastAPI server for the jail-call-service.
 
 Endpoints:
+  POST   /api/upload/audio                  Upload audio files
+  POST   /api/upload/xml                    Upload XML metadata
   POST   /api/jobs                          Create job
   GET    /api/jobs                          List jobs
   DELETE /api/jobs                          Clear completed/errored jobs
@@ -20,9 +22,10 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -120,66 +123,68 @@ def _call_summary(call) -> dict:
 
 # ── Endpoints ──
 
-@app.get("/api/browse/folder")
-async def browse_folder():
-    """Opens a native OS folder/file dialog on the server and returns the path(s)."""
-    import threading
-    import tkinter as tk
-    from tkinter import filedialog, messagebox
+AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a"}
+XML_EXTENSIONS = {".xml"}
 
-    result = {}
 
-    def _open_dialog():
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
+class ScanFolderRequest(BaseModel):
+    path: str
 
-        choice = messagebox.askyesno(
-            "Selection Type",
-            "Do you want to scan an entire folder for WAVs?\n\n(Click 'Yes' for a folder, or 'No' to pick specific audio files)",
-            parent=root
-        )
 
-        if choice:
-            path = filedialog.askdirectory(title="Select Folder", parent=root)
-        else:
-            paths = filedialog.askopenfilenames(
-                title="Select Audio Files",
-                filetypes=(("WAV Files", "*.wav"), ("Audio Files", "*.mp3 *.m4a"), ("All Files", "*.*")),
-                parent=root
-            )
-            path = ",\n".join(paths) if paths else ""
+@app.post("/api/scan/folder")
+def scan_folder(req: ScanFolderRequest):
+    """List audio files in a local directory. Returns absolute paths."""
+    folder = req.path.strip()
+    if not os.path.isdir(folder):
+        raise HTTPException(status_code=400, detail=f"Not a valid folder: {folder}")
+    paths: list[str] = []
+    for root, _dirs, files in os.walk(folder):
+        for fname in sorted(files):
+            if os.path.splitext(fname)[1].lower() in AUDIO_EXTENSIONS:
+                paths.append(os.path.abspath(os.path.join(root, fname)))
+    return {"paths": paths}
 
-        root.destroy()
-        result["path"] = path
 
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, lambda: (t := threading.Thread(target=_open_dialog), t.start(), t.join()))
-    return {"path": result.get("path", "")}
+@app.post("/api/upload/audio")
+async def upload_audio(files: list[UploadFile] = File(...)):
+    """Accept multiple audio files, save to uploads/<uuid>/, return absolute paths."""
+    batch_id = str(uuid.uuid4())
+    dest_dir = os.path.join(cfg.UPLOADS_DIR, batch_id)
+    os.makedirs(dest_dir, exist_ok=True)
 
-@app.get("/api/browse/file")
-async def browse_file():
-    """Opens a native OS file dialog on the server and returns the path."""
-    import threading
-    import tkinter as tk
-    from tkinter import filedialog
+    saved_paths: list[str] = []
+    for f in files:
+        ext = os.path.splitext(f.filename or "")[1].lower()
+        if ext not in AUDIO_EXTENSIONS:
+            raise HTTPException(status_code=400, detail=f"Unsupported audio format: {f.filename}")
+        safe_name = f.filename or f"audio_{len(saved_paths)}{ext}"
+        dest_path = os.path.join(dest_dir, safe_name)
+        content = await f.read()
+        with open(dest_path, "wb") as fp:
+            fp.write(content)
+        saved_paths.append(os.path.abspath(dest_path))
 
-    result = {}
+    return {"paths": saved_paths}
 
-    def _open_dialog():
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-        path = filedialog.askopenfilename(
-            title="Select File",
-            filetypes=(("XML Files", "*.xml"), ("WAV Files", "*.wav"), ("All Files", "*.*"))
-        )
-        root.destroy()
-        result["path"] = path
 
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, lambda: (t := threading.Thread(target=_open_dialog), t.start(), t.join()))
-    return {"path": result.get("path", "")}
+@app.post("/api/upload/xml")
+async def upload_xml(file: UploadFile = File(...)):
+    """Accept a single XML file, save to uploads/<uuid>/, return absolute path."""
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in XML_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Expected an XML file, got: {file.filename}")
+
+    batch_id = str(uuid.uuid4())
+    dest_dir = os.path.join(cfg.UPLOADS_DIR, batch_id)
+    os.makedirs(dest_dir, exist_ok=True)
+
+    safe_name = file.filename or "metadata.xml"
+    dest_path = os.path.join(dest_dir, safe_name)
+    content = await file.read()
+    with open(dest_path, "wb") as fp:
+        fp.write(content)
+
+    return {"path": os.path.abspath(dest_path)}
 
 @app.post("/api/jobs", status_code=201)
 def create_job(req: CreateJobRequest):
@@ -297,13 +302,20 @@ async def job_events(job_id: str):
     q = pipeline.get_event_queue(job_id)
 
     async def event_generator():
+        import queue as _queue
+        loop = asyncio.get_event_loop()
         while True:
             try:
-                event = await asyncio.wait_for(q.get(), timeout=30)
+                # q is a thread-safe stdlib queue.Queue — read via executor
+                # so we don't block the event loop.
+                event = await asyncio.wait_for(
+                    loop.run_in_executor(None, q.get, True, 25),
+                    timeout=30,
+                )
                 yield {"data": json.dumps(event)}
                 if event.get("type") in ("done", "error"):
                     break
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, _queue.Empty):
                 yield {"data": json.dumps({"type": "ping"})}
 
     return EventSourceResponse(event_generator())
@@ -391,10 +403,13 @@ def download_zip(job_id: str):
 
 @app.get("/api/config")
 def get_config():
-    """Return safe config for the frontend (no secret values)."""
+    """Return safe config and readiness checks for the frontend."""
+    from .audio_converter import FFMPEG_PATH
     return {
         "assemblyai_configured": bool(cfg.ASSEMBLYAI_API_KEY),
         "gemini_configured": bool(cfg.GEMINI_API_KEY),
+        "ffmpeg_found": bool(FFMPEG_PATH),
+        "ffmpeg_path": FFMPEG_PATH or "",
         "default_summary_prompt": cfg.DEFAULT_SUMMARY_PROMPT,
         "gemini_model": cfg.GEMINI_MODEL,
     }

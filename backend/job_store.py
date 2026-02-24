@@ -16,7 +16,7 @@ from .db_models import DBJob, DBCall
 
 logger = logging.getLogger(__name__)
 
-# Initialize DB tabales
+# Initialize DB tables
 Base.metadata.create_all(bind=engine)
 
 def _job_dir(job_id: str) -> str:
@@ -188,6 +188,7 @@ def update_call(job_id: str, call_index: int, **kwargs) -> None:
 
 def delete_job(job_id: str) -> bool:
     """Delete a job and all its calls from the database. Returns True if found and deleted."""
+    import shutil
     with SessionLocal() as db:
         db_job = db.query(DBJob).filter(DBJob.id == job_id).first()
         if not db_job:
@@ -197,7 +198,6 @@ def delete_job(job_id: str) -> bool:
         db.commit()
 
     # Clean up the job's output directory
-    import shutil
     job_dir = os.path.join(cfg.JOBS_DIR, job_id)
     if os.path.isdir(job_dir):
         shutil.rmtree(job_dir, ignore_errors=True)
@@ -207,6 +207,7 @@ def delete_job(job_id: str) -> bool:
 
 def delete_completed_jobs() -> int:
     """Delete all jobs with stage 'done' or 'error'. Returns count deleted."""
+    import shutil
     with SessionLocal() as db:
         completed = db.query(DBJob).filter(DBJob.stage.in_(["done", "error"])).all()
         job_ids = [j.id for j in completed]
@@ -217,13 +218,13 @@ def delete_completed_jobs() -> int:
         db.commit()
 
     # Clean up output directories
-    import shutil
     for jid in job_ids:
         job_dir = os.path.join(cfg.JOBS_DIR, jid)
         if os.path.isdir(job_dir):
             shutil.rmtree(job_dir, ignore_errors=True)
 
     return len(job_ids)
+
 
 
 def get_job_output_dir(job_id: str) -> str:

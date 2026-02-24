@@ -10,15 +10,17 @@ Stages:
   5. Generate Excel, search HTML, viewer, README
   6. Package zip
 
-SSE progress is broadcast via an asyncio.Queue per job.
+SSE progress is broadcast via a thread-safe queue per job.
 """
 
 import asyncio
-import glob
 import json
 import logging
 import os
+import queue
+import re
 import shutil
+import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -30,34 +32,33 @@ from . import job_store, config as cfg
 
 logger = logging.getLogger(__name__)
 
-# Per-job SSE event queues: job_id -> asyncio.Queue
-_event_queues: Dict[str, asyncio.Queue] = {}
-_event_loops: Dict[str, asyncio.AbstractEventLoop] = {}
+# Per-job SSE event queues using thread-safe stdlib queue.Queue.
+# The pipeline runs in a background thread (via asyncio.run in BackgroundTasks),
+# while the SSE endpoint reads from the server's main event loop — so we
+# cannot use asyncio.Queue which is bound to a single loop.
+_event_queues: Dict[str, queue.Queue] = {}
+_queue_lock = threading.Lock()
 
 
-def get_event_queue(job_id: str) -> asyncio.Queue:
-    if job_id not in _event_queues:
-        _event_queues[job_id] = asyncio.Queue(maxsize=1000)
-    return _event_queues[job_id]
+def get_event_queue(job_id: str) -> queue.Queue:
+    with _queue_lock:
+        if job_id not in _event_queues:
+            _event_queues[job_id] = queue.Queue(maxsize=2000)
+        return _event_queues[job_id]
 
 
 def cleanup_event_queue(job_id: str) -> None:
     """Remove event queue for a completed job to prevent memory leaks."""
     _event_queues.pop(job_id, None)
-    _event_loops.pop(job_id, None)
 
 
 def _emit(job_id: str, event: dict) -> None:
-    """Put an event on the job's SSE queue (thread-safe)."""
+    """Put an event on the job's SSE queue (non-blocking, thread-safe)."""
     q = get_event_queue(job_id)
-    loop = _event_loops.get(job_id)
-    if loop and loop.is_running():
-        loop.call_soon_threadsafe(q.put_nowait, event)
-    else:
-        try:
-            q.put_nowait(event)
-        except asyncio.QueueFull:
-            pass
+    try:
+        q.put_nowait(event)
+    except queue.Full:
+        pass
 
 
 def _discover_wav_files(input_folder: str) -> List[str]:
@@ -75,8 +76,13 @@ def _discover_wav_files(input_folder: str) -> List[str]:
 
 
 def _call_stem(index: int, filename: str) -> str:
-    """Generate a zero-padded output stem like call-001."""
-    return f"call-{index + 1:03d}"
+    """Generate an output stem like 001-originalname from the WAV filename."""
+    base = filename
+    if base.lower().endswith('.wav'):
+        base = base[:-4]
+    safe = re.sub(r'[^\w.\-]', '_', base)
+    safe = re.sub(r'_+', '_', safe).strip('_') or "call"
+    return f"{index + 1:03d}-{safe}"
 
 
 async def run_job(job_id: str) -> None:
@@ -89,7 +95,6 @@ async def run_job(job_id: str) -> None:
         logger.error("Job not found: %s", job_id)
         return
 
-    _event_loops[job_id] = asyncio.get_event_loop()
     try:
         await _run_pipeline(job)
     except Exception as e:
@@ -108,8 +113,10 @@ async def _run_pipeline(job: Job) -> None:
     output_dir = job_store.get_job_output_dir(job_id)
     audio_dir = os.path.join(output_dir, "audio")
     transcripts_dir = os.path.join(output_dir, "transcripts")
+    transcripts_no_summary_dir = os.path.join(output_dir, "transcripts-no-summary")
     os.makedirs(audio_dir, exist_ok=True)
     os.makedirs(transcripts_dir, exist_ok=True)
+    os.makedirs(transcripts_no_summary_dir, exist_ok=True)
 
     # ── Stage 0: Discover files ──
     _emit(job_id, {"type": "stage", "stage": "discovering"})
@@ -128,9 +135,17 @@ async def _run_pipeline(job: Job) -> None:
     else:
         icm_xml = find_icm_report(job.input_folder) if job.input_folder else None
         
-    icm_map = parse_icm_report(icm_xml) if icm_xml else {}
+    icm_map = {}
+    if icm_xml:
+        try:
+            icm_map = parse_icm_report(icm_xml)
+        except Exception as e:
+            logger.warning("ICM XML parsing failed: %s", e)
+            _emit(job_id, {"type": "warning", "message": f"Metadata file found but could not be read: {os.path.basename(icm_xml)}. Call details (inmate name, phone, date) will be blank."})
     if icm_map:
         logger.info("ICM report loaded: %d records", len(icm_map))
+    elif icm_xml:
+        _emit(job_id, {"type": "warning", "message": f"Metadata file ({os.path.basename(icm_xml)}) contained no matching call records. Call details will be blank."})
 
     # Initialize call records (skip already-done ones for resumability)
     existing = {c.original_path: c for c in job.calls}
@@ -196,7 +211,7 @@ async def _run_pipeline(job: Job) -> None:
 
     # ── Stage 4: Generate PDFs ──
     _emit(job_id, {"type": "stage", "stage": "generating_pdfs", "total": len(wav_files)})
-    await _stage_generate_pdfs(job_id, transcripts_dir)
+    await _stage_generate_pdfs(job_id, transcripts_dir, transcripts_no_summary_dir)
 
     if job_store.get_job(job_id).stage == JobStage.PAUSED: return
     # ── Stage 5: Generate indexes ──
@@ -302,6 +317,7 @@ async def _stage_transcribe(job_id: str) -> None:
                         call.mp3_path,
                         api_key=cfg.ASSEMBLYAI_API_KEY,
                         channel_labels=channel_labels,
+                        speech_model=cfg.ASSEMBLYAI_MODEL,
                     )
                 )
                 job_store.update_call(job_id, call.index, turns=turns, status=CallStatus.SUMMARIZING)
@@ -348,7 +364,7 @@ async def _stage_summarize(job_id: str) -> None:
                 call.status = CallStatus.GENERATING_PDF
             except Exception as e:
                 logger.error("Summarization failed for %s: %s", call.filename, e)
-                err_msg = f"[Summarization failed: {e}]"
+                err_msg = "Summary unavailable for this call."
                 job_store.update_call(job_id, call.index, summary=err_msg, status=CallStatus.GENERATING_PDF)
                 call.status = CallStatus.GENERATING_PDF
 
@@ -358,7 +374,7 @@ async def _stage_summarize(job_id: str) -> None:
     await asyncio.gather(*[summarize_one(c) for c in eligible])
 
 
-async def _stage_generate_pdfs(job_id: str, transcripts_dir: str) -> None:
+async def _stage_generate_pdfs(job_id: str, transcripts_dir: str, transcripts_no_summary_dir: str) -> None:
     from .transcript_formatting import create_pdf
 
     job = job_store.get_job(job_id)
@@ -370,10 +386,11 @@ async def _stage_generate_pdfs(job_id: str, transcripts_dir: str) -> None:
         if not call.turns:
             return
         stem = _call_stem(call.index, call.filename)
-        pdf_path = os.path.join(transcripts_dir, f"{stem}.pdf")
+        audio_filename = os.path.basename(call.mp3_path) if call.mp3_path else f"{stem}.mp3"
         title_data = {
             "CASE_NAME": job.case_name,
             "FILE_NAME": call.filename,
+            "AUDIO_FILENAME": audio_filename,
             "FILE_DURATION": _format_duration(call.duration_seconds),
             "INMATE_NAME": call.inmate_name or "",
             "CALL_DATETIME": call.call_datetime_str or "",
@@ -382,6 +399,9 @@ async def _stage_generate_pdfs(job_id: str, transcripts_dir: str) -> None:
             "CALL_OUTCOME": call.call_outcome or "",
             "NOTES": call.notes or "",
         }
+
+        # PDF with summary
+        pdf_path = os.path.join(transcripts_dir, f"{stem}.pdf")
         pdf_bytes = create_pdf(
             title_data=title_data,
             turns=call.turns,
@@ -390,6 +410,18 @@ async def _stage_generate_pdfs(job_id: str, transcripts_dir: str) -> None:
         )
         with open(pdf_path, 'wb') as f:
             f.write(pdf_bytes)
+
+        # PDF without summary
+        pdf_no_summary_path = os.path.join(transcripts_no_summary_dir, f"{stem}.pdf")
+        pdf_clean_bytes = create_pdf(
+            title_data=title_data,
+            turns=call.turns,
+            summary=None,
+            audio_duration=call.duration_seconds or 0,
+        )
+        with open(pdf_no_summary_path, 'wb') as f:
+            f.write(pdf_clean_bytes)
+
         call.status = CallStatus.DONE
         job_store.update_call(job_id, call.index, pdf_path=pdf_path, status=CallStatus.DONE)
 
@@ -481,12 +513,13 @@ Total calls: {len(done_calls)}
 
 CONTENTS
 --------
-transcripts/   PDF transcript for each call. Summary on page 2.
-audio/         Converted MP3 audio files.
-viewer/        Open viewer/index.html in any browser to play calls
-               with synced transcripts.
-search.html    Full-text search across all transcripts.
-call-index.xlsx  Spreadsheet index (Excel or Google Sheets).
+transcripts/              PDF transcripts with AI analysis on page 2.
+transcripts-no-summary/   PDF transcripts without AI analysis (clean copies).
+audio/                    Converted MP3 audio files.
+viewer/                   Open viewer/index.html in any browser to play calls
+                          with synced transcripts.
+search.html               Full-text search across all transcripts.
+call-index.xlsx           Spreadsheet index (Excel or Google Sheets).
 
 HOW TO USE
 ----------
@@ -495,6 +528,15 @@ HOW TO USE
 3. Press Space to play/pause. Arrow keys skip 5 seconds.
 4. Open search.html to search across all calls at once.
 5. call-index.xlsx has summaries and full transcripts for filtering.
+6. transcripts/ folder has AI analysis summaries on page 2 of each PDF.
+7. transcripts-no-summary/ has clean PDFs without AI analysis.
+
+AI ANALYSIS RELEVANCE RATINGS
+------------------------------
+Each summary page rates the call as HIGH, MEDIUM, or LOW relevance.
+- HIGH: Contains case-related discussion or potentially significant content.
+- MEDIUM: Indirect references to the case, court dates, or legal proceedings.
+- LOW: Personal conversation with no apparent case relevance.
 
 NOTE: This package was generated by AI transcription software.
 Transcripts may contain errors. Always verify critical details against
