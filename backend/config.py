@@ -37,4 +37,4 @@ DEFAULT_SUMMARY_PROMPT = (
 )
 
 # Gemini model
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
