@@ -141,6 +141,13 @@ def update_job_stage(job_id: str, stage) -> None:
             db.commit()
 
 
+def get_job_stage(job_id: str) -> Optional[str]:
+    """Fetch only the stage column — avoids loading calls or transcript blobs."""
+    with SessionLocal() as db:
+        row = db.query(DBJob.stage).filter(DBJob.id == job_id).first()
+        return row[0] if row else None
+
+
 def update_job(job: Job) -> None:
     """Updates a job and all its calls using the passed Pydantic Job model."""
     with SessionLocal() as db:

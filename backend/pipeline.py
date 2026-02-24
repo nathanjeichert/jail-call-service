@@ -13,7 +13,6 @@ SSE progress is broadcast via a thread-safe queue per job.
 import asyncio
 import json
 import logging
-import multiprocessing
 import os
 import queue
 import re
@@ -339,6 +338,7 @@ async def _run_pipeline(job: Job) -> None:
         # DONE or ERROR calls: skip
 
     # ── Worker counts ──
+    import multiprocessing
     n_convert = max(1, multiprocessing.cpu_count() - 1)
     n_transcribe = min(cfg.MAX_TRANSCRIPTION_CONCURRENT, max(1, total_calls))
     n_summarize = min(cfg.MAX_SUMMARIZATION_CONCURRENT, max(1, total_calls))
@@ -360,8 +360,7 @@ async def _run_pipeline(job: Job) -> None:
             _emit(job_id, {"type": "stage", "stage": stage.value, "total": total_calls})
 
     def _is_paused() -> bool:
-        j = job_store.get_job(job_id)
-        return j is not None and j.stage == JobStage.PAUSED
+        return job_store.get_job_stage(job_id) == JobStage.PAUSED.value
 
     # ── Worker loops ──
 
