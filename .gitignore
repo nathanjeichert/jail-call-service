@@ -8,3 +8,9 @@ node_modules/
 *.egg-info/
 dist/
 build/
+
+# Runtime job data
+jobs/*/
+jobs/jail_calls.db
+jobs/jail_calls.db-shm
+jobs/jail_calls.db-wal
