@@ -12,8 +12,6 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import List, Optional
-import multiprocessing
-
 from .wav_repair import repair_file_in_place
 
 logger = logging.getLogger(__name__)
@@ -215,7 +213,7 @@ def batch_convert(
     os.makedirs(output_dir, exist_ok=True)
 
     if max_workers is None:
-        max_workers = max(1, multiprocessing.cpu_count())
+        max_workers = max(1, os.cpu_count() or 1)
 
     results: List[ConversionResult] = [None] * len(files)
     total = len(files)

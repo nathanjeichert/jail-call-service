@@ -338,8 +338,7 @@ async def _run_pipeline(job: Job) -> None:
         # DONE or ERROR calls: skip
 
     # ── Worker counts ──
-    import multiprocessing
-    n_convert = max(1, multiprocessing.cpu_count() - 1)
+    n_convert = max(1, (os.cpu_count() or 2) - 1)
     n_transcribe = min(cfg.MAX_TRANSCRIPTION_CONCURRENT, max(1, total_calls))
     n_summarize = min(cfg.MAX_SUMMARIZATION_CONCURRENT, max(1, total_calls))
     n_pdf = min(4, max(1, total_calls))
