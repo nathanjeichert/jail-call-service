@@ -240,7 +240,7 @@ def clear_completed_jobs():
 @app.delete("/api/jobs/{job_id}", status_code=200)
 def delete_job(job_id: str):
     job = _job_or_404(job_id)
-    if job.stage not in ("created", "done", "error"):
+    if job.stage not in ("created", "done", "error", "paused"):
         raise HTTPException(status_code=409, detail=f"Cannot delete job in stage: {job.stage}")
     job_store.delete_job(job_id)
     return {"deleted": job_id}

@@ -335,7 +335,7 @@ export default function JobDetailPage() {
           <span>/</span>
           <span className="text-slate-900 font-medium">{job.case_name}</span>
         </div>
-        {['created', 'done', 'error'].includes(job.stage) && (
+        {['created', 'done', 'error', 'paused'].includes(job.stage) && (
           <button
             onClick={handleDelete}
             className="text-xs text-slate-400 hover:text-red-600 transition-colors"
