@@ -67,6 +67,13 @@ export default function JobsPage() {
   const [error, setError] = useState('');
 
   const [uploading, setUploading] = useState(false);
+  const [fileCount, setFileCount] = useState<number | null>(null);
+
+  const AUDIO_EXTS = ['.wav', '.mp3', '.m4a'];
+  const countAudioPaths = (val: string) => {
+    const paths = val.split(/[\n,]+/).map(p => p.trim()).filter(Boolean);
+    return paths.filter(p => AUDIO_EXTS.some(ext => p.toLowerCase().endsWith(ext))).length;
+  };
 
   const caseNameRef = useRef<HTMLInputElement>(null);
   const defendantNameRef = useRef<HTMLInputElement>(null);
@@ -154,6 +161,7 @@ export default function JobsPage() {
         if (caseNameRef.current) caseNameRef.current.value = '';
         if (defendantNameRef.current) defendantNameRef.current.value = '';
         if (pathsRef.current) pathsRef.current.value = '';
+        setFileCount(null);
         if (xmlRef.current) xmlRef.current.value = '';
         if (skipSummaryRef.current) skipSummaryRef.current.checked = false;
         if (audioInputRef.current) audioInputRef.current.value = '';
@@ -193,6 +201,7 @@ export default function JobsPage() {
           const existing = pathsRef.current.value.trim();
           const newPaths = (data.paths as string[]).join(',\n');
           pathsRef.current.value = existing ? `${existing},\n${newPaths}` : newPaths;
+          setFileCount(countAudioPaths(pathsRef.current.value));
         }
       } else {
         const err = await safeJson(res);
@@ -245,6 +254,7 @@ export default function JobsPage() {
         const data = await safeJson(res);
         if (data?.paths?.length && pathsRef.current) {
           pathsRef.current.value = (data.paths as string[]).join(',\n');
+          setFileCount(data.paths.length);
         } else {
           setError('No audio files found in that folder.');
         }
@@ -313,12 +323,18 @@ export default function JobsPage() {
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Audio Files Path(s)</label>
               <div className="flex gap-2 items-start">
-                <textarea
-                  ref={pathsRef}
-                  rows={3}
-                  placeholder={'Upload audio files or paste an absolute folder path (e.g. /Users/you/calls) or specific file paths separated by commas/newlines'}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono resize-none"
-                />
+                <div className="flex-1 flex flex-col gap-1">
+                  <textarea
+                    ref={pathsRef}
+                    rows={3}
+                    placeholder={'Upload audio files or paste an absolute folder path (e.g. /Users/you/calls) or specific file paths separated by commas/newlines'}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono resize-none"
+                    onChange={e => setFileCount(countAudioPaths(e.target.value) || null)}
+                  />
+                  {fileCount !== null && (
+                    <p className="text-xs text-slate-500">{fileCount} audio file{fileCount !== 1 ? 's' : ''} selected</p>
+                  )}
+                </div>
                 <input
                   ref={audioInputRef}
                   type="file"
