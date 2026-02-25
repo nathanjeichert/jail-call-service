@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
@@ -38,7 +39,21 @@ from . import config as cfg
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Jail Call Service", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Pause any jobs that were mid-flight when the server last shut down.
+    # Pipeline tasks are killed on shutdown but DB state is preserved, so
+    # without this a job would appear "in progress" and resume on first click.
+    paused = job_store.pause_orphaned_jobs()
+    for jid in paused:
+        logger.info("Startup: paused orphaned job %s", jid)
+    if paused:
+        logger.info("Startup: %d in-progress job(s) paused — click Resume to continue", len(paused))
+    yield
+
+
+app = FastAPI(title="Jail Call Service", version="1.0.0", lifespan=lifespan)
 cfg.validate_api_keys()
 
 app.add_middleware(

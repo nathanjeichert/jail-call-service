@@ -132,6 +132,30 @@ def list_jobs() -> List[Job]:
         db_jobs = db.query(DBJob).order_by(DBJob.created_at.desc()).all()
         return [_map_to_pydantic(j) for j in db_jobs]
 
+_ACTIVE_STAGES = {"converting", "transcribing", "summarizing", "generating", "packaging"}
+
+
+def pause_orphaned_jobs() -> List[str]:
+    """
+    On server startup, mark any in-progress jobs as paused.
+
+    When the server shuts down mid-pipeline, background tasks are killed but
+    the DB still shows the job in its last active stage.  Without this, the
+    job appears to be running in the UI and a stray click can resume expensive
+    API calls.  Calling this at startup forces an explicit Resume to continue.
+
+    Returns the list of job IDs that were paused.
+    """
+    with SessionLocal() as db:
+        rows = db.query(DBJob).filter(DBJob.stage.in_(_ACTIVE_STAGES)).all()
+        ids = [r.id for r in rows]
+        for r in rows:
+            r.stage = "paused"
+        if ids:
+            db.commit()
+    return ids
+
+
 def update_job_stage(job_id: str, stage) -> None:
     """Lightweight update: only change the job stage column without touching calls."""
     with SessionLocal() as db:
