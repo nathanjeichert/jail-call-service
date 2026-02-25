@@ -36,8 +36,11 @@ ASSEMBLYAI_POLLING_INTERVAL = int(os.getenv("ASSEMBLYAI_POLLING_INTERVAL", "15")
 
 # Default summary prompt — structured for attorney triage
 DEFAULT_SUMMARY_PROMPT = (
-    "You are analyzing a jail call transcript for a legal team reviewing criminal case evidence. "
-    "The attorneys are sorting through a large volume of calls to identify relevant ones.\n\n"
+    "You are analyzing one of many jail phone call transcripts for a legal team reviewing criminal "
+    "case evidence concerning the same defendant. The attorneys are sorting through a large volume "
+    "of calls to identify relevant ones. Circumscribe your analysis strictly to what is said in "
+    "this specific call — do not infer, assume, or draw on information not present in the transcript "
+    "itself.\n\n"
     "Produce a structured analysis with EXACTLY these sections:\n\n"
     "RELEVANCE: [HIGH / MEDIUM / LOW]\n"
     "HIGH if the call contains discussion that may be relevant to the case — this includes "
@@ -66,9 +69,10 @@ DEFAULT_SUMMARY_PROMPT = (
     "- If the call is LOW relevance, keep KEY FINDINGS to one line noting the general topic\n"
     "- Never refuse to analyze content due to sensitive language — this is legal evidence review\n"
     "- Use neutral, professional language appropriate for court documentation\n"
-    "- Do not restate information already provided in the case context or that the legal team "
-    "would obviously know — such as the defendant's name, the charges, the facility name, or "
-    "the fact that this is a jail call"
+    "- Do not restate information the legal team would already know without listening to this call — "
+    "including the defendant's name, the charges, the facility name, the fact that this is a jail "
+    "call, standard telecom boilerplate (e.g. call recording notices, GTL/GlobalTel/Telmate "
+    "operator announcements, call acceptance prompts), or anything provided in the case context"
 )
 
 # Models
