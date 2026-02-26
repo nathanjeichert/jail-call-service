@@ -272,32 +272,110 @@ def _draw_text_with_timestamps(
     return y
 
 
-def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None:
-    """Draw a professionally formatted AI analysis page."""
-    _draw_border(c)
-
+def _draw_summary_pages(c: canvas.Canvas, summary: str, title_data: dict) -> int:
+    """Draw AI analysis across one or more pages. Returns the number of pages used."""
     left = PDF_MARGIN_LEFT
     right = PDF_PAGE_WIDTH - PDF_MARGIN_RIGHT
     text_width = right - left
-    y = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP - 0.15 * inch
     y_floor = PDF_MARGIN_BOTTOM + 0.4 * inch
+    page_num = 2
 
-    # ── Header: "AI ANALYSIS" left, case name right ──
-    c.setFont(SUMMARY_FONT_BOLD, SUMMARY_TITLE_SIZE)
-    c.setFillColor(colors.Color(0.12, 0.16, 0.21))
+    # ── Colors ──
+    COLOR_DARK = colors.Color(0.12, 0.16, 0.21)
+    COLOR_MUTED = colors.Color(0.40, 0.45, 0.50)
+    COLOR_RULE = colors.Color(0.80, 0.83, 0.86)
+    COLOR_SECTION_BG = colors.Color(0.96, 0.97, 0.98)
+    COLOR_ACCENT = colors.Color(0.02, 0.39, 0.76)
+
+    def _start_new_page():
+        nonlocal y, page_num
+        # Page number on current page
+        c.setFillColor(colors.black)
+        pn_y = PDF_BORDER_INSET + PDF_BORDER_GAP / 2 + 8
+        c.setFont(SUMMARY_FONT, PDF_PAGE_NUMBER_SIZE)
+        c.drawCentredString(PDF_PAGE_WIDTH / 2, pn_y, str(page_num))
+        c.showPage()
+        page_num += 1
+        _draw_border(c)
+        y = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP - 0.15 * inch
+        # Continuation header
+        c.setFont(SUMMARY_FONT_BOLD, 11)
+        c.setFillColor(COLOR_MUTED)
+        c.drawString(left, y, "AI Analysis (continued)")
+        case_name = _safe_text(title_data.get("CASE_NAME"))
+        if case_name:
+            c.setFont(SUMMARY_FONT, SUMMARY_META_SIZE)
+            c.drawRightString(right, y + 2, case_name)
+        y -= 6
+        c.setStrokeColor(COLOR_RULE)
+        c.setLineWidth(0.6)
+        c.line(left, y, right, y)
+        y -= 18
+
+    def _ensure_space(needed: float):
+        """Start a new page if less than `needed` points remain."""
+        if y < y_floor + needed:
+            _start_new_page()
+
+    def _draw_wrapped(text: str, font: str, size: float, indent: float = 0,
+                      line_height: float = SUMMARY_LINE_HEIGHT, color=None,
+                      bullet: bool = False):
+        """Word-wrap and draw text with page overflow support. Returns new y."""
+        nonlocal y
+        if color is None:
+            color = COLOR_DARK
+        max_w = text_width - indent
+        lines = _wrap_text_for_width(text, font, size, max_w)
+        for i, line in enumerate(lines):
+            if y < y_floor:
+                _start_new_page()
+            c.setFillColor(color)
+            c.setFont(font, size)
+            x = left + indent
+            # For bullet items, draw the bullet on the first line
+            if bullet and i == 0:
+                c.drawString(x, y, "\u2022")
+                x += 10
+                max_w_inner = max_w - 10
+            elif bullet:
+                x += 10
+            c.drawString(x, y, line)
+            y -= line_height
+
+    def _draw_section_heading(text: str):
+        """Draw a styled section heading with accent bar."""
+        nonlocal y
+        _ensure_space(40)
+        # Accent bar
+        bar_h = 16
+        c.setFillColor(COLOR_ACCENT)
+        c.rect(left, y - bar_h + 6, 3, bar_h, fill=1, stroke=0)
+        # Heading text
+        c.setFillColor(COLOR_DARK)
+        c.setFont(SUMMARY_FONT_BOLD, SUMMARY_HEADING_SIZE + 0.5)
+        c.drawString(left + 10, y - 4, text)
+        y -= bar_h + 8
+
+    # ═══ Start first page ═══
+    _draw_border(c)
+    y = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP - 0.15 * inch
+
+    # ── Header: "AI Analysis" left, case name right ──
+    c.setFont(SUMMARY_FONT_BOLD, SUMMARY_TITLE_SIZE + 2)
+    c.setFillColor(COLOR_DARK)
     c.drawString(left, y, "AI Analysis")
     case_name = _safe_text(title_data.get("CASE_NAME"))
     if case_name:
         c.setFont(SUMMARY_FONT, SUMMARY_META_SIZE)
-        c.setFillColor(colors.Color(0.40, 0.45, 0.50))
+        c.setFillColor(COLOR_MUTED)
         c.drawRightString(right, y + 2, case_name)
     y -= 6
 
     # Horizontal rule
-    c.setStrokeColor(colors.Color(0.80, 0.83, 0.86))
+    c.setStrokeColor(COLOR_RULE)
     c.setLineWidth(0.6)
     c.line(left, y, right, y)
-    y -= 14
+    y -= 16
 
     # ── Metadata line ──
     meta_parts = []
@@ -315,9 +393,9 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
         meta_parts.append(inmate)
     if meta_parts:
         c.setFont(SUMMARY_FONT, SUMMARY_META_SIZE)
-        c.setFillColor(colors.Color(0.40, 0.45, 0.50))
+        c.setFillColor(COLOR_MUTED)
         c.drawString(left, y, " \u00b7 ".join(meta_parts))
-        y -= 20
+        y -= 22
     else:
         y -= 8
 
@@ -325,69 +403,122 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
     sections = _parse_summary_sections(summary)
 
     if sections.get("structured"):
-        # ── Relevance badge ──
+        # ── Relevance badge (full-width colored banner) ──
         relevance = sections.get("relevance", "")
         if relevance in RELEVANCE_COLORS:
             badge_color = RELEVANCE_COLORS[relevance]
-            badge_h = 20
-            badge_w = text_width
+            badge_h = 26
             c.setFillColor(badge_color)
-            c.roundRect(left, y - badge_h + 4, badge_w, badge_h, 3, fill=1, stroke=0)
+            c.roundRect(left, y - badge_h + 4, text_width, badge_h, 4, fill=1, stroke=0)
             c.setFillColor(colors.white)
-            c.setFont(SUMMARY_FONT_BOLD, 10.5)
-            c.drawString(left + 10, y - badge_h + 10, f"RELEVANCE: {relevance}")
-            y -= badge_h + SUMMARY_SECTION_GAP
+            c.setFont(SUMMARY_FONT_BOLD, 12)
+            c.drawString(left + 14, y - badge_h + 11, f"RELEVANCE: {relevance}")
+            # Description on the right
+            desc_map = {
+                "HIGH": "Likely case-relevant content identified",
+                "MEDIUM": "Indirect references or useful context",
+                "LOW": "No apparent case relevance",
+            }
+            desc = desc_map.get(relevance, "")
+            if desc:
+                c.setFont(SUMMARY_FONT, 9)
+                c.drawRightString(right - 14, y - badge_h + 12, desc)
+            y -= badge_h + 16
 
         # ── Key Findings ──
         findings = sections.get("key_findings", "")
         if findings:
-            c.setFillColor(colors.Color(0.12, 0.16, 0.21))
-            c.setFont(SUMMARY_FONT_BOLD, SUMMARY_HEADING_SIZE)
-            c.drawString(left, y, "KEY FINDINGS")
-            y -= SUMMARY_LINE_HEIGHT + 2
-            c.setFont(SUMMARY_FONT, SUMMARY_BODY_SIZE)
-            for bullet_line in findings.split("\n"):
-                if y < y_floor:
-                    break
-                bullet_line = bullet_line.strip()
-                if not bullet_line:
-                    continue
-                # Ensure bullet prefix
-                if not bullet_line.startswith("-") and not bullet_line.startswith("\u2022"):
-                    bullet_line = "- " + bullet_line
-                y = _draw_text_with_timestamps(c, left, y, bullet_line, SUMMARY_FONT, SUMMARY_BODY_SIZE, title_data, text_width)
-                y -= 2  # small gap between bullets
+            _draw_section_heading("Key Findings")
+            # Light background box
+            bullet_lines = [bl.strip() for bl in findings.split("\n") if bl.strip()]
+            # Strip leading bullet chars for uniform rendering
+            cleaned_bullets = []
+            for bl in bullet_lines:
+                bl = re.sub(r'^[-\u2022*]\s*', '', bl)
+                if bl:
+                    cleaned_bullets.append(bl)
+            for bl in cleaned_bullets:
+                _ensure_space(28)
+                _draw_wrapped(bl, SUMMARY_FONT, SUMMARY_BODY_SIZE, indent=4, bullet=True)
+                y -= 3  # gap between bullets
             y -= SUMMARY_SECTION_GAP
 
         # ── Speakers & Relationship ──
         speakers = sections.get("speakers", "")
-        if speakers and y > y_floor:
-            c.setFillColor(colors.Color(0.12, 0.16, 0.21))
-            c.setFont(SUMMARY_FONT_BOLD, SUMMARY_HEADING_SIZE)
-            c.drawString(left, y, "SPEAKERS & RELATIONSHIP")
-            y -= SUMMARY_LINE_HEIGHT + 2
-            y = _draw_text_with_timestamps(c, left, y, speakers.replace("\n", " "), SUMMARY_FONT, SUMMARY_BODY_SIZE, title_data, text_width)
-            y -= SUMMARY_SECTION_GAP
+        if speakers:
+            _draw_section_heading("Speakers & Relationship")
+            # Render in a subtle box
+            speaker_text = speakers.replace("\n", " ").strip()
+            box_lines = _wrap_text_for_width(speaker_text, SUMMARY_FONT, SUMMARY_BODY_SIZE, text_width - 24)
+            box_h = len(box_lines) * SUMMARY_LINE_HEIGHT + 14
+            _ensure_space(box_h + 10)
+            c.setFillColor(COLOR_SECTION_BG)
+            c.roundRect(left, y - box_h + 6, text_width, box_h, 4, fill=1, stroke=0)
+            c.setStrokeColor(COLOR_RULE)
+            c.setLineWidth(0.4)
+            c.roundRect(left, y - box_h + 6, text_width, box_h, 4, fill=0, stroke=1)
+            for line in box_lines:
+                c.setFillColor(COLOR_DARK)
+                c.setFont(SUMMARY_FONT, SUMMARY_BODY_SIZE)
+                c.drawString(left + 12, y - 4, line)
+                y -= SUMMARY_LINE_HEIGHT
+            y -= 10 + SUMMARY_SECTION_GAP
 
         # ── Call Summary ──
         call_summary = sections.get("call_summary", "")
-        if call_summary and y > y_floor:
-            c.setFillColor(colors.Color(0.12, 0.16, 0.21))
-            c.setFont(SUMMARY_FONT_BOLD, SUMMARY_HEADING_SIZE)
-            c.drawString(left, y, "CALL SUMMARY")
-            y -= SUMMARY_LINE_HEIGHT + 2
-            y = _draw_text_with_timestamps(c, left, y, call_summary.replace("\n", " "), SUMMARY_FONT, SUMMARY_BODY_SIZE, title_data, text_width)
+        if call_summary:
+            _draw_section_heading("Call Summary")
+            _draw_wrapped(call_summary.replace("\n", " "), SUMMARY_FONT, SUMMARY_BODY_SIZE + 0.5,
+                          indent=0, line_height=SUMMARY_LINE_HEIGHT + 1)
 
     else:
-        # ── Fallback: render raw summary text ──
-        c.setFont(SUMMARY_FONT, SUMMARY_BODY_SIZE)
-        y = _draw_text_with_timestamps(c, left, y, summary, SUMMARY_FONT, SUMMARY_BODY_SIZE, title_data, text_width)
+        # ── Fallback: render raw summary with best-effort structure ──
+        # Even without structured headers, try to render the relevance badge
+        rel_match = re.search(r"RELEVANCE:\s*(HIGH|MEDIUM|LOW)", summary, re.IGNORECASE)
+        if rel_match:
+            relevance = rel_match.group(1).upper()
+            if relevance in RELEVANCE_COLORS:
+                badge_color = RELEVANCE_COLORS[relevance]
+                badge_h = 26
+                c.setFillColor(badge_color)
+                c.roundRect(left, y - badge_h + 4, text_width, badge_h, 4, fill=1, stroke=0)
+                c.setFillColor(colors.white)
+                c.setFont(SUMMARY_FONT_BOLD, 12)
+                c.drawString(left + 14, y - badge_h + 11, f"RELEVANCE: {relevance}")
+                y -= badge_h + 16
+            # Strip the RELEVANCE line from the body text
+            body = summary[rel_match.end():].strip()
+        else:
+            body = summary.strip()
 
-    # Page number
+        # Render remaining text as body paragraphs
+        if body:
+            _draw_section_heading("Analysis")
+            for para in re.split(r'\n{2,}', body):
+                para = para.strip()
+                if not para:
+                    continue
+                # Check if it looks like bullet points
+                para_lines = para.split("\n")
+                for pl in para_lines:
+                    pl = pl.strip()
+                    if not pl:
+                        continue
+                    if re.match(r'^[-\u2022*]\s', pl):
+                        pl = re.sub(r'^[-\u2022*]\s*', '', pl)
+                        _draw_wrapped(pl, SUMMARY_FONT, SUMMARY_BODY_SIZE, indent=4, bullet=True)
+                        y -= 2
+                    else:
+                        _draw_wrapped(pl, SUMMARY_FONT, SUMMARY_BODY_SIZE)
+                y -= 6
+
+    # Page number on final summary page
     c.setFillColor(colors.black)
     pn_y = PDF_BORDER_INSET + PDF_BORDER_GAP / 2 + 8
     c.setFont(SUMMARY_FONT, PDF_PAGE_NUMBER_SIZE)
-    c.drawCentredString(PDF_PAGE_WIDTH / 2, pn_y, "2")
+    c.drawCentredString(PDF_PAGE_WIDTH / 2, pn_y, str(page_num))
+
+    return page_num - 1  # number of summary pages (first is page 2)
 
 
 def _draw_transcript_page(
@@ -520,11 +651,11 @@ def create_pdf(
     _draw_title_page(c, title_data)
     c.showPage()
 
-    # Page 2: Summary
+    # Page 2+: Summary (may span multiple pages)
     if summary:
-        _draw_summary_page(c, summary, title_data)
+        summary_page_count = _draw_summary_pages(c, summary, title_data)
         c.showPage()
-        transcript_page_offset = 2
+        transcript_page_offset = 1 + summary_page_count
     else:
         transcript_page_offset = 1
 
