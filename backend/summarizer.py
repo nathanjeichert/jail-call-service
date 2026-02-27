@@ -108,7 +108,25 @@ async def summarize_transcript(
                 text = response.candidates[0].content.parts[0].text
             except Exception:
                 text = None
-        return (text or "").strip()
+
+        # Extract token usage from response metadata
+        usage = getattr(response, "usage_metadata", None)
+        input_tokens = getattr(usage, "prompt_token_count", None) or 0
+        output_tokens = getattr(usage, "candidates_token_count", None) or 0
+        thinking_tokens = getattr(usage, "thoughts_token_count", None) or 0
+
+        logger.info(
+            "Gemini tokens — input: %d, output: %d, thinking: %d, total: %d",
+            input_tokens, output_tokens, thinking_tokens,
+            input_tokens + output_tokens + thinking_tokens,
+        )
+
+        return {
+            "text": (text or "").strip(),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "thinking_tokens": thinking_tokens,
+        }
     finally:
         try:
             client.close()

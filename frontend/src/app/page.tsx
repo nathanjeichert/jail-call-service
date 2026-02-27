@@ -17,6 +17,7 @@ type JobSummary = {
   has_zip: boolean;
   error?: string;
   defendant_name?: string;
+  summary_prompt?: string;
 };
 
 type AppConfig = {
@@ -184,6 +185,30 @@ export default function JobsPage() {
     } catch { }
   };
 
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const handleRerun = async (e: React.MouseEvent, jobId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}/settings`);
+      if (!res.ok) return;
+      const s = await safeJson(res);
+      if (!s) return;
+      if (caseNameRef.current) caseNameRef.current.value = s.case_name || '';
+      if (defendantNameRef.current) defendantNameRef.current.value = s.defendant_name || '';
+      if (pathsRef.current) {
+        const paths = s.file_paths?.length ? s.file_paths.join(',\n') : s.input_folder || '';
+        pathsRef.current.value = paths;
+        setFileCount(countAudioPaths(paths) || null);
+      }
+      if (xmlRef.current) xmlRef.current.value = s.xml_metadata_path || '';
+      if (promptRef.current) promptRef.current.value = s.summary_prompt || '';
+      if (skipSummaryRef.current) skipSummaryRef.current.checked = s.skip_summary || false;
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch {}
+  };
+
   const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -300,7 +325,7 @@ export default function JobsPage() {
       {/* New Job Form */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm mb-8 p-6">
         <h2 className="text-base font-semibold text-slate-800 mb-4">New Job</h2>
-        <form onSubmit={handleCreate} className="space-y-4">
+        <form ref={formRef} onSubmit={handleCreate} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Case Name</label>
@@ -492,6 +517,15 @@ export default function JobsPage() {
                           Download
                         </a>
                       )}
+                      {['done', 'error', 'paused'].includes(job.stage) && (
+                        <button
+                          onClick={e => handleRerun(e, job.id)}
+                          className="px-3 py-1.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg text-xs font-medium hover:bg-slate-100 transition-colors"
+                          title="Re-run with same settings"
+                        >
+                          Re-run
+                        </button>
+                      )}
                       {['created', 'done', 'error'].includes(job.stage) && (
                         <button
                           onClick={e => handleDelete(e, job.id)}
@@ -503,6 +537,13 @@ export default function JobsPage() {
                       )}
                     </div>
                   </div>
+                  {job.summary_prompt?.includes('CASE CONTEXT:\n') && (
+                    <div className="mt-2 text-xs text-slate-500 bg-slate-50 rounded px-2.5 py-1.5 border border-slate-100">
+                      <span className="font-medium text-slate-600">Case context:</span>{' '}
+                      {job.summary_prompt.split('CASE CONTEXT:\n').pop()?.slice(0, 150)}
+                      {(job.summary_prompt.split('CASE CONTEXT:\n').pop()?.length || 0) > 150 ? '...' : ''}
+                    </div>
+                  )}
                   {!['created', 'done', 'error'].includes(job.stage) && (
                     <div className="mt-3">
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">

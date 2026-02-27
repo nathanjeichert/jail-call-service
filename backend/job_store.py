@@ -50,6 +50,9 @@ def _map_single_call(c: DBCall) -> CallResult:
         call_type=c.call_type,
         xml_duration_seconds=c.xml_duration_seconds,
         notes=c.notes,
+        input_tokens=c.input_tokens,
+        output_tokens=c.output_tokens,
+        thinking_tokens=c.thinking_tokens,
     )
 
 

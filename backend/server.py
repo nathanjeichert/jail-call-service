@@ -115,6 +115,7 @@ def _job_summary(job: Job) -> dict:
         "has_zip": job.zip_path is not None and os.path.exists(job.zip_path or ""),
         "error": job.error,
         "defendant_name": job.defendant_name,
+        "summary_prompt": job.summary_prompt,
     }
 
 
@@ -255,6 +256,26 @@ def get_job(job_id: str):
     summary = _job_summary(job)
     summary["calls"] = [_call_summary(c) for c in sorted(job.calls, key=lambda c: c.index)]
     return summary
+
+
+@app.get("/api/jobs/{job_id}/settings")
+def get_job_settings(job_id: str):
+    """Return the original creation settings for re-running a job."""
+    job = _job_or_404(job_id)
+    # Extract case context from the full prompt (strip the default prefix)
+    case_context = ""
+    marker = "\n\nCASE CONTEXT:\n"
+    if job.summary_prompt and marker in job.summary_prompt:
+        case_context = job.summary_prompt.split(marker, 1)[1]
+    return {
+        "case_name": job.case_name,
+        "defendant_name": job.defendant_name or "",
+        "input_folder": job.input_folder or "",
+        "file_paths": job.file_paths or [],
+        "summary_prompt": case_context,
+        "xml_metadata_path": job.xml_metadata_path or "",
+        "skip_summary": job.skip_summary,
+    }
 
 
 @app.post("/api/jobs/{job_id}/start")

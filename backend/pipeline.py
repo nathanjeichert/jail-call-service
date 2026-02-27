@@ -157,21 +157,28 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary):
     job_store.update_call(job_id, call.index, status=CallStatus.SUMMARIZING)
 
     if skip_summary:
-        summary = (
+        summary_text = (
             f"**DUMMY SUMMARY FOR {call.filename}**\n\n"
             f"- The user requested to skip Gemini processing for this test job.\n"
             f"- Call duration: {call.duration_seconds} sec."
         )
+        token_kwargs = {}
         await asyncio.sleep(0.1)
     else:
-        summary = await summarize_transcript(
+        result = await summarize_transcript(
             call.turns,
             prompt=summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT,
             metadata={"filename": call.filename, "duration_seconds": call.duration_seconds},
         )
+        summary_text = result["text"]
+        token_kwargs = {
+            "input_tokens": result["input_tokens"],
+            "output_tokens": result["output_tokens"],
+            "thinking_tokens": result["thinking_tokens"],
+        }
 
-    job_store.update_call(job_id, call.index, summary=summary, status=CallStatus.GENERATING_PDF)
-    call.summary = summary
+    job_store.update_call(job_id, call.index, summary=summary_text, status=CallStatus.GENERATING_PDF, **token_kwargs)
+    call.summary = summary_text
     call.status = CallStatus.GENERATING_PDF
     return call
 
