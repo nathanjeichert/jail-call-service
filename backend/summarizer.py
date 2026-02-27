@@ -86,7 +86,10 @@ async def summarize_transcript(
                 contents=full_prompt,
                 config=genai_types.GenerateContentConfig(
                     temperature=0.3,
-                    max_output_tokens=4096,
+                    max_output_tokens=8192,
+                    thinking_config=genai_types.ThinkingConfig(
+                        thinking_level="low",
+                    ),
                     safety_settings=[
                         genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
                         genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
