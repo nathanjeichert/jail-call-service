@@ -35,7 +35,7 @@ sleep 1
 # ── Start backend ──
 echo "Starting backend on http://localhost:8000 ..."
 cd "$SCRIPT_DIR"
-uvicorn backend.server:app --host 127.0.0.1 --port 8000 --reload --reload-engine poll &
+WATCHFILES_FORCE_POLLING=1 uvicorn backend.server:app --host 127.0.0.1 --port 8000 --reload &
 BACKEND_PID=$!
 
 # Give backend a moment to start
