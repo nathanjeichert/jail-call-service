@@ -37,6 +37,7 @@ type JobDetail = {
   error?: string;
   calls: CallSummary[];
   defendant_name?: string;
+  summary_prompt?: string;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -351,6 +352,12 @@ export default function JobDetailPage() {
           <div>
             <h1 className="text-xl font-bold text-slate-900">{job.case_name}</h1>
             <p className="text-sm text-slate-400 font-mono mt-1">{job.input_folder}</p>
+            {job.summary_prompt?.includes('CASE CONTEXT:\n') && (
+              <div className="mt-3 text-sm text-slate-600 bg-slate-50 rounded-lg px-4 py-3 border border-slate-200">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Case Context</div>
+                <div className="whitespace-pre-wrap">{job.summary_prompt.split('CASE CONTEXT:\n').pop()}</div>
+              </div>
+            )}
           </div>
           <div className="flex gap-3 flex-shrink-0">
             {job.stage === 'created' && (
