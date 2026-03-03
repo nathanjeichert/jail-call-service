@@ -289,12 +289,13 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
     COLOR_ACCENT = colors.Color(0.02, 0.39, 0.76)
 
     y = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP - 0.15 * inch
+    truncated = False
 
     def _draw_wrapped(text: str, font: str, size: float, indent: float = 0,
                       line_height: float = SUMMARY_LINE_HEIGHT, color=None,
                       bullet: bool = False):
         """Word-wrap and draw text. Stops at y_floor."""
-        nonlocal y
+        nonlocal y, truncated
         if color is None:
             color = COLOR_DARK
         max_w = text_width - indent
@@ -303,6 +304,7 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
         lines = _wrap_text_for_width(text, font, size, max_w)
         for i, line in enumerate(lines):
             if y < y_floor:
+                truncated = True
                 break
             c.setFillColor(color)
             c.setFont(font, size)
@@ -470,6 +472,14 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
                     else:
                         _draw_wrapped(pl, SUMMARY_FONT, SUMMARY_BODY_SIZE)
                 y -= 6
+
+    # Truncation notice
+    if truncated:
+        notice_y = PDF_MARGIN_BOTTOM + 0.15 * inch
+        c.setFillColor(COLOR_MUTED)
+        c.setFont(SUMMARY_FONT_OBLIQUE, 8)
+        c.drawCentredString(PDF_PAGE_WIDTH / 2, notice_y,
+                            "Analysis truncated — see full summary in call-index.xlsx or the viewer")
 
     # Page number
     c.setFillColor(colors.black)

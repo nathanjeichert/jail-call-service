@@ -9,6 +9,7 @@ One row per call:
 import logging
 import os
 from typing import List, Optional
+from urllib.parse import quote
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -25,6 +26,7 @@ HEADER_FILL = PatternFill("solid", fgColor="1E293B")  # slate-800
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 
 ALT_FILL = PatternFill("solid", fgColor="F1F5F9")  # slate-100
+ERR_ALT_FILL = PatternFill("solid", fgColor="FEF2F2")  # red-50
 
 COL_WIDTHS = {
     "A": 6,    # #
@@ -36,7 +38,7 @@ COL_WIDTHS = {
     "G": 10,   # Duration
     "H": 18,   # Outcome
     "I": 30,   # Notes
-    "J": 60,   # Summary
+    "J": 80,   # Summary
     "K": 40,   # Full Transcript
 }
 
@@ -61,19 +63,11 @@ def _transcript_text(turns) -> str:
     return "\n".join(f"{t.speaker}: {t.text}" for t in turns)
 
 
-def _unique_speakers(turns) -> str:
-    if not turns:
-        return ""
-    seen = []
-    for t in turns:
-        if t.speaker not in seen:
-            seen.append(t.speaker)
-    return ", ".join(seen)
 
-
-def generate_excel(calls) -> bytes:
+def generate_excel(calls, error_calls=None) -> bytes:
     """
     Generate Excel workbook from a list of CallResult objects.
+    Optionally includes an Errors sheet for failed calls.
     Returns bytes of the .xlsx file.
     """
     import io
@@ -118,8 +112,15 @@ def generate_excel(calls) -> bytes:
         
         # Link filename to viewer
         fn_cell = write(6, call.filename)
-        audio_name = os.path.basename(call.mp3_path) if call.mp3_path else call.filename
-        fn_cell.hyperlink = f"viewer/index.html?call={audio_name}"
+        if call.mp3_path:
+            audio_name = os.path.basename(call.mp3_path)
+        else:
+            # Fallback: swap .wav extension to .mp3 since viewer only has MP3s
+            base = call.filename
+            if base.lower().endswith(".wav"):
+                base = base[:-4] + ".mp3"
+            audio_name = base
+        fn_cell.hyperlink = f"viewer/index.html?call={quote(audio_name)}"
         fn_cell.font = Font(underline="single", color="0563C1")
 
         write(7, _format_duration(call.duration_seconds))
@@ -136,6 +137,40 @@ def generate_excel(calls) -> bytes:
     # Column widths
     for col_letter, width in COL_WIDTHS.items():
         ws.column_dimensions[col_letter].width = width
+
+    # ── Errors sheet ──
+    if error_calls:
+        err_ws = wb.create_sheet("Errors")
+        err_headers = ["#", "Filename", "Date/Time", "Inmate", "Stage", "Error"]
+        for col_idx, header in enumerate(err_headers, start=1):
+            cell = err_ws.cell(row=1, column=col_idx, value=header)
+            cell.font = HEADER_FONT
+            cell.fill = PatternFill("solid", fgColor="7F1D1D")  # red-900
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = CELL_BORDER
+        err_ws.row_dimensions[1].height = 22
+        err_ws.freeze_panes = "A2"
+
+        for row_idx, call in enumerate(error_calls, start=2):
+            def err_write(col, value):
+                cell = err_ws.cell(row=row_idx, column=col, value=value)
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+                cell.border = CELL_BORDER
+                if row_idx % 2 == 0:
+                    cell.fill = ERR_ALT_FILL
+                return cell
+
+            err_write(1, call.index + 1)
+            err_write(2, call.filename)
+            err_write(3, call.call_datetime_str or "")
+            err_write(4, call.inmate_name or "")
+            err_write(5, call.status.value if hasattr(call.status, 'value') else str(call.status))
+            err_write(6, call.error or "Unknown error")
+            err_ws.row_dimensions[row_idx].height = 30
+
+        err_col_widths = {"A": 6, "B": 35, "C": 18, "D": 20, "E": 16, "F": 60}
+        for col_letter, width in err_col_widths.items():
+            err_ws.column_dimensions[col_letter].width = width
 
     buf = io.BytesIO()
     wb.save(buf)

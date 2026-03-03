@@ -569,9 +569,10 @@ async def _stage_generate_indexes(job: Job, output_dir: str, audio_dir: str) -> 
 
     loop = asyncio.get_event_loop()
     done_calls = [c for c in job.calls if c.status == CallStatus.DONE]
+    error_calls = [c for c in job.calls if c.status == CallStatus.ERROR]
 
     def write_excel():
-        data = generate_excel(done_calls)
+        data = generate_excel(done_calls, error_calls=error_calls or None)
         with open(os.path.join(output_dir, "call-index.xlsx"), 'wb') as f:
             f.write(data)
 

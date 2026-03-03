@@ -498,6 +498,45 @@
       color: var(--text-faint);
       font-style: italic;
     }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1e293b;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      z-index: 1000;
+      opacity: 0;
+      transition: all 0.3s ease;
+      pointer-events: none;
+    }
+
+    .toast.visible {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .toast.error {
+      background: #991b1b;
+    }
+
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(241, 245, 249, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .loading-overlay.hidden { display: none; }
   </style>
   <script src="https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
 </head>
@@ -526,6 +565,7 @@
 
       <!-- Audio player -->
       <div class="player-area">
+        <div id="waveform" style="display:none"></div>
         <!-- Play/Pause -->
         <button class="play-btn" id="playBtn" onclick="togglePlay()">
           <svg id="playIcon" viewBox="0 0 24 24">
@@ -559,7 +599,8 @@
       <audio id="audio" style="display:none"></audio>
 
       <!-- Content split -->
-      <div class="content-area">
+      <div class="content-area" style="position:relative">
+        <div class="loading-overlay hidden" id="loadingOverlay">Loading audio…</div>
         <!-- Transcript -->
         <div class="transcript-pane">
           <div class="trans-header">
@@ -591,6 +632,8 @@
     </div>
   </div>
 
+  <div class="toast" id="toast"></div>
+
   <script>
     // ── Data injected by Python ──
     const CALLS = {{ CALLS_JSON }};
@@ -620,6 +663,15 @@
     const mainDur = document.getElementById('mainDur');
     const callsList = document.getElementById('callsList');
     const callCount = document.getElementById('callCount');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const toastEl = document.getElementById('toast');
+
+    function showToast(msg, isError) {
+      toastEl.textContent = msg;
+      toastEl.className = 'toast visible' + (isError ? ' error' : '');
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => { toastEl.className = 'toast'; }, 3500);
+    }
 
     // ── Init call list ──
     callCount.textContent = CALLS.length + ' call' + (CALLS.length === 1 ? '' : 's');
@@ -652,6 +704,7 @@
       mainDur.textContent = formatDur(call.duration);
 
       // Update audio
+      loadingOverlay.classList.remove('hidden');
       ws.stop();
       ws.load('../audio/' + call.audio_filename);
 
@@ -767,11 +820,17 @@
     });
 
     ws.on('ready', () => {
+      loadingOverlay.classList.add('hidden');
       timeDuration.textContent = formatTime(ws.getDuration());
       if (pendingSeek > 0) {
         ws.setTime(pendingSeek);
         pendingSeek = 0;
       }
+    });
+
+    ws.on('error', (err) => {
+      loadingOverlay.classList.add('hidden');
+      showToast('Failed to load audio file', true);
     });
 
     ws.on('play', () => {
@@ -871,7 +930,11 @@
     if (CALLS.length > 0) {
       if (callParam) {
         const foundIdx = CALLS.findIndex(c => c.filename === callParam || c.audio_filename === callParam || c.filename.startsWith(callParam) || (c.audio_filename && c.audio_filename.startsWith(callParam)));
-        if (foundIdx !== -1) startIdx = foundIdx;
+        if (foundIdx !== -1) {
+          startIdx = foundIdx;
+        } else {
+          setTimeout(() => showToast('Requested call not found — showing first call'), 500);
+        }
       }
 
       loadCall(startIdx);

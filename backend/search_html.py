@@ -9,7 +9,10 @@ No external dependencies.
 import json
 import logging
 import os
+import re
 from typing import List
+
+_RELEVANCE_RE = re.compile(r"RELEVANCE:\s*(HIGH|MEDIUM|LOW)", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +24,15 @@ def _build_call_data(calls) -> List[dict]:
         if call.turns:
             transcript = "\n".join(f"{t.speaker}: {t.text}" for t in call.turns)
         mp3_filename = os.path.basename(call.mp3_path) if call.mp3_path else ""
+        summary = call.summary or ""
+        rel_match = _RELEVANCE_RE.search(summary)
         result.append({
             "index": call.index,
             "filename": call.filename,
             "audio_filename": mp3_filename,
             "duration": call.duration_seconds or 0,
-            "summary": call.summary or "",
+            "summary": summary,
+            "relevance": rel_match.group(1).upper() if rel_match else "",
             "transcript": transcript,
             "inmate": call.inmate_name or "",
             "outside": call.outside_number_fmt or "",
@@ -201,6 +207,24 @@ def generate_search_html(calls, case_name: str = "") -> str:
       color: #334155;
     }}
     .summary-box strong {{ display: block; margin-bottom: 6px; color: #1e293b; }}
+    .relevance-badge {{
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      letter-spacing: 0.03em;
+    }}
+    .relevance-HIGH {{ background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }}
+    .relevance-MEDIUM {{ background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }}
+    .relevance-LOW {{ background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }}
+    .active-filters {{
+      font-size: 12px;
+      color: #475569;
+      padding: 8px 32px 0;
+      font-weight: 500;
+    }}
     .transcript-lines {{ font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.8; }}
     .transcript-line {{ padding: 2px 0; }}
     .transcript-line .speaker {{ color: #475569; font-weight: 600; }}
@@ -267,8 +291,15 @@ def generate_search_html(calls, case_name: str = "") -> str:
     <select class="filter-select" id="phoneFilter">
       <option value="">All phone numbers</option>
     </select>
+    <select class="filter-select" id="relevanceFilter" style="min-width:140px">
+      <option value="">All relevance</option>
+      <option value="HIGH">HIGH</option>
+      <option value="MEDIUM">MEDIUM</option>
+      <option value="LOW">LOW</option>
+    </select>
     <button class="clear-filters-btn" id="clearFilters">Clear filters</button>
   </div>
+  <div class="active-filters hidden" id="activeFilters"></div>
   <div class="pagination hidden" id="pagination">
     <button id="prevPage">Previous</button>
     <span class="page-info" id="pageInfo"></span>
@@ -296,6 +327,11 @@ def generate_search_html(calls, case_name: str = "") -> str:
     return (text.match(re) || []).length;
   }}
 
+  function relevanceBadge(level) {{
+    if (!level) return '';
+    return '<span class="relevance-badge relevance-' + level + '">' + level + '</span>';
+  }}
+
   // Populate phone filter dropdown from unique values
   (function populatePhoneFilter() {{
     const phones = new Set();
@@ -313,6 +349,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
     const dateFrom = document.getElementById('dateFrom').value;
     const dateTo = document.getElementById('dateTo').value;
     const phone = document.getElementById('phoneFilter').value;
+    const relevance = document.getElementById('relevanceFilter').value;
 
     return CALLS.filter(call => {{
       if (dateFrom || dateTo) {{
@@ -321,8 +358,28 @@ def generate_search_html(calls, case_name: str = "") -> str:
         if (dateTo && call.call_date > dateTo) return false;
       }}
       if (phone && call.outside !== phone) return false;
+      if (relevance && call.relevance !== relevance) return false;
       return true;
     }});
+  }}
+
+  function updateActiveFilters() {{
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const phone = document.getElementById('phoneFilter').value;
+    const relevance = document.getElementById('relevanceFilter').value;
+    const el = document.getElementById('activeFilters');
+    const parts = [];
+    if (dateFrom) parts.push('From: ' + dateFrom);
+    if (dateTo) parts.push('To: ' + dateTo);
+    if (phone) parts.push('Phone: ' + phone);
+    if (relevance) parts.push('Relevance: ' + relevance);
+    if (parts.length) {{
+      el.textContent = 'Active filters: ' + parts.join(' · ');
+      el.classList.remove('hidden');
+    }} else {{
+      el.classList.add('hidden');
+    }}
   }}
 
   function openInViewer(audioFilename) {{
@@ -374,9 +431,12 @@ def generate_search_html(calls, case_name: str = "") -> str:
         const metaParts = [call.datetime, call.inmate, call.facility].filter(Boolean);
         const metaLine = metaParts.length ? `<div style="font-size:11px;color:#64748b;font-weight:400;margin-top:2px">${{esc(metaParts.join(' · '))}}</div>` : '';
         const viewerBtn = call.audio_filename ? `<a class="open-viewer-btn" onclick="event.stopPropagation(); openInViewer('${{call.audio_filename.replace(/'/g, "\\\\'")}}')" title="Open in Viewer">Viewer</a>` : '';
+        const rel = call.relevance;
+        const badge = relevanceBadge(rel);
         return `<div class="call-card ${{isOpen ? 'open' : ''}}" data-idx="${{idx}}" data-audio="${{esc(call.audio_filename)}}">
           <div class="call-header" onclick="toggleCall(${{idx}}, this.closest('.call-card'))">
             <div class="call-title">${{esc(call.filename)}}${{metaLine}}</div>
+            ${{badge}}
             ${{viewerBtn}}
             <svg class="call-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4"/></svg>
           </div>
@@ -423,9 +483,12 @@ def generate_search_html(calls, case_name: str = "") -> str:
       const metaPartsS = [call.datetime, call.inmate, call.facility].filter(Boolean);
       const metaLineS = metaPartsS.length ? `<div style="font-size:11px;color:#64748b;font-weight:400;margin-top:2px">${{esc(metaPartsS.join(' · '))}}</div>` : '';
       const viewerBtnS = call.audio_filename ? `<a class="open-viewer-btn" onclick="event.stopPropagation(); openInViewer('${{call.audio_filename.replace(/'/g, "\\\\'")}}')" title="Open in Viewer">Viewer</a>` : '';
+      const relS = call.relevance;
+      const badgeS = relevanceBadge(relS);
       return `<div class="call-card ${{isOpen ? 'open' : ''}}" data-idx="${{idx}}" data-audio="${{esc(call.audio_filename)}}">
         <div class="call-header" onclick="toggleCall(${{idx}}, this.closest('.call-card'))">
           <div class="call-title">${{esc(call.filename)}}${{metaLineS}}</div>
+          ${{badgeS}}
           <span class="call-match-count">${{count}} match${{count === 1 ? '' : 'es'}}</span>
           ${{viewerBtnS}}
           <svg class="call-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4"/></svg>
@@ -479,14 +542,18 @@ def generate_search_html(calls, case_name: str = "") -> str:
   }});
 
   // Filter change listeners (reset page on filter change)
-  document.getElementById('dateFrom').addEventListener('change', () => {{ currentPage = 1; render(document.getElementById('searchInput').value); }});
-  document.getElementById('dateTo').addEventListener('change', () => {{ currentPage = 1; render(document.getElementById('searchInput').value); }});
-  document.getElementById('phoneFilter').addEventListener('change', () => {{ currentPage = 1; render(document.getElementById('searchInput').value); }});
+  function onFilterChange() {{ currentPage = 1; updateActiveFilters(); render(document.getElementById('searchInput').value); }}
+  document.getElementById('dateFrom').addEventListener('change', onFilterChange);
+  document.getElementById('dateTo').addEventListener('change', onFilterChange);
+  document.getElementById('phoneFilter').addEventListener('change', onFilterChange);
+  document.getElementById('relevanceFilter').addEventListener('change', onFilterChange);
   document.getElementById('clearFilters').addEventListener('click', () => {{
     document.getElementById('dateFrom').value = '';
     document.getElementById('dateTo').value = '';
     document.getElementById('phoneFilter').value = '';
+    document.getElementById('relevanceFilter').value = '';
     currentPage = 1;
+    updateActiveFilters();
     render(document.getElementById('searchInput').value);
   }});
 
