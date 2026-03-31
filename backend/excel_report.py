@@ -22,10 +22,10 @@ HEADERS = [
     "Filename", "Duration", "Outcome", "Notes", "Summary", "Full Transcript",
 ]
 
-HEADER_FILL = PatternFill("solid", fgColor="1E293B")  # slate-800
+HEADER_FILL = PatternFill("solid", fgColor="1B2D4A")  # dark navy
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 
-ALT_FILL = PatternFill("solid", fgColor="F1F5F9")  # slate-100
+ALT_FILL = PatternFill("solid", fgColor="FAF8F3")  # warm cream
 ERR_ALT_FILL = PatternFill("solid", fgColor="FEF2F2")  # red-50
 
 COL_WIDTHS = {
@@ -42,7 +42,7 @@ COL_WIDTHS = {
     "K": 40,   # Full Transcript
 }
 
-THIN = Side(border_style="thin", color="CBD5E1")
+THIN = Side(border_style="thin", color="E0DACE")
 CELL_BORDER = Border(top=THIN, bottom=THIN, left=THIN, right=THIN)
 
 
@@ -121,7 +121,7 @@ def generate_excel(calls, error_calls=None) -> bytes:
                 base = base[:-4] + ".mp3"
             audio_name = base
         fn_cell.hyperlink = f"viewer/index.html?call={quote(audio_name)}"
-        fn_cell.font = Font(underline="single", color="0563C1")
+        fn_cell.font = Font(underline="single", color="1B2D4A")
 
         write(7, _format_duration(call.duration_seconds))
         write(8, call.call_outcome or "")

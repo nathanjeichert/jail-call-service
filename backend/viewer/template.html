@@ -15,16 +15,17 @@
     :root {
       --sidebar-calls-width: 260px;
       --sidebar-trans-width: 360px;
-      --accent: #334155;
-      --accent-hover: #1e293b;
-      --bg: #f1f5f9;
+      --accent: #1B2D4A;
+      --accent-hover: #253D5E;
+      --bg: #FCFAF5;
       --bg-card: #ffffff;
-      --border: #e2e8f0;
-      --text: #1e293b;
-      --text-muted: #64748b;
-      --text-faint: #94a3b8;
-      --highlight: #fef08a;
-      --active-line: rgba(251, 191, 36, 0.15);
+      --border: #E0DACE;
+      --text: #1A211A;
+      --text-muted: #6B736B;
+      --text-faint: #9BA09B;
+      --highlight: #E8DFB8;
+      --active-line: rgba(184, 160, 106, 0.15);
+      --gold: #B8A06A;
     }
 
     body {
@@ -44,7 +45,7 @@
     /* ── Call list sidebar ── */
     .calls-sidebar {
       width: var(--sidebar-calls-width);
-      background: var(--accent);
+      background: linear-gradient(180deg, #1B2D4A 0%, #253D5E 100%);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
@@ -101,6 +102,7 @@
       background: rgba(255, 255, 255, 0.18);
       color: #fff;
       font-weight: 500;
+      border-left: 2px solid var(--gold);
     }
 
     .call-item-name {
@@ -162,7 +164,7 @@
 
     /* ── Player ── */
     .player-area {
-      background: #0f172a;
+      background: linear-gradient(135deg, #1B2D4A, #253D5E);
       padding: 14px 16px;
       display: flex;
       align-items: center;
@@ -276,8 +278,8 @@
     }
 
     .speed-btn.modified {
-      background: rgba(251, 191, 36, 0.25);
-      color: #fef08a;
+      background: rgba(184, 160, 106, 0.3);
+      color: #E8DFB8;
     }
 
     .kb-hint {
@@ -325,8 +327,8 @@
     }
 
     .search-input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(51, 65, 85, 0.1);
+      border-color: var(--gold);
+      box-shadow: 0 0 0 2px rgba(184, 160, 106, 0.15);
     }
 
     .search-clear {
@@ -504,7 +506,7 @@
       bottom: 24px;
       left: 50%;
       transform: translateX(-50%) translateY(100px);
-      background: #1e293b;
+      background: #1B2D4A;
       color: #fff;
       padding: 10px 20px;
       border-radius: 8px;
@@ -804,7 +806,7 @@
       container: waveformEl,
       waveColor: 'rgba(255,255,255,0.3)',
       progressColor: '#ffffff',
-      cursorColor: '#fef08a',
+      cursorColor: '#B8A06A',
       barWidth: 2,
       barGap: 2,
       barRadius: 2,

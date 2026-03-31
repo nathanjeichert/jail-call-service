@@ -18,8 +18,10 @@ from typing import Dict, List, Optional, Tuple
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
+from . import design as D
 from .models import TranscriptTurn, WordTimestamp
 
 logger = logging.getLogger(__name__)
@@ -58,11 +60,6 @@ SUMMARY_META_SIZE = 8.5
 SUMMARY_LINE_HEIGHT = 13
 SUMMARY_SECTION_GAP = 10
 
-RELEVANCE_COLORS = {
-    "HIGH": colors.Color(0.75, 0.10, 0.10),   # red
-    "MEDIUM": colors.Color(0.80, 0.50, 0.02),  # amber
-    "LOW": colors.Color(0.15, 0.55, 0.15),     # green
-}
 TIMESTAMP_RE = re.compile(r"(\[(?:\d{1,2}:)?\d{2}:\d{2}\])")
 
 
@@ -120,40 +117,79 @@ def _draw_border(c: canvas.Canvas) -> None:
 
 
 def _draw_title_page(c: canvas.Canvas, title_data: dict) -> None:
-    _draw_border(c)
-    cx = PDF_PAGE_WIDTH / 2
-    y = PDF_PAGE_HEIGHT - 1.7 * inch
+    # Estate design: cream paper + forest stripe + gold pinstripe
+    D.draw_estate_page_bg(c)
 
-    firm = _safe_text(title_data.get("FIRM_OR_ORGANIZATION_NAME"))
-    if firm:
-        c.setFont(PDF_TEXT_FONT_BOLD, 14)
-        c.drawCentredString(cx, y, firm)
-        y -= 0.6 * inch
+    # Forest gradient band — top 38% of page
+    band_h = D.PAGE_H * 0.38
+    band_y = D.PAGE_H - band_h
+    bar = D.gradient_image(D.PAGE_W - D.STRIPE_W, band_h,
+                           D.PRIMARY_RGB, D.PRIMARY_LIGHT_RGB, noise=1)
+    c.drawImage(bar, D.STRIPE_W, band_y, D.PAGE_W - D.STRIPE_W, band_h)
 
-    c.setFont(PDF_TEXT_FONT_BOLD, 18)
-    c.drawCentredString(cx, y, "Generated Transcript")
-    y -= 0.6 * inch
+    cx = D.PAGE_W / 2 + D.STRIPE_W / 2
+    y = D.PAGE_H - 0.95 * inch
 
-    # Build metadata lines — skip any that have no value
-    metadata_pairs = [
-        ("Case Name", title_data.get("CASE_NAME")),
+    # Gold label
+    c.setFillColor(D.ACCENT)
+    c.setFont("Helvetica", 9)
+    c.drawCentredString(cx, y, "GENERATED  TRANSCRIPT")
+    y -= 0.55 * inch
+
+    # Case name — large, white on dark
+    case_name = _safe_text(title_data.get("CASE_NAME"))
+    if case_name:
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 24)
+        c.drawCentredString(cx, y, case_name)
+        y -= 0.45 * inch
+
+    # Gold rule
+    rule_w = 1.4 * inch
+    c.setStrokeColor(D.ACCENT)
+    c.setLineWidth(0.8)
+    c.line(cx - rule_w / 2, y, cx + rule_w / 2, y)
+
+    # Metadata below band — on cream
+    y = band_y - 0.55 * inch
+
+    left_col = D.TEXT_LEFT + 0.2 * inch
+    right_col = D.PAGE_W / 2 + 0.15 * inch
+
+    left_items = [
         ("Inmate", title_data.get("INMATE_NAME")),
         ("Date/Time", title_data.get("CALL_DATETIME")),
         ("Housing Unit", title_data.get("FACILITY")),
+        ("Duration", title_data.get("FILE_DURATION")),
+    ]
+    right_items = [
         ("Outside Party", title_data.get("OUTSIDE_NUMBER_FMT")),
         ("Call Outcome", title_data.get("CALL_OUTCOME")),
-        ("Duration", title_data.get("FILE_DURATION")),
         ("Original File", title_data.get("FILE_NAME")),
         ("Notes", title_data.get("NOTES")),
     ]
 
-    c.setFont(PDF_TEXT_FONT, PDF_TEXT_SIZE)
-    for label, value in metadata_pairs:
-        v = _safe_text(value)
-        if not v:
-            continue
-        c.drawCentredString(cx, y, f"{label}: {v}")
-        y -= 0.35 * inch
+    row_h = 0.42 * inch
+    for col_x, items in [(left_col, left_items), (right_col, right_items)]:
+        row_y = y
+        for label, value in items:
+            v = _safe_text(value)
+            if not v:
+                continue
+            c.setFillColor(D.MUTED)
+            c.setFont("Helvetica", 8)
+            c.drawString(col_x, row_y, label.upper())
+            c.setFillColor(D.DARK)
+            c.setFont("Helvetica", 10.5)
+            c.drawString(col_x, row_y - 14, v)
+            row_y -= row_h
+
+    # Firm name at bottom if present
+    firm = _safe_text(title_data.get("FIRM_OR_ORGANIZATION_NAME"))
+    if firm:
+        c.setFillColor(D.MUTED)
+        c.setFont("Helvetica-Oblique", 9)
+        c.drawCentredString(cx, 0.65 * inch, firm)
 
 
 def _parse_summary_sections(summary: str) -> dict:
@@ -206,7 +242,7 @@ def _wrap_text_for_width(text: str, font: str, size: float, max_width: float) ->
     space_width = _approx_char_width(font, size)
 
     for word in words:
-        from reportlab.pdfbase.pdfmetrics import stringWidth
+
         word_w = stringWidth(word, font, size)
         gap = space_width if current else 0
         if current_width + gap + word_w <= max_width:
@@ -273,177 +309,128 @@ def _draw_text_with_timestamps(
 
 
 def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None:
-    """Draw a professionally formatted single-page AI analysis."""
-    _draw_border(c)
+    """Draw Estate-styled AI analysis page."""
+    # Estate background + header bar
+    D.draw_estate_page_bg(c)
+    y = D.draw_header_bar(c, "AI Analysis", _safe_text(title_data.get("CASE_NAME")))
 
-    left = PDF_MARGIN_LEFT
-    right = PDF_PAGE_WIDTH - PDF_MARGIN_RIGHT
-    text_width = right - left
+    left = D.TEXT_LEFT
+    right = D.TEXT_RIGHT
+    text_width = D.TEXT_WIDTH
     y_floor = PDF_MARGIN_BOTTOM + 0.4 * inch
-
-    # ── Colors ──
-    COLOR_DARK = colors.Color(0.12, 0.16, 0.21)
-    COLOR_MUTED = colors.Color(0.40, 0.45, 0.50)
-    COLOR_RULE = colors.Color(0.80, 0.83, 0.86)
-    COLOR_SECTION_BG = colors.Color(0.96, 0.97, 0.98)
-    COLOR_ACCENT = colors.Color(0.02, 0.39, 0.76)
-
-    y = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP - 0.15 * inch
     truncated = False
 
     def _draw_wrapped(text: str, font: str, size: float, indent: float = 0,
                       line_height: float = SUMMARY_LINE_HEIGHT, color=None,
-                      bullet: bool = False):
-        """Word-wrap and draw text. Stops at y_floor."""
+                      emdash_bullet: bool = False):
         nonlocal y, truncated
         if color is None:
-            color = COLOR_DARK
+            color = D.BODY
         max_w = text_width - indent
-        if bullet:
-            max_w -= 10  # account for bullet + gap
+        if emdash_bullet:
+            max_w -= 16
         lines = _wrap_text_for_width(text, font, size, max_w)
         for i, line in enumerate(lines):
             if y < y_floor:
                 truncated = True
                 break
-            c.setFillColor(color)
             c.setFont(font, size)
             x = left + indent
-            if bullet and i == 0:
-                c.drawString(x, y, "\u2022")
-                x += 10
-            elif bullet:
-                x += 10
+            if emdash_bullet and i == 0:
+                c.setFillColor(D.ACCENT)
+                c.drawString(x + 6, y, "\u2014")
+                c.setFillColor(color)
+                x += 22
+            elif emdash_bullet:
+                x += 22
+            else:
+                c.setFillColor(color)
             c.drawString(x, y, line)
             y -= line_height
 
-    def _draw_section_heading(text: str):
-        """Draw a styled section heading with accent bar."""
-        nonlocal y
-        if y < y_floor + 30:
-            return
-        bar_h = 16
-        c.setFillColor(COLOR_ACCENT)
-        c.rect(left, y - bar_h + 6, 3, bar_h, fill=1, stroke=0)
-        c.setFillColor(COLOR_DARK)
-        c.setFont(SUMMARY_FONT_BOLD, SUMMARY_HEADING_SIZE + 0.5)
-        c.drawString(left + 10, y - 4, text)
-        y -= bar_h + 8
-
-    # ── Header: "AI Analysis" left, case name right ──
-    c.setFont(SUMMARY_FONT_BOLD, SUMMARY_TITLE_SIZE + 2)
-    c.setFillColor(COLOR_DARK)
-    c.drawString(left, y, "AI Analysis")
-    case_name = _safe_text(title_data.get("CASE_NAME"))
-    if case_name:
-        c.setFont(SUMMARY_FONT, SUMMARY_META_SIZE)
-        c.setFillColor(COLOR_MUTED)
-        c.drawRightString(right, y + 2, case_name)
-    y -= 6
-
-    # Horizontal rule
-    c.setStrokeColor(COLOR_RULE)
-    c.setLineWidth(0.6)
-    c.line(left, y, right, y)
-    y -= 16
-
     # ── Metadata line ──
     meta_parts = []
-    fn = _safe_text(title_data.get("FILE_NAME"))
-    if fn:
-        meta_parts.append(fn)
-    dur = _safe_text(title_data.get("FILE_DURATION"))
-    if dur:
-        meta_parts.append(dur)
-    dt = _safe_text(title_data.get("CALL_DATETIME"))
-    if dt:
-        meta_parts.append(dt)
-    inmate = _safe_text(title_data.get("INMATE_NAME"))
-    if inmate:
-        meta_parts.append(inmate)
+    for key in ("FILE_NAME", "FILE_DURATION", "CALL_DATETIME", "INMATE_NAME"):
+        v = _safe_text(title_data.get(key))
+        if v:
+            meta_parts.append(v)
     if meta_parts:
         c.setFont(SUMMARY_FONT, SUMMARY_META_SIZE)
-        c.setFillColor(COLOR_MUTED)
+        c.setFillColor(D.MUTED)
         c.drawString(left, y, " \u00b7 ".join(meta_parts))
         y -= 22
     else:
         y -= 8
 
-    # Parse structured sections
     sections = _parse_summary_sections(summary)
 
     if sections.get("structured"):
-        # ── Relevance badge (full-width colored banner) ──
+        # ── Relevance badge ──
         relevance = sections.get("relevance", "")
-        if relevance in RELEVANCE_COLORS:
-            badge_color = RELEVANCE_COLORS[relevance]
+        if relevance in D.RELEVANCE_COLORS:
+            badge_color = D.RELEVANCE_COLORS[relevance]
             badge_h = 26
             c.setFillColor(badge_color)
             c.roundRect(left, y - badge_h + 4, text_width, badge_h, 4, fill=1, stroke=0)
             c.setFillColor(colors.white)
             c.setFont(SUMMARY_FONT_BOLD, 12)
             c.drawString(left + 14, y - badge_h + 11, f"RELEVANCE: {relevance}")
-            desc_map = {
-                "HIGH": "Likely case-relevant content identified",
-                "MEDIUM": "Indirect references or useful context",
-                "LOW": "No apparent case relevance",
-            }
-            desc = desc_map.get(relevance, "")
+            desc = D.RELEVANCE_DESC.get(relevance, "")
             if desc:
                 c.setFont(SUMMARY_FONT, 9)
+                c.setFillColor(colors.Color(1.0, 0.78, 0.78) if relevance == "HIGH"
+                               else colors.Color(1.0, 0.88, 0.72) if relevance == "MEDIUM"
+                               else colors.Color(0.80, 1.0, 0.85))
                 c.drawRightString(right - 14, y - badge_h + 12, desc)
             y -= badge_h + 16
 
         # ── Key Findings ──
         findings = sections.get("key_findings", "")
         if findings and y > y_floor:
-            _draw_section_heading("Key Findings")
+            y = D.draw_section_heading(c, y, "Key Findings")
             for bl in findings.split("\n"):
                 if y < y_floor:
                     break
-                bl = bl.strip()
-                if not bl:
-                    continue
-                bl = re.sub(r'^[-\u2022*]\s*', '', bl)
+                bl = re.sub(r'^[-\u2022*]\s*', '', bl.strip())
                 if bl:
-                    _draw_wrapped(bl, SUMMARY_FONT, SUMMARY_BODY_SIZE, indent=4, bullet=True)
+                    _draw_wrapped(bl, SUMMARY_FONT, SUMMARY_BODY_SIZE, indent=0, emdash_bullet=True)
                     y -= 3
             y -= SUMMARY_SECTION_GAP
 
         # ── Speakers & Relationship ──
         speakers = sections.get("speakers", "")
         if speakers and y > y_floor:
-            _draw_section_heading("Speakers & Relationship")
+            y = D.draw_section_heading(c, y, "Speakers & Relationship")
             speaker_text = speakers.replace("\n", " ").strip()
-            box_lines = _wrap_text_for_width(speaker_text, SUMMARY_FONT, SUMMARY_BODY_SIZE, text_width - 24)
-            box_h = len(box_lines) * SUMMARY_LINE_HEIGHT + 14
+            box_lines = _wrap_text_for_width(speaker_text, SUMMARY_FONT, SUMMARY_BODY_SIZE, text_width - 28)
+            box_h = len(box_lines) * SUMMARY_LINE_HEIGHT + 16
             if y - box_h > y_floor:
-                c.setFillColor(COLOR_SECTION_BG)
+                c.setFillColor(D.WARM_BOX)
                 c.roundRect(left, y - box_h + 6, text_width, box_h, 4, fill=1, stroke=0)
-                c.setStrokeColor(COLOR_RULE)
-                c.setLineWidth(0.4)
+                c.setStrokeColor(D.RULE)
+                c.setLineWidth(0.3)
                 c.roundRect(left, y - box_h + 6, text_width, box_h, 4, fill=0, stroke=1)
                 for line in box_lines:
-                    c.setFillColor(COLOR_DARK)
+                    c.setFillColor(D.BODY)
                     c.setFont(SUMMARY_FONT, SUMMARY_BODY_SIZE)
-                    c.drawString(left + 12, y - 4, line)
+                    c.drawString(left + 14, y - 4, line)
                     y -= SUMMARY_LINE_HEIGHT
                 y -= 10 + SUMMARY_SECTION_GAP
 
         # ── Call Summary ──
         call_summary = sections.get("call_summary", "")
         if call_summary and y > y_floor:
-            _draw_section_heading("Call Summary")
+            y = D.draw_section_heading(c, y, "Call Summary")
             _draw_wrapped(call_summary.replace("\n", " "), SUMMARY_FONT, SUMMARY_BODY_SIZE + 0.5,
                           indent=0, line_height=SUMMARY_LINE_HEIGHT + 1)
 
     else:
-        # ── Fallback: render raw summary with best-effort structure ──
+        # ── Fallback: raw summary ──
         rel_match = re.search(r"RELEVANCE:\s*(HIGH|MEDIUM|LOW)", summary, re.IGNORECASE)
         if rel_match:
             relevance = rel_match.group(1).upper()
-            if relevance in RELEVANCE_COLORS:
-                badge_color = RELEVANCE_COLORS[relevance]
+            if relevance in D.RELEVANCE_COLORS:
+                badge_color = D.RELEVANCE_COLORS[relevance]
                 badge_h = 26
                 c.setFillColor(badge_color)
                 c.roundRect(left, y - badge_h + 4, text_width, badge_h, 4, fill=1, stroke=0)
@@ -456,7 +443,7 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
             body = summary.strip()
 
         if body:
-            _draw_section_heading("Analysis")
+            y = D.draw_section_heading(c, y, "Analysis")
             for para in re.split(r'\n{2,}', body):
                 para = para.strip()
                 if not para:
@@ -467,7 +454,7 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
                         continue
                     if re.match(r'^[-\u2022*]\s', pl):
                         pl = re.sub(r'^[-\u2022*]\s*', '', pl)
-                        _draw_wrapped(pl, SUMMARY_FONT, SUMMARY_BODY_SIZE, indent=4, bullet=True)
+                        _draw_wrapped(pl, SUMMARY_FONT, SUMMARY_BODY_SIZE, indent=0, emdash_bullet=True)
                         y -= 2
                     else:
                         _draw_wrapped(pl, SUMMARY_FONT, SUMMARY_BODY_SIZE)
@@ -476,16 +463,12 @@ def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None
     # Truncation notice
     if truncated:
         notice_y = PDF_MARGIN_BOTTOM + 0.15 * inch
-        c.setFillColor(COLOR_MUTED)
+        c.setFillColor(D.MUTED)
         c.setFont(SUMMARY_FONT_OBLIQUE, 8)
         c.drawCentredString(PDF_PAGE_WIDTH / 2, notice_y,
-                            "Analysis truncated — see full summary in call-index.xlsx or the viewer")
+                            "Analysis truncated \u2014 see full summary in call-index.xlsx or the viewer")
 
-    # Page number
-    c.setFillColor(colors.black)
-    pn_y = PDF_BORDER_INSET + PDF_BORDER_GAP / 2 + 8
-    c.setFont(SUMMARY_FONT, PDF_PAGE_NUMBER_SIZE)
-    c.drawCentredString(PDF_PAGE_WIDTH / 2, pn_y, "2")
+    D.draw_page_number(c, 2)
 
 
 def _draw_transcript_page(

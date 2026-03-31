@@ -60,14 +60,15 @@ def generate_search_html(calls, case_name: str = "") -> str:
     body {{
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f1f5f9;
-      color: #1e293b;
+      background: #FCFAF5;
+      color: #1A211A;
       min-height: 100vh;
     }}
     .header {{
-      background: #1e293b;
+      background: linear-gradient(135deg, #1B2D4A, #253D5E);
       color: #fff;
       padding: 20px 32px;
+      border-bottom: 2px solid #B8A06A;
     }}
     .header h1 {{ margin: 0 0 4px; font-size: 20px; font-weight: 600; }}
     .header p {{ margin: 0; font-size: 13px; color: rgba(255,255,255,0.6); }}
@@ -88,7 +89,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
       outline: none;
       transition: border-color 0.15s;
     }}
-    .search-input:focus {{ border-color: #334155; box-shadow: 0 0 0 3px rgba(51,65,85,.1); }}
+    .search-input:focus {{ border-color: #B8A06A; box-shadow: 0 0 0 3px rgba(184,160,106,.15); }}
     .search-count {{
       font-size: 13px;
       color: #64748b;
@@ -118,7 +119,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
       outline: none;
       color: #1e293b;
     }}
-    .filter-input:focus {{ border-color: #334155; }}
+    .filter-input:focus {{ border-color: #B8A06A; }}
     .filter-select {{
       padding: 6px 10px;
       font-size: 13px;
@@ -129,7 +130,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
       background: #fff;
       min-width: 160px;
     }}
-    .filter-select:focus {{ border-color: #334155; }}
+    .filter-select:focus {{ border-color: #B8A06A; }}
     .clear-filters-btn {{
       padding: 6px 14px;
       font-size: 12px;
@@ -141,7 +142,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
       cursor: pointer;
       transition: background 0.15s;
     }}
-    .clear-filters-btn:hover {{ background: #e2e8f0; color: #334155; }}
+    .clear-filters-btn:hover {{ background: #E0DACE; color: #1B2D4A; }}
     .results {{ padding: 24px 32px; }}
     .call-card {{
       background: #fff;
@@ -159,7 +160,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
       user-select: none;
       gap: 12px;
     }}
-    .call-header:hover {{ background: #f8fafc; }}
+    .call-header:hover {{ background: #FAF8F3; }}
     .call-title {{
       font-size: 14px;
       font-weight: 600;
@@ -175,9 +176,9 @@ def generate_search_html(calls, case_name: str = "") -> str:
     }}
     .open-viewer-btn {{
       font-size: 11px;
-      color: #3b82f6;
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
+      color: #1B2D4A;
+      background: #EDE8D8;
+      border: 1px solid #D4CBAB;
       border-radius: 6px;
       padding: 3px 10px;
       cursor: pointer;
@@ -187,7 +188,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
       flex-shrink: 0;
       transition: background 0.15s;
     }}
-    .open-viewer-btn:hover {{ background: #dbeafe; }}
+    .open-viewer-btn:hover {{ background: #D4CBAB; }}
     .call-chevron {{
       color: #94a3b8;
       transition: transform 0.2s;
@@ -197,8 +198,8 @@ def generate_search_html(calls, case_name: str = "") -> str:
     .call-body {{ display: none; border-top: 1px solid #e2e8f0; padding: 16px 20px; }}
     .call-card.open .call-body {{ display: block; }}
     .summary-box {{
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      background: #FAF8F3;
+      border: 1px solid #E0DACE;
       border-radius: 8px;
       padding: 12px 16px;
       margin-bottom: 16px;
@@ -206,7 +207,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
       line-height: 1.6;
       color: #334155;
     }}
-    .summary-box strong {{ display: block; margin-bottom: 6px; color: #1e293b; }}
+    .summary-box strong {{ display: block; margin-bottom: 6px; color: #1A211A; }}
     .relevance-badge {{
       display: inline-block;
       font-size: 11px;
@@ -229,8 +230,8 @@ def generate_search_html(calls, case_name: str = "") -> str:
     .transcript-line {{ padding: 2px 0; }}
     .transcript-line .speaker {{ color: #475569; font-weight: 600; }}
     mark {{
-      background: #fef08a;
-      color: #1e293b;
+      background: #E8DFB8;
+      color: #1A211A;
       border-radius: 2px;
       padding: 0 1px;
     }}
@@ -258,7 +259,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
       cursor: pointer;
       transition: background 0.15s;
     }}
-    .pagination button:hover:not(:disabled) {{ background: #f1f5f9; }}
+    .pagination button:hover:not(:disabled) {{ background: #FAF8F3; }}
     .pagination button:disabled {{ opacity: 0.4; cursor: default; }}
     .pagination .page-info {{ font-size: 13px; color: #64748b; }}
     .hidden {{ display: none; }}
