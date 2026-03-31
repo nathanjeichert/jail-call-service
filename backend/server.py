@@ -76,6 +76,7 @@ class CreateJobRequest(BaseModel):
     file_paths: Optional[list[str]] = None
     xml_metadata_path: Optional[str] = None
     transcription_engine: Optional[str] = None
+    summarization_engine: Optional[str] = None
 
 
 class UpdateSummaryRequest(BaseModel):
@@ -224,6 +225,7 @@ def create_job(req: CreateJobRequest):
         file_paths=req.file_paths,
         xml_metadata_path=req.xml_metadata_path,
         transcription_engine=req.transcription_engine,
+        summarization_engine=req.summarization_engine,
     )
     return _job_summary(job)
 
@@ -278,6 +280,7 @@ def get_job_settings(job_id: str):
         "xml_metadata_path": job.xml_metadata_path or "",
         "skip_summary": job.skip_summary,
         "transcription_engine": job.transcription_engine or "",
+        "summarization_engine": job.summarization_engine or "",
     }
 
 
@@ -457,7 +460,8 @@ def download_zip(job_id: str):
 def get_config():
     """Return safe config and readiness checks for the frontend."""
     from .audio_converter import FFMPEG_PATH
-    from .transcription import AVAILABLE_ENGINES
+    from .transcription import AVAILABLE_ENGINES as TRANSCRIPTION_ENGINES
+    from .summarization import AVAILABLE_ENGINES as SUMMARIZATION_ENGINES
     return {
         "assemblyai_configured": bool(cfg.ASSEMBLYAI_API_KEY),
         "gemini_configured": bool(cfg.GEMINI_API_KEY),
@@ -466,7 +470,9 @@ def get_config():
         "default_summary_prompt": cfg.DEFAULT_SUMMARY_PROMPT,
         "gemini_model": cfg.GEMINI_MODEL,
         "default_transcription_engine": cfg.DEFAULT_TRANSCRIPTION_ENGINE,
-        "available_transcription_engines": AVAILABLE_ENGINES,
+        "available_transcription_engines": TRANSCRIPTION_ENGINES,
+        "default_summarization_engine": cfg.DEFAULT_SUMMARIZATION_ENGINE,
+        "available_summarization_engines": SUMMARIZATION_ENGINES,
     }
 
 

@@ -36,6 +36,10 @@ _queue_lock = threading.Lock()
 
 _SENTINEL = object()
 
+# Engines that run local models competing for GPU/unified memory
+_LOCAL_TRANSCRIPTION_ENGINES = frozenset({"parakeet"})
+_LOCAL_SUMMARIZATION_ENGINES = frozenset({"qwen"})
+
 
 def get_event_queue(job_id: str) -> queue.Queue:
     with _queue_lock:
@@ -152,22 +156,20 @@ async def _transcribe_one(job_id, call, defendant_name, transcription_engine=Non
     return call
 
 
-async def _summarize_one(job_id, call, summary_prompt, skip_summary):
-    """Summarize a single call's transcript."""
-    from .summarizer import summarize_transcript
-
+async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine):
+    """Summarize a single call's transcript using the provided engine instance."""
     job_store.update_call(job_id, call.index, status=CallStatus.SUMMARIZING)
 
     if skip_summary:
         summary_text = (
             f"**DUMMY SUMMARY FOR {call.filename}**\n\n"
-            f"- The user requested to skip Gemini processing for this test job.\n"
+            f"- The user requested to skip AI processing for this test job.\n"
             f"- Call duration: {call.duration_seconds} sec."
         )
         token_kwargs = {}
         await asyncio.sleep(0.1)
     else:
-        result = await summarize_transcript(
+        result = await engine.summarize(
             call.turns,
             prompt=summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT,
             metadata={"filename": call.filename, "duration_seconds": call.duration_seconds},
@@ -348,13 +350,26 @@ async def _run_pipeline(job: Job) -> None:
 
     # ── Worker counts ──
     n_convert = max(1, (os.cpu_count() or 2) - 1)
-    engine_name = (job.transcription_engine or cfg.DEFAULT_TRANSCRIPTION_ENGINE).lower()
-    if engine_name == "parakeet":
+    transcription_engine_name = (job.transcription_engine or cfg.DEFAULT_TRANSCRIPTION_ENGINE).lower()
+    if transcription_engine_name == "parakeet":
         n_transcribe = min(cfg.MAX_PARAKEET_CONCURRENT, max(1, total_calls))
     else:
         n_transcribe = min(cfg.MAX_TRANSCRIPTION_CONCURRENT, max(1, total_calls))
-    n_summarize = min(cfg.MAX_SUMMARIZATION_CONCURRENT, max(1, total_calls))
+    summarization_engine_name = (job.summarization_engine or cfg.DEFAULT_SUMMARIZATION_ENGINE).lower()
+    if summarization_engine_name == "qwen":
+        n_summarize = min(cfg.MAX_QWEN_CONCURRENT, max(1, total_calls))
+    else:
+        n_summarize = min(cfg.MAX_SUMMARIZATION_CONCURRENT, max(1, total_calls))
     n_pdf = min(4, max(1, total_calls))
+
+    all_local = (
+        transcription_engine_name in _LOCAL_TRANSCRIPTION_ENGINES
+        and summarization_engine_name in _LOCAL_SUMMARIZATION_ENGINES
+    )
+
+    # Create summarization engine once (reused across all calls — critical for Qwen model loading)
+    from .summarization import get_engine as get_summarization_engine
+    summarization_engine = get_summarization_engine(summarization_engine_name) if not job.skip_summary else None
 
     # Seed convert_q with sentinels (one per worker)
     for _ in range(n_convert):
@@ -449,7 +464,7 @@ async def _run_pipeline(job: Job) -> None:
                 continue
             _advance_stage(JobStage.SUMMARIZING)
             try:
-                result = await _summarize_one(job_id, item, job.summary_prompt, job.skip_summary)
+                result = await _summarize_one(job_id, item, job.summary_prompt, job.skip_summary, summarization_engine)
                 progress["summarizing"] += 1
                 _emit(job_id, {
                     "type": "call_update", "index": result.index,
@@ -519,27 +534,61 @@ async def _run_pipeline(job: Job) -> None:
     pdf_executor = ThreadPoolExecutor(max_workers=n_pdf)
 
     try:
-        await asyncio.gather(
-            run_stage_group(
-                [convert_loop(convert_executor) for _ in range(n_convert)],
-                transcribe_q, n_transcribe,
-            ),
-            run_stage_group(
-                [transcribe_loop() for _ in range(n_transcribe)],
-                summarize_q, n_summarize,
-            ),
-            run_stage_group(
-                [summarize_loop() for _ in range(n_summarize)],
-                pdf_q, n_pdf,
-            ),
-            run_stage_group(
-                [pdf_loop(pdf_executor) for _ in range(n_pdf)],
-                None, 0,
-            ),
-        )
+        if all_local:
+            # Two-phase mode: avoid loading both local models simultaneously on 8 GB.
+            # Phase 1: Convert + Transcribe (Parakeet memory freed when phase ends)
+            logger.info("All-local mode: running two-phase pipeline for job %s", job_id)
+            await asyncio.gather(
+                run_stage_group(
+                    [convert_loop(convert_executor) for _ in range(n_convert)],
+                    transcribe_q, n_transcribe,
+                ),
+                run_stage_group(
+                    [transcribe_loop() for _ in range(n_transcribe)],
+                    summarize_q, n_summarize,
+                ),
+            )
+
+            if _is_paused():
+                return
+
+            # Phase 2: Summarize + PDF (summarize_q already has items + sentinels)
+            await asyncio.gather(
+                run_stage_group(
+                    [summarize_loop() for _ in range(n_summarize)],
+                    pdf_q, n_pdf,
+                ),
+                run_stage_group(
+                    [pdf_loop(pdf_executor) for _ in range(n_pdf)],
+                    None, 0,
+                ),
+            )
+        else:
+            # Standard streaming pipeline: all four stages run concurrently
+            await asyncio.gather(
+                run_stage_group(
+                    [convert_loop(convert_executor) for _ in range(n_convert)],
+                    transcribe_q, n_transcribe,
+                ),
+                run_stage_group(
+                    [transcribe_loop() for _ in range(n_transcribe)],
+                    summarize_q, n_summarize,
+                ),
+                run_stage_group(
+                    [summarize_loop() for _ in range(n_summarize)],
+                    pdf_q, n_pdf,
+                ),
+                run_stage_group(
+                    [pdf_loop(pdf_executor) for _ in range(n_pdf)],
+                    None, 0,
+                ),
+            )
     finally:
         convert_executor.shutdown(wait=False)
         pdf_executor.shutdown(wait=False)
+        # Unload local summarization model to free memory
+        if summarization_engine and hasattr(summarization_engine, "unload"):
+            summarization_engine.unload()
 
     # ── Check for pause before finishing ──
     if _is_paused():

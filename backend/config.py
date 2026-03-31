@@ -83,3 +83,11 @@ ASSEMBLYAI_MODEL = os.getenv("ASSEMBLYAI_MODEL", "universal-3-pro")
 DEFAULT_TRANSCRIPTION_ENGINE = os.getenv("DEFAULT_TRANSCRIPTION_ENGINE", "assemblyai")
 # Parakeet must run sequentially on 8 GB machines to avoid OOM
 MAX_PARAKEET_CONCURRENT = 1
+
+# Summarization engine: "gemini" (cloud) or "qwen" (local)
+DEFAULT_SUMMARIZATION_ENGINE = os.getenv("DEFAULT_SUMMARIZATION_ENGINE", "gemini")
+# Qwen must run sequentially on 8 GB machines to avoid OOM
+MAX_QWEN_CONCURRENT = 1
+QWEN_MODEL = os.getenv("QWEN_MODEL", "mlx-community/Qwen3.5-4B-MLX-4bit")
+QWEN_MAX_TOKENS = int(os.getenv("QWEN_MAX_TOKENS", "1024"))
+QWEN_MAX_KV_SIZE = int(os.getenv("QWEN_MAX_KV_SIZE", "4096"))
