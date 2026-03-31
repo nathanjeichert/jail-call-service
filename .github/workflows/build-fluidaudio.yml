@@ -1,0 +1,23 @@
+name: Build FluidAudio CLI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout FluidAudio
+        uses: actions/checkout@v4
+        with:
+          repository: FluidInference/FluidAudio
+          ref: v0.13.4
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluidaudiocli
+          path: .build/release/fluidaudiocli
