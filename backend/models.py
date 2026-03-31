@@ -94,6 +94,7 @@ class Job(BaseModel):
     skip_summary: bool = False
     file_paths: Optional[List[str]] = None
     xml_metadata_path: Optional[str] = None
+    transcription_engine: Optional[str] = None
 
     class Config:
         use_enum_values = True

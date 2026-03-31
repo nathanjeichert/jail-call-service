@@ -127,23 +127,25 @@ async def _convert_one(job_id, call, audio_dir, executor):
         return None
 
 
-async def _transcribe_one(job_id, call, defendant_name):
-    """Transcribe a single call using async submit-then-poll."""
-    from .transcriber import transcribe_multichannel_async
+async def _transcribe_one(job_id, call, defendant_name, transcription_engine=None):
+    """Transcribe a single call using the configured transcription engine."""
+    from .transcription import get_engine
 
     job_store.update_call(job_id, call.index, status=CallStatus.TRANSCRIBING)
+
+    engine_name = transcription_engine or cfg.DEFAULT_TRANSCRIPTION_ENGINE
+    engine = get_engine(
+        engine_name,
+        api_key=cfg.ASSEMBLYAI_API_KEY,
+        speech_model=cfg.ASSEMBLYAI_MODEL,
+        polling_interval=cfg.ASSEMBLYAI_POLLING_INTERVAL,
+    )
 
     channel_labels = {
         1: call.inmate_name or defendant_name or "INMATE",
         2: "OUTSIDE PARTY",
     }
-    turns = await transcribe_multichannel_async(
-        call.mp3_path,
-        api_key=cfg.ASSEMBLYAI_API_KEY,
-        channel_labels=channel_labels,
-        speech_model=cfg.ASSEMBLYAI_MODEL,
-        polling_interval=cfg.ASSEMBLYAI_POLLING_INTERVAL,
-    )
+    turns = await engine.transcribe(call.mp3_path, channel_labels=channel_labels)
     job_store.update_call(job_id, call.index, turns=turns, status=CallStatus.SUMMARIZING)
     call.turns = turns
     call.status = CallStatus.SUMMARIZING
@@ -346,7 +348,11 @@ async def _run_pipeline(job: Job) -> None:
 
     # ── Worker counts ──
     n_convert = max(1, (os.cpu_count() or 2) - 1)
-    n_transcribe = min(cfg.MAX_TRANSCRIPTION_CONCURRENT, max(1, total_calls))
+    engine_name = (job.transcription_engine or cfg.DEFAULT_TRANSCRIPTION_ENGINE).lower()
+    if engine_name == "parakeet":
+        n_transcribe = min(cfg.MAX_PARAKEET_CONCURRENT, max(1, total_calls))
+    else:
+        n_transcribe = min(cfg.MAX_TRANSCRIPTION_CONCURRENT, max(1, total_calls))
     n_summarize = min(cfg.MAX_SUMMARIZATION_CONCURRENT, max(1, total_calls))
     n_pdf = min(4, max(1, total_calls))
 
@@ -413,7 +419,7 @@ async def _run_pipeline(job: Job) -> None:
                 continue
             _advance_stage(JobStage.TRANSCRIBING)
             try:
-                result = await _transcribe_one(job_id, item, job.defendant_name)
+                result = await _transcribe_one(job_id, item, job.defendant_name, job.transcription_engine)
                 progress["transcribing"] += 1
                 _emit(job_id, {
                     "type": "call_update", "index": result.index,

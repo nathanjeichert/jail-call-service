@@ -27,6 +27,13 @@ type AppConfig = {
   ffmpeg_path: string;
   default_summary_prompt: string;
   gemini_model: string;
+  default_transcription_engine: string;
+  available_transcription_engines: string[];
+};
+
+const ENGINE_LABELS: Record<string, string> = {
+  assemblyai: 'AssemblyAI (Cloud)',
+  parakeet: 'Parakeet (Local)',
 };
 
 const STAGE_LABELS: Record<string, string> = {
@@ -76,6 +83,8 @@ export default function JobsPage() {
     return paths.filter(p => AUDIO_EXTS.some(ext => p.toLowerCase().endsWith(ext))).length;
   };
 
+  const [selectedEngine, setSelectedEngine] = useState('');
+
   const caseNameRef = useRef<HTMLInputElement>(null);
   const defendantNameRef = useRef<HTMLInputElement>(null);
   const pathsRef = useRef<HTMLTextAreaElement>(null);
@@ -104,7 +113,15 @@ export default function JobsPage() {
   const loadConfig = async () => {
     try {
       const res = await fetch(`${API}/config`);
-      if (res.ok) { const data = await safeJson(res); if (data) setConfig(data); }
+      if (res.ok) {
+        const data = await safeJson(res);
+        if (data) {
+          setConfig(data);
+          if (!selectedEngine && data.default_transcription_engine) {
+            setSelectedEngine(data.default_transcription_engine);
+          }
+        }
+      }
     } catch { }
   };
 
@@ -141,6 +158,7 @@ export default function JobsPage() {
       xml_metadata_path: xmlPath || undefined,
       summary_prompt: promptRef.current?.value.trim() || '',
       skip_summary: skipSummaryRef.current?.checked || false,
+      transcription_engine: selectedEngine || undefined,
     };
 
     if (!body.case_name || (!body.input_folder && (!body.file_paths || body.file_paths.length === 0))) {
@@ -167,6 +185,7 @@ export default function JobsPage() {
         if (skipSummaryRef.current) skipSummaryRef.current.checked = false;
         if (audioInputRef.current) audioInputRef.current.value = '';
         if (xmlInputRef.current) xmlInputRef.current.value = '';
+        setSelectedEngine(config?.default_transcription_engine || 'assemblyai');
         await loadJobs();
       }
     } catch (e) {
@@ -205,6 +224,7 @@ export default function JobsPage() {
       if (xmlRef.current) xmlRef.current.value = s.xml_metadata_path || '';
       if (promptRef.current) promptRef.current.value = s.summary_prompt || '';
       if (skipSummaryRef.current) skipSummaryRef.current.checked = s.skip_summary || false;
+      if (s.transcription_engine) setSelectedEngine(s.transcription_engine);
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch {}
   };
@@ -344,6 +364,25 @@ export default function JobsPage() {
                 placeholder="John Smith"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent"
               />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Transcription Engine</label>
+              <div className="flex gap-3">
+                {(config?.available_transcription_engines || ['assemblyai']).map(eng => (
+                    <button
+                      key={eng}
+                      type="button"
+                      onClick={() => setSelectedEngine(eng)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        (selectedEngine || config?.default_transcription_engine || 'assemblyai') === eng
+                          ? 'bg-slate-800 text-white border-slate-800'
+                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {ENGINE_LABELS[eng] || eng}
+                    </button>
+                ))}
+              </div>
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Audio Files Path(s)</label>

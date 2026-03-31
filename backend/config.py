@@ -78,3 +78,8 @@ DEFAULT_SUMMARY_PROMPT = (
 # Models
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 ASSEMBLYAI_MODEL = os.getenv("ASSEMBLYAI_MODEL", "universal-3-pro")
+
+# Transcription engine: "assemblyai" (cloud) or "parakeet" (local)
+DEFAULT_TRANSCRIPTION_ENGINE = os.getenv("DEFAULT_TRANSCRIPTION_ENGINE", "assemblyai")
+# Parakeet must run sequentially on 8 GB machines to avoid OOM
+MAX_PARAKEET_CONCURRENT = 1
