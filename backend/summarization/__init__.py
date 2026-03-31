@@ -64,7 +64,6 @@ def get_engine(
         return QwenEngine(
             model_name=model or cfg.QWEN_MODEL,
             max_tokens=cfg.QWEN_MAX_TOKENS,
-            max_kv_size=cfg.QWEN_MAX_KV_SIZE,
         )
 
     raise ValueError(

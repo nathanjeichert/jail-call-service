@@ -88,6 +88,5 @@ MAX_PARAKEET_CONCURRENT = 1
 DEFAULT_SUMMARIZATION_ENGINE = os.getenv("DEFAULT_SUMMARIZATION_ENGINE", "gemini")
 # Qwen must run sequentially on 8 GB machines to avoid OOM
 MAX_QWEN_CONCURRENT = 1
-QWEN_MODEL = os.getenv("QWEN_MODEL", "mlx-community/Qwen3.5-4B-MLX-4bit")
+QWEN_MODEL = os.getenv("QWEN_MODEL", "mlx-community/Qwen3.5-4B-OptiQ-4bit")
 QWEN_MAX_TOKENS = int(os.getenv("QWEN_MAX_TOKENS", "1024"))
-QWEN_MAX_KV_SIZE = int(os.getenv("QWEN_MAX_KV_SIZE", "4096"))

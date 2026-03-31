@@ -30,13 +30,11 @@ class QwenEngine:
         self,
         model_name: str = "mlx-community/Qwen3.5-4B-MLX-4bit",
         max_tokens: int = 1024,
-        max_kv_size: int = 4096,
     ):
         if not QWEN_AVAILABLE:
             raise RuntimeError("mlx-lm not installed. Run: pip install mlx-lm")
         self._model_name = model_name
         self._max_tokens = max_tokens
-        self._max_kv_size = max_kv_size
         self._model = None
         self._tokenizer = None
 
@@ -44,13 +42,21 @@ class QwenEngine:
         self._sampler = make_sampler(temp=0.3)
 
     def _ensure_loaded(self):
-        """Lazy-load the model on first use."""
+        """Lazy-load the model and run a warm-up pass to trigger Metal JIT compilation."""
         if self._model is not None:
             return
-        from mlx_lm import load
+        from mlx_lm import load, stream_generate
+        import mlx.core as mx
+
         logger.info("Loading Qwen model: %s", self._model_name)
         self._model, self._tokenizer = load(self._model_name)
-        logger.info("Qwen model loaded successfully")
+
+        # Warm-up: trigger Metal kernel JIT compilation so the first real
+        # call doesn't pay a 5-15s penalty.
+        for _ in stream_generate(self._model, self._tokenizer, prompt="warmup", max_tokens=1):
+            pass
+        mx.clear_cache()
+        logger.info("Qwen model loaded and warmed up")
 
     def unload(self):
         """Free model memory. Call after batch processing completes."""
@@ -114,7 +120,7 @@ class QwenEngine:
         text = ""
         for response in stream_generate(
             self._model, self._tokenizer, prompt=prompt_text,
-            max_tokens=self._max_tokens, max_kv_size=self._max_kv_size,
+            max_tokens=self._max_tokens,
             sampler=self._sampler,
         ):
             text += response.text
