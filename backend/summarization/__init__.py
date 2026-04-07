@@ -3,7 +3,7 @@ Summarization engine factory.
 
 Usage:
     from backend.summarization import get_engine
-    engine = get_engine("gemini")   # or "qwen"
+    engine = get_engine("gemini")   # or "gemma"
     result = await engine.summarize(turns, prompt, metadata)
 """
 
@@ -12,15 +12,15 @@ from typing import Optional
 
 from .base import SummarizationEngine, build_transcript_text, build_full_prompt
 from .gemini_engine import GeminiEngine, GEMINI_AVAILABLE
-from .qwen_engine import QWEN_AVAILABLE
+from .gemma_engine import GEMMA_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
 AVAILABLE_ENGINES = []
 if GEMINI_AVAILABLE:
     AVAILABLE_ENGINES.append("gemini")
-if QWEN_AVAILABLE:
-    AVAILABLE_ENGINES.append("qwen")
+if GEMMA_AVAILABLE:
+    AVAILABLE_ENGINES.append("gemma")
 
 
 def get_engine(
@@ -33,7 +33,7 @@ def get_engine(
     Return an initialized summarization engine by name.
 
     Args:
-        engine_name: "gemini" or "qwen"
+        engine_name: "gemini" or "gemma"
         api_key: Required for Gemini.
         model: Model name override.
 
@@ -54,16 +54,16 @@ def get_engine(
             model=model or cfg.GEMINI_MODEL,
         )
 
-    if name == "qwen":
-        if not QWEN_AVAILABLE:
+    if name == "gemma":
+        if not GEMMA_AVAILABLE:
             raise RuntimeError(
                 "mlx-lm not installed. Run: pip install mlx-lm"
             )
-        from .qwen_engine import QwenEngine
+        from .gemma_engine import GemmaEngine
         from .. import config as cfg
-        return QwenEngine(
-            model_name=model or cfg.QWEN_MODEL,
-            max_tokens=cfg.QWEN_MAX_TOKENS,
+        return GemmaEngine(
+            model_name=model or cfg.GEMMA_MODEL,
+            max_tokens=cfg.GEMMA_MAX_TOKENS,
         )
 
     raise ValueError(

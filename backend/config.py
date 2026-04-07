@@ -84,9 +84,9 @@ DEFAULT_TRANSCRIPTION_ENGINE = os.getenv("DEFAULT_TRANSCRIPTION_ENGINE", "assemb
 # Parakeet must run sequentially on 8 GB machines to avoid OOM
 MAX_PARAKEET_CONCURRENT = 1
 
-# Summarization engine: "gemini" (cloud) or "qwen" (local)
+# Summarization engine: "gemini" (cloud) or "gemma" (local)
 DEFAULT_SUMMARIZATION_ENGINE = os.getenv("DEFAULT_SUMMARIZATION_ENGINE", "gemini")
-# Qwen must run sequentially on 8 GB machines to avoid OOM
-MAX_QWEN_CONCURRENT = 1
-QWEN_MODEL = os.getenv("QWEN_MODEL", "mlx-community/Qwen3.5-4B-OptiQ-4bit")
-QWEN_MAX_TOKENS = int(os.getenv("QWEN_MAX_TOKENS", "1024"))
+# Gemma must run sequentially on 8 GB machines to avoid OOM
+MAX_GEMMA_CONCURRENT = 1
+GEMMA_MODEL = os.getenv("GEMMA_MODEL", "unsloth/gemma-4-E2B-it-UD-MLX-4bit")
+GEMMA_MAX_TOKENS = int(os.getenv("GEMMA_MAX_TOKENS", "1024"))

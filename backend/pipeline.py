@@ -38,7 +38,7 @@ _SENTINEL = object()
 
 # Engines that run local models competing for GPU/unified memory
 _LOCAL_TRANSCRIPTION_ENGINES = frozenset({"parakeet"})
-_LOCAL_SUMMARIZATION_ENGINES = frozenset({"qwen"})
+_LOCAL_SUMMARIZATION_ENGINES = frozenset({"gemma"})
 
 
 def get_event_queue(job_id: str) -> queue.Queue:
@@ -356,8 +356,8 @@ async def _run_pipeline(job: Job) -> None:
     else:
         n_transcribe = min(cfg.MAX_TRANSCRIPTION_CONCURRENT, max(1, total_calls))
     summarization_engine_name = (job.summarization_engine or cfg.DEFAULT_SUMMARIZATION_ENGINE).lower()
-    if summarization_engine_name == "qwen":
-        n_summarize = min(cfg.MAX_QWEN_CONCURRENT, max(1, total_calls))
+    if summarization_engine_name == "gemma":
+        n_summarize = min(cfg.MAX_GEMMA_CONCURRENT, max(1, total_calls))
     else:
         n_summarize = min(cfg.MAX_SUMMARIZATION_CONCURRENT, max(1, total_calls))
     n_pdf = min(4, max(1, total_calls))
@@ -367,7 +367,7 @@ async def _run_pipeline(job: Job) -> None:
         and summarization_engine_name in _LOCAL_SUMMARIZATION_ENGINES
     )
 
-    # Create summarization engine once (reused across all calls — critical for Qwen model loading)
+    # Create summarization engine once (reused across all calls — critical for local model loading)
     from .summarization import get_engine as get_summarization_engine
     summarization_engine = get_summarization_engine(summarization_engine_name) if not job.skip_summary else None
 

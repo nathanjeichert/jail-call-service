@@ -40,7 +40,7 @@ const TRANSCRIPTION_ENGINE_LABELS: Record<string, string> = {
 
 const SUMMARIZATION_ENGINE_LABELS: Record<string, string> = {
   gemini: 'Gemini (Cloud)',
-  qwen: 'Qwen 3.5 (Local)',
+  gemma: 'Gemma 4 E2B (Local)',
 };
 
 function EngineSelector({ label, engines, selected, onSelect, labels }: {
@@ -361,7 +361,7 @@ export default function JobsPage() {
   if (config) {
     if (!config.ffmpeg_found) warnings.push('ffmpeg not found. Set FFMPEG_PATH in .env or install ffmpeg to PATH.');
     if (!config.assemblyai_configured) warnings.push('ASSEMBLYAI_API_KEY not set in .env. Transcription will fail.');
-    if (!config.gemini_configured && (selectedSumEngine || config.default_summarization_engine) === 'gemini') warnings.push('GEMINI_API_KEY not set in .env. Gemini summaries will fail (use Qwen or Skip Summary for testing).');
+    if (!config.gemini_configured && (selectedSumEngine || config.default_summarization_engine) === 'gemini') warnings.push('GEMINI_API_KEY not set in .env. Gemini summaries will fail (use Gemma or Skip Summary for testing).');
   }
 
   return (

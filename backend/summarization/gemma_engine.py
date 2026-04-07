@@ -1,8 +1,8 @@
 """
-Local Qwen summarization engine via MLX on Apple Silicon.
+Local Gemma 4 summarization engine via MLX on Apple Silicon.
 
 Uses mlx-lm for native Metal-accelerated inference with the
-Qwen 3.5 4B model (4-bit quantized, ~3 GB RAM).
+Gemma 4 E2B model (4-bit quantized, ~3.6 GB RAM).
 """
 
 import asyncio
@@ -15,23 +15,23 @@ from .base import build_transcript_text, build_full_prompt
 
 logger = logging.getLogger(__name__)
 
-QWEN_AVAILABLE = False
+GEMMA_AVAILABLE = False
 try:
     import mlx_lm  # noqa: F401
-    QWEN_AVAILABLE = True
+    GEMMA_AVAILABLE = True
 except ImportError:
     pass
 
 
-class QwenEngine:
-    """Local summarization via Qwen 3.5 on Apple Silicon (MLX)."""
+class GemmaEngine:
+    """Local summarization via Gemma 4 E2B on Apple Silicon (MLX)."""
 
     def __init__(
         self,
-        model_name: str = "mlx-community/Qwen3.5-4B-MLX-4bit",
+        model_name: str = "unsloth/gemma-4-E2B-it-UD-MLX-4bit",
         max_tokens: int = 1024,
     ):
-        if not QWEN_AVAILABLE:
+        if not GEMMA_AVAILABLE:
             raise RuntimeError("mlx-lm not installed. Run: pip install mlx-lm")
         self._model_name = model_name
         self._max_tokens = max_tokens
@@ -48,7 +48,7 @@ class QwenEngine:
         from mlx_lm import load, stream_generate
         import mlx.core as mx
 
-        logger.info("Loading Qwen model: %s", self._model_name)
+        logger.info("Loading Gemma model: %s", self._model_name)
         self._model, self._tokenizer = load(self._model_name)
 
         # Warm-up: trigger Metal kernel JIT compilation so the first real
@@ -56,13 +56,13 @@ class QwenEngine:
         for _ in stream_generate(self._model, self._tokenizer, prompt="warmup", max_tokens=1):
             pass
         mx.clear_cache()
-        logger.info("Qwen model loaded and warmed up")
+        logger.info("Gemma model loaded and warmed up")
 
     def unload(self):
         """Free model memory. Call after batch processing completes."""
         if self._model is None:
             return
-        logger.info("Unloading Qwen model")
+        logger.info("Unloading Gemma model")
         del self._model
         del self._tokenizer
         self._model = None
@@ -104,17 +104,9 @@ class QwenEngine:
             {"role": "user", "content": full_prompt},
         ]
 
-        # Disable Qwen 3.5's built-in thinking mode to avoid wasting tokens
-        # on chain-of-thought reasoning before the structured output.
-        template_kwargs = {"add_generation_prompt": True, "tokenize": False}
-        try:
-            prompt_text = self._tokenizer.apply_chat_template(
-                messages, enable_thinking=False, **template_kwargs,
-            )
-        except TypeError:
-            prompt_text = self._tokenizer.apply_chat_template(
-                messages, **template_kwargs,
-            )
+        prompt_text = self._tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=False,
+        )
 
         response = None
         text = ""
@@ -129,7 +121,7 @@ class QwenEngine:
         output_tokens = response.generation_tokens if response else 0
 
         logger.info(
-            "Qwen tokens — input: %d, output: %d",
+            "Gemma tokens — input: %d, output: %d",
             input_tokens, output_tokens,
         )
 
