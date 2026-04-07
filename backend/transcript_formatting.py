@@ -18,36 +18,44 @@ from typing import Dict, List, Optional, Tuple
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
+from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+
+pdfmetrics.registerFont(TTFont("CourierNew", "/System/Library/Fonts/Supplemental/Courier New.ttf"))
+pdfmetrics.registerFont(TTFont("CourierNew-Bold", "/System/Library/Fonts/Supplemental/Courier New Bold.ttf"))
 
 from . import design as D
 from .models import TranscriptTurn, WordTimestamp
 
 logger = logging.getLogger(__name__)
 
-# Layout constants
+# Text layout constants
 SPEAKER_PREFIX_SPACES = 10
-CONTINUATION_SPACES = 0
+CONTINUATION_SPACES = 5
 SPEAKER_COLON = ":   "
-MAX_TOTAL_LINE_WIDTH = 64
-MAX_CONTINUATION_WIDTH = 64
-MIN_LINE_DURATION_SECONDS = 1.25
 
+# Transcript page geometry (legal deposition style)
 PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT = letter
-PDF_MARGIN_LEFT = 1.0 * inch
-PDF_MARGIN_RIGHT = 1.0 * inch
 PDF_MARGIN_TOP = 0.75 * inch
 PDF_MARGIN_BOTTOM = 0.75 * inch
-PDF_LINE_NUMBER_GUTTER = 0.7 * inch
 PDF_LINE_HEIGHT = 25.0
-PDF_TEXT_FONT = "Courier"
-PDF_TEXT_FONT_BOLD = "Courier-Bold"
+PDF_TEXT_FONT = "CourierNew"
 PDF_TEXT_SIZE = 12
 PDF_LINE_NUMBER_SIZE = 10
 PDF_PAGE_NUMBER_SIZE = 10
-PDF_BORDER_INSET = 0.33 * inch
-PDF_BORDER_GAP = 4.0
+
+# Vertical rule positions
+PDF_LINE_NUM_RIGHT = 0.78 * inch      # right edge of line numbers
+PDF_RULE_LEFT_OUTER = 0.92 * inch     # left double-line (outer)
+PDF_RULE_LEFT_INNER = 0.97 * inch     # left double-line (inner)
+PDF_TEXT_X = 1.2 * inch               # left edge of transcript text
+PDF_RULE_RIGHT = 7.4 * inch           # right single line
+
+# Derive max characters per line from physical layout
+_COURIER_CHAR_W = stringWidth("M", PDF_TEXT_FONT, PDF_TEXT_SIZE)
+MAX_LINE_CHARS = int((PDF_RULE_RIGHT - PDF_TEXT_X - 6) / _COURIER_CHAR_W)
 
 # Summary page layout (professional sans-serif)
 SUMMARY_FONT = "Helvetica"
@@ -105,15 +113,17 @@ def wrap_text(text: str, max_width: int) -> List[str]:
     return lines or [""]
 
 
-def _draw_border(c: canvas.Canvas) -> None:
-    ox, oy = PDF_BORDER_INSET, PDF_BORDER_INSET
-    ow = PDF_PAGE_WIDTH - 2 * PDF_BORDER_INSET
-    oh = PDF_PAGE_HEIGHT - 2 * PDF_BORDER_INSET
+def _draw_transcript_rules(c: canvas.Canvas) -> None:
+    """Draw vertical rules: double line on left (gutter), single on right."""
+    rule_top = PDF_PAGE_HEIGHT
+    rule_bottom = 0
     c.setStrokeColor(colors.black)
-    c.setLineWidth(0.8)
-    c.rect(ox, oy, ow, oh, stroke=1, fill=0)
-    c.rect(ox + PDF_BORDER_GAP / 2, oy + PDF_BORDER_GAP / 2,
-           ow - PDF_BORDER_GAP, oh - PDF_BORDER_GAP, stroke=1, fill=0)
+    c.setLineWidth(0.5)
+    # Double line on left
+    c.line(PDF_RULE_LEFT_OUTER, rule_bottom, PDF_RULE_LEFT_OUTER, rule_top)
+    c.line(PDF_RULE_LEFT_INNER, rule_bottom, PDF_RULE_LEFT_INNER, rule_top)
+    # Single line on right
+    c.line(PDF_RULE_RIGHT, rule_bottom, PDF_RULE_RIGHT, rule_top)
 
 
 def _draw_title_page(c: canvas.Canvas, title_data: dict) -> None:
@@ -477,15 +487,20 @@ def _draw_transcript_page(
     lines_per_page: int,
     page_number: int,
 ) -> None:
-    _draw_border(c)
+    _draw_transcript_rules(c)
 
-    content_top = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP
-    available_height = content_top - PDF_MARGIN_BOTTOM
+    content_top = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP / 2
+    content_bottom = PDF_MARGIN_BOTTOM / 2
+    available_height = content_top - content_bottom
     line_block_height = ((max(lines_per_page, 1) - 1) * PDF_LINE_HEIGHT) + PDF_TEXT_SIZE
     vertical_padding = max((available_height - line_block_height) / 2.0, 0)
     top_baseline = content_top - vertical_padding - PDF_TEXT_SIZE
-    number_right_x = PDF_MARGIN_LEFT - 6
-    text_x = PDF_MARGIN_LEFT
+
+    # Page number at bottom center
+    pn_y = content_bottom - 0.1 * inch
+    c.setFillColor(colors.black)
+    c.setFont(PDF_TEXT_FONT, PDF_PAGE_NUMBER_SIZE)
+    c.drawCentredString(PDF_PAGE_WIDTH / 2, pn_y, str(page_number))
 
     sorted_entries = sorted(page_entries, key=lambda e: (int(e.get("line", 0) or 0), e.get("id", "")))
     for entry in sorted_entries:
@@ -496,21 +511,15 @@ def _draw_transcript_page(
         if line_number <= 0 or line_number > lines_per_page:
             continue
         y = top_baseline - (line_number - 1) * PDF_LINE_HEIGHT
-        if y < PDF_MARGIN_BOTTOM:
+        if y < content_bottom:
             continue
 
-        c.setFillColor(colors.Color(0.45, 0.45, 0.45))
-        c.setFont(PDF_TEXT_FONT, PDF_LINE_NUMBER_SIZE)
-        c.drawRightString(number_right_x, y, str(line_number))
-
         c.setFillColor(colors.black)
-        c.setFont(PDF_TEXT_FONT, PDF_TEXT_SIZE)
-        c.drawString(text_x, y, str(entry.get("rendered_text", "")))
+        c.setFont(PDF_TEXT_FONT, PDF_LINE_NUMBER_SIZE)
+        c.drawRightString(PDF_LINE_NUM_RIGHT, y, str(line_number))
 
-    pn_y = PDF_BORDER_INSET + PDF_BORDER_GAP / 2 + 8
-    c.setFillColor(colors.black)
-    c.setFont(PDF_TEXT_FONT, PDF_PAGE_NUMBER_SIZE)
-    c.drawCentredString(PDF_PAGE_WIDTH / 2, pn_y, str(page_number))
+        c.setFont(PDF_TEXT_FONT, PDF_TEXT_SIZE)
+        c.drawString(PDF_TEXT_X, y, str(entry.get("rendered_text", "")))
 
 
 def compute_line_entries(
@@ -535,19 +544,20 @@ def compute_line_entries(
         speaker_name = turn.speaker.upper()
         text = turn.text.strip()
 
+        speaker_prefix = " " * SPEAKER_PREFIX_SPACES + speaker_name + SPEAKER_COLON
+        max_cont_width = MAX_LINE_CHARS - CONTINUATION_SPACES
+
         if is_continuation:
-            speaker_prefix = ""
-            max_first_line = MAX_CONTINUATION_WIDTH
+            max_first_line = max_cont_width
         else:
-            speaker_prefix = " " * SPEAKER_PREFIX_SPACES + speaker_name + SPEAKER_COLON
-            max_first_line = MAX_TOTAL_LINE_WIDTH - len(speaker_prefix)
+            max_first_line = MAX_LINE_CHARS - len(speaker_prefix)
 
         wrapped = wrap_text(text, max_first_line)
         if not wrapped:
             wrapped = [""]
 
         cont_text = " ".join(wrapped[1:])
-        cont_lines = wrap_text(cont_text, MAX_CONTINUATION_WIDTH) if cont_text else []
+        cont_lines = wrap_text(cont_text, max_cont_width) if cont_text else []
         all_lines = [wrapped[0]] + cont_lines
 
         for line_idx, line_text in enumerate(all_lines):
@@ -605,9 +615,6 @@ def create_pdf(
     if summary:
         _draw_summary_page(c, summary, title_data)
         c.showPage()
-        transcript_page_offset = 2
-    else:
-        transcript_page_offset = 1
 
     # Transcript pages
     line_entries = compute_line_entries(turns, audio_duration, lines_per_page)
@@ -619,8 +626,7 @@ def create_pdf(
         pages[1] = []
 
     for page_number in sorted(pages):
-        display_page = page_number + transcript_page_offset
-        _draw_transcript_page(c, pages[page_number], lines_per_page, display_page)
+        _draw_transcript_page(c, pages[page_number], lines_per_page, page_number)
         c.showPage()
 
     c.save()
