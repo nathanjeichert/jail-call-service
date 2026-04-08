@@ -149,7 +149,7 @@ def convert_single(
 
     # Run ffmpeg: force G.729 decoder, preserve stereo channels, 64k MP3.
     # Stereo output is intentional: ch1 (left) = inmate, ch2 (right) = outside party.
-    # AssemblyAI multichannel transcription requires separate channels — do NOT mix to mono.
+    # Multichannel transcription requires separate channels — do NOT mix to mono.
     cmd = [
         FFMPEG_PATH,
         '-y',                    # overwrite

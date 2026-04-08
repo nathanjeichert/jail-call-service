@@ -203,7 +203,7 @@ def _draw_title_page(c: canvas.Canvas, title_data: dict) -> None:
 
 
 def _parse_summary_sections(summary: str) -> dict:
-    """Parse structured Gemini output into sections. Falls back to raw if unrecognized."""
+    """Parse structured summary output into sections. Falls back to raw if unrecognized."""
     sections = {"raw": summary}
     text = summary.strip()
 

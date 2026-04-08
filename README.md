@@ -9,9 +9,8 @@ Takes a folder of WAV files, delivers a zip with transcripts, audio, and indexes
 # 1. Install Python dependencies
 pip install -r requirements.txt
 
-# 2. Set up API keys
+# 2. Set up local config
 cp .env.example .env
-# Edit .env with your AssemblyAI and Gemini API keys
 
 # 3. Install frontend dependencies
 cd frontend && npm install && cd ..
@@ -26,19 +25,19 @@ cd frontend && npm install && cd ..
 # Open http://localhost:3000
 ```
 
-## Transcription Engines
+## Local Engines
 
 | Engine | Type | Speed (17-min call) | Requirements |
 |--------|------|---------------------|--------------|
-| **AssemblyAI** | Cloud API | ~30s (depends on queue) | API key |
 | **Parakeet** | Local (CoreML) | ~21s on M2 | `bin/fluidaudiocli` binary |
+| **Gemma** | Local (MLX) | Depends on model + prompt | `mlx-lm` |
 
-Select the engine per-job from the UI. The local engine uses NVIDIA Parakeet TDT 0.6b v2 via FluidAudio CoreML, running on Apple's Neural Engine. No API key or internet needed after initial model download.
+The transcription path uses NVIDIA Parakeet TDT 0.6b v2 via FluidAudio CoreML on Apple's Neural Engine. Summaries run locally through Gemma on MLX, or you can enable "Skip Summary" to generate dummy summaries while testing transcript quality.
 
 ## Usage
 
 1. Open http://localhost:3000
-2. Create a job: provide case name, choose transcription engine, and path to WAV files
+2. Create a job: provide case name and the path to your WAV files
 3. Click "Start Processing" — the pipeline runs automatically
 4. When done, click "Review Transcripts" to check/edit summaries
 5. Click "Approve All & Package" → "Download Zip"
@@ -58,8 +57,8 @@ Select the engine per-job from the UI. The local engine uses NVIDIA Parakeet TDT
 ## Pipeline Stages
 
 1. **Convert** — repairs corrupted G.729 WAV headers, converts to MP3 (parallel)
-2. **Transcribe** — AssemblyAI multichannel or Parakeet local (inmate/outside party)
-3. **Summarize** — Gemini Flash generates summaries (parallel, rate-limited)
+2. **Transcribe** — Parakeet local multichannel transcription (inmate/outside party)
+3. **Summarize** — Gemma local summaries, or dummy summaries when Skip Summary is enabled
 4. **Generate** — PDFs, Excel, search HTML, viewer HTML
 5. **Package** — Zips the deliverable folder
 
@@ -68,6 +67,5 @@ Select the engine per-job from the UI. The local engine uses NVIDIA Parakeet TDT
 - Python 3.11+
 - Node.js 18+
 - ffmpeg (must be on PATH: `brew install ffmpeg`)
-- Gemini API key (or GOOGLE_API_KEY)
-- AssemblyAI API key (only if using cloud transcription)
-- `bin/fluidaudiocli` (only if using local transcription)
+- `bin/fluidaudiocli`
+- `mlx-lm`

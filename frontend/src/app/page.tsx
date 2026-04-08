@@ -21,57 +21,13 @@ type JobSummary = {
 };
 
 type AppConfig = {
-  assemblyai_configured: boolean;
-  gemini_configured: boolean;
   ffmpeg_found: boolean;
   ffmpeg_path: string;
+  parakeet_available: boolean;
+  gemma_available: boolean;
   default_summary_prompt: string;
-  gemini_model: string;
-  default_transcription_engine: string;
-  available_transcription_engines: string[];
-  default_summarization_engine: string;
-  available_summarization_engines: string[];
+  gemma_model: string;
 };
-
-const TRANSCRIPTION_ENGINE_LABELS: Record<string, string> = {
-  assemblyai: 'AssemblyAI (Cloud)',
-  parakeet: 'Parakeet (Local)',
-};
-
-const SUMMARIZATION_ENGINE_LABELS: Record<string, string> = {
-  gemini: 'Gemini (Cloud)',
-  gemma: 'Gemma 4 E2B (Local)',
-};
-
-function EngineSelector({ label, engines, selected, onSelect, labels }: {
-  label: string;
-  engines: string[];
-  selected: string;
-  onSelect: (eng: string) => void;
-  labels: Record<string, string>;
-}) {
-  return (
-    <div className="col-span-2">
-      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
-      <div className="flex gap-3">
-        {engines.map(eng => (
-          <button
-            key={eng}
-            type="button"
-            onClick={() => onSelect(eng)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-              selected === eng
-                ? 'bg-slate-800 text-white border-slate-800'
-                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            {labels[eng] || eng}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 const STAGE_LABELS: Record<string, string> = {
   created: 'Created',
@@ -120,9 +76,6 @@ export default function JobsPage() {
     return paths.filter(p => AUDIO_EXTS.some(ext => p.toLowerCase().endsWith(ext))).length;
   };
 
-  const [selectedEngine, setSelectedEngine] = useState('');
-  const [selectedSumEngine, setSelectedSumEngine] = useState('');
-
   const caseNameRef = useRef<HTMLInputElement>(null);
   const defendantNameRef = useRef<HTMLInputElement>(null);
   const pathsRef = useRef<HTMLTextAreaElement>(null);
@@ -155,12 +108,6 @@ export default function JobsPage() {
         const data = await safeJson(res);
         if (data) {
           setConfig(data);
-          if (!selectedEngine && data.default_transcription_engine) {
-            setSelectedEngine(data.default_transcription_engine);
-          }
-          if (!selectedSumEngine && data.default_summarization_engine) {
-            setSelectedSumEngine(data.default_summarization_engine);
-          }
         }
       }
     } catch { }
@@ -199,8 +146,6 @@ export default function JobsPage() {
       xml_metadata_path: xmlPath || undefined,
       summary_prompt: promptRef.current?.value.trim() || '',
       skip_summary: skipSummaryRef.current?.checked || false,
-      transcription_engine: selectedEngine || undefined,
-      summarization_engine: selectedSumEngine || undefined,
     };
 
     if (!body.case_name || (!body.input_folder && (!body.file_paths || body.file_paths.length === 0))) {
@@ -227,8 +172,6 @@ export default function JobsPage() {
         if (skipSummaryRef.current) skipSummaryRef.current.checked = false;
         if (audioInputRef.current) audioInputRef.current.value = '';
         if (xmlInputRef.current) xmlInputRef.current.value = '';
-        setSelectedEngine(config?.default_transcription_engine || 'assemblyai');
-        setSelectedSumEngine(config?.default_summarization_engine || 'gemini');
         await loadJobs();
       }
     } catch (e) {
@@ -267,8 +210,6 @@ export default function JobsPage() {
       if (xmlRef.current) xmlRef.current.value = s.xml_metadata_path || '';
       if (promptRef.current) promptRef.current.value = s.summary_prompt || '';
       if (skipSummaryRef.current) skipSummaryRef.current.checked = s.skip_summary || false;
-      if (s.transcription_engine) setSelectedEngine(s.transcription_engine);
-      if (s.summarization_engine) setSelectedSumEngine(s.summarization_engine);
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch {}
   };
@@ -360,8 +301,8 @@ export default function JobsPage() {
   const warnings: string[] = [];
   if (config) {
     if (!config.ffmpeg_found) warnings.push('ffmpeg not found. Set FFMPEG_PATH in .env or install ffmpeg to PATH.');
-    if (!config.assemblyai_configured) warnings.push('ASSEMBLYAI_API_KEY not set in .env. Transcription will fail.');
-    if (!config.gemini_configured && (selectedSumEngine || config.default_summarization_engine) === 'gemini') warnings.push('GEMINI_API_KEY not set in .env. Gemini summaries will fail (use Gemma or Skip Summary for testing).');
+    if (!config.parakeet_available) warnings.push('fluidaudiocli not found. Place it at bin/fluidaudiocli or set FLUIDAUDIO_PATH before transcribing.');
+    if (!config.gemma_available) warnings.push('mlx-lm is not available. Install local summarization support or use Skip Summary for testing.');
   }
 
   return (
@@ -409,20 +350,6 @@ export default function JobsPage() {
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent"
               />
             </div>
-            <EngineSelector
-              label="Transcription Engine"
-              engines={config?.available_transcription_engines || ['assemblyai']}
-              selected={selectedEngine || config?.default_transcription_engine || 'assemblyai'}
-              onSelect={setSelectedEngine}
-              labels={TRANSCRIPTION_ENGINE_LABELS}
-            />
-            <EngineSelector
-              label="Summarization Engine"
-              engines={config?.available_summarization_engines || ['gemini']}
-              selected={selectedSumEngine || config?.default_summarization_engine || 'gemini'}
-              onSelect={setSelectedSumEngine}
-              labels={SUMMARIZATION_ENGINE_LABELS}
-            />
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Audio Files Path(s)</label>
               <div className="flex gap-2 items-start">

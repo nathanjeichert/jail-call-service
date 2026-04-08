@@ -57,7 +57,7 @@ class CallResult(BaseModel):
     xml_duration_seconds: Optional[int] = None
     notes: Optional[str] = None                 # non-empty only when meaningful
 
-    # Token usage from Gemini summarization
+    # Token usage from summarization
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     thinking_tokens: Optional[int] = None

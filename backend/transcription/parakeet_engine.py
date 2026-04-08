@@ -16,11 +16,11 @@ import os
 import shutil
 import subprocess
 import tempfile
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ..audio_converter import FFMPEG_PATH, _find_binary
 from ..models import TranscriptTurn, WordTimestamp
-from .base import mark_continuation_turns
+from .base import mark_continuation_turns, strip_preamble, strip_shared_system_turns
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +219,103 @@ def _merge_segments(
     return turns
 
 
+def _analyze_preamble_audio(ch1_path: str, ch2_path: str) -> Tuple[Optional[float], List[Tuple[float, float]]]:
+    """
+    Analyze shared audio regions between channels during the robocall preamble.
+
+    The preamble has high correlation between channels (same audio on both
+    sides), interspersed with silence gaps (DTMF tones, phone number entry)
+    where one channel goes quiet. We return both the contiguous regions of
+    high-correlation audio and a conservative boundary near the end of the
+    final shared region.
+
+    Returns:
+        (boundary_sec, high_corr_regions)
+    """
+    try:
+        import numpy as np
+        import wave
+    except ImportError:
+        logger.warning("numpy not available — skipping audio correlation")
+        return None, []
+
+    try:
+        with wave.open(ch1_path, "rb") as wf:
+            ch1 = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float32)
+        with wave.open(ch2_path, "rb") as wf:
+            ch2 = np.frombuffer(wf.readframes(wf.getnframes()), dtype=np.int16).astype(np.float32)
+    except Exception as e:
+        logger.warning("Could not read channel WAVs for correlation: %s", e)
+        return None, []
+
+    sample_rate = 16000
+    window_samples = sample_rate  # 1-second windows
+    hop_samples = sample_rate // 2  # 0.5-second hop
+    hop_sec = hop_samples / sample_rate
+    min_len = min(len(ch1), len(ch2))
+
+    # Only scan first 3 minutes — preamble is never longer than that
+    scan_limit = min(min_len, sample_rate * 180)
+
+    # Minimum amplitude for a window to count as "active speech"
+    # (avoids treating silence/noise as correlated or uncorrelated)
+    min_energy = 10000.0
+    high_corr_threshold = 0.9
+
+    high_regions: List[Tuple[float, float]] = []
+    region_start = None
+    region_end = None
+
+    for start in range(0, scan_limit - window_samples, hop_samples):
+        w1 = ch1[start : start + window_samples]
+        w2 = ch2[start : start + window_samples]
+        window_start_sec = start / sample_rate
+        window_end_sec = (start + window_samples) / sample_rate
+
+        norm1 = np.linalg.norm(w1)
+        norm2 = np.linalg.norm(w2)
+
+        # Skip windows where either channel is near-silent
+        if norm1 < min_energy or norm2 < min_energy:
+            if region_start is not None:
+                high_regions.append((region_start, region_end or window_start_sec))
+                region_start = None
+                region_end = None
+            continue
+
+        corr = np.dot(w1, w2) / (norm1 * norm2)
+
+        if corr >= high_corr_threshold:
+            if region_start is None:
+                region_start = window_start_sec
+                region_end = window_end_sec
+            elif window_start_sec <= (region_end or window_start_sec) + hop_sec:
+                region_end = window_end_sec
+            else:
+                high_regions.append((region_start, region_end or window_start_sec))
+                region_start = window_start_sec
+                region_end = window_end_sec
+        elif region_start is not None:
+            high_regions.append((region_start, region_end or window_start_sec))
+            region_start = None
+            region_end = None
+
+    if region_start is not None:
+        high_regions.append((region_start, region_end or (scan_limit / sample_rate)))
+
+    if high_regions:
+        boundary_sec = high_regions[-1][1] + 5.0
+        logger.info("Preamble boundary via audio correlation: %.1fs", boundary_sec)
+        return boundary_sec, high_regions
+
+    return None, []
+
+
+def _find_preamble_boundary(ch1_path: str, ch2_path: str) -> Optional[float]:
+    boundary_sec, _ = _analyze_preamble_audio(ch1_path, ch2_path)
+    return boundary_sec
+
+
 class ParakeetEngine:
     """Local transcription engine using Parakeet TDT via FluidAudio CoreML."""
 
@@ -257,12 +354,25 @@ class ParakeetEngine:
                 None, _transcribe_channel_sync, cli_path, ch2_path,
             )
 
-            # 3. Segment words into utterances
+            # 3. Detect preamble boundary via audio cross-correlation
+            correlation_boundary, correlation_regions = await loop.run_in_executor(
+                None, _analyze_preamble_audio, ch1_path, ch2_path,
+            )
+
+            # 4. Segment words into utterances
             ch1_segments = _segment_words(ch1_words, 1, labels)
             ch2_segments = _segment_words(ch2_words, 2, labels)
 
-            # 4. Merge and interleave
+            # 5. Merge and interleave
             turns = _merge_segments(ch1_segments, ch2_segments)
+
+            # 6. Strip robocall preamble (duplicated turns on both channels)
+            turns = strip_preamble(
+                turns,
+                correlation_boundary_sec=correlation_boundary,
+                correlation_regions=correlation_regions,
+            )
+            turns = strip_shared_system_turns(turns)
 
             logger.info(
                 "Parakeet: %d turns from %d ch1 + %d ch2 segments for %s",

@@ -65,7 +65,7 @@ class DBCall(Base):
     xml_duration_seconds = Column(Integer, nullable=True)
     notes = Column(Text, nullable=True)
 
-    # Token usage from Gemini summarization
+    # Token usage from summarization
     input_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
     thinking_tokens = Column(Integer, nullable=True)

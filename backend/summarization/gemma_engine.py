@@ -29,14 +29,17 @@ class GemmaEngine:
     def __init__(
         self,
         model_name: str = "unsloth/gemma-4-E2B-it-UD-MLX-4bit",
+        fallback_model_name: str = "mlx-community/gemma-3-text-4b-it-4bit",
         max_tokens: int = 1024,
     ):
         if not GEMMA_AVAILABLE:
             raise RuntimeError("mlx-lm not installed. Run: pip install mlx-lm")
         self._model_name = model_name
+        self._fallback_model_name = fallback_model_name
         self._max_tokens = max_tokens
         self._model = None
         self._tokenizer = None
+        self._active_model_name = None
 
         from mlx_lm.sample_utils import make_sampler
         self._sampler = make_sampler(temp=0.3)
@@ -48,15 +51,34 @@ class GemmaEngine:
         from mlx_lm import load, stream_generate
         import mlx.core as mx
 
-        logger.info("Loading Gemma model: %s", self._model_name)
-        self._model, self._tokenizer = load(self._model_name)
+        target_model_name = self._model_name
+        logger.info("Loading Gemma model: %s", target_model_name)
+        try:
+            self._model, self._tokenizer = load(target_model_name)
+        except Exception as exc:
+            if (
+                self._fallback_model_name
+                and self._fallback_model_name != target_model_name
+                and _should_retry_with_fallback(exc)
+            ):
+                logger.warning(
+                    "Gemma model %s could not be loaded (%s). Falling back to %s.",
+                    target_model_name,
+                    exc,
+                    self._fallback_model_name,
+                )
+                target_model_name = self._fallback_model_name
+                self._model, self._tokenizer = load(target_model_name)
+            else:
+                raise
+        self._active_model_name = target_model_name
 
         # Warm-up: trigger Metal kernel JIT compilation so the first real
         # call doesn't pay a 5-15s penalty.
         for _ in stream_generate(self._model, self._tokenizer, prompt="warmup", max_tokens=1):
             pass
         mx.clear_cache()
-        logger.info("Gemma model loaded and warmed up")
+        logger.info("Gemma model loaded and warmed up: %s", self._active_model_name)
 
     def unload(self):
         """Free model memory. Call after batch processing completes."""
@@ -67,6 +89,7 @@ class GemmaEngine:
         del self._tokenizer
         self._model = None
         self._tokenizer = None
+        self._active_model_name = None
         gc.collect()
         try:
             import mlx.core as mx
@@ -131,3 +154,8 @@ class GemmaEngine:
             "output_tokens": output_tokens,
             "thinking_tokens": 0,
         }
+
+
+def _should_retry_with_fallback(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "not supported" in message or "no module named" in message

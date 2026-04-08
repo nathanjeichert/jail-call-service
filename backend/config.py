@@ -6,20 +6,9 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# API Keys
-ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
-
-
 def validate_api_keys() -> None:
-    missing = []
-    if not ASSEMBLYAI_API_KEY:
-        missing.append("ASSEMBLYAI_API_KEY")
-    if not GEMINI_API_KEY:
-        missing.append("GEMINI_API_KEY (or GOOGLE_API_KEY)")
-    if missing:
-        msg = f"Missing required API keys in .env: {', '.join(missing)}. Jobs will fail without these."
-        logger.warning(msg)
+    """Retained for server startup compatibility; local-only mode has no API keys to validate."""
+    return None
 
 # Paths
 JOBS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "jobs")
@@ -30,9 +19,6 @@ os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 # Processing
 DEFAULT_LINES_PER_PAGE = 25
-MAX_TRANSCRIPTION_CONCURRENT = int(os.getenv("MAX_TRANSCRIPTION_CONCURRENT", "200"))
-MAX_SUMMARIZATION_CONCURRENT = int(os.getenv("MAX_SUMMARIZATION_CONCURRENT", "100"))
-ASSEMBLYAI_POLLING_INTERVAL = int(os.getenv("ASSEMBLYAI_POLLING_INTERVAL", "15"))
 
 # Default summary prompt — structured for attorney triage
 DEFAULT_SUMMARY_PROMPT = (
@@ -75,18 +61,13 @@ DEFAULT_SUMMARY_PROMPT = (
     "operator announcements, call acceptance prompts), or anything provided in the case context"
 )
 
-# Models
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
-ASSEMBLYAI_MODEL = os.getenv("ASSEMBLYAI_MODEL", "universal-3-pro")
+# Local-only engine configuration
+DEFAULT_TRANSCRIPTION_ENGINE = "parakeet"
+DEFAULT_SUMMARIZATION_ENGINE = "gemma"
 
-# Transcription engine: "assemblyai" (cloud) or "parakeet" (local)
-DEFAULT_TRANSCRIPTION_ENGINE = os.getenv("DEFAULT_TRANSCRIPTION_ENGINE", "assemblyai")
-# Parakeet must run sequentially on 8 GB machines to avoid OOM
-MAX_PARAKEET_CONCURRENT = 1
+# Local models must run sequentially on 8 GB machines to avoid OOM.
+MAX_PARAKEET_CONCURRENT = int(os.getenv("MAX_PARAKEET_CONCURRENT", "1"))
+MAX_GEMMA_CONCURRENT = int(os.getenv("MAX_GEMMA_CONCURRENT", "1"))
 
-# Summarization engine: "gemini" (cloud) or "gemma" (local)
-DEFAULT_SUMMARIZATION_ENGINE = os.getenv("DEFAULT_SUMMARIZATION_ENGINE", "gemini")
-# Gemma must run sequentially on 8 GB machines to avoid OOM
-MAX_GEMMA_CONCURRENT = 1
 GEMMA_MODEL = os.getenv("GEMMA_MODEL", "unsloth/gemma-4-E2B-it-UD-MLX-4bit")
 GEMMA_MAX_TOKENS = int(os.getenv("GEMMA_MAX_TOKENS", "1024"))

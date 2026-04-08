@@ -36,11 +36,6 @@ _queue_lock = threading.Lock()
 
 _SENTINEL = object()
 
-# Engines that run local models competing for GPU/unified memory
-_LOCAL_TRANSCRIPTION_ENGINES = frozenset({"parakeet"})
-_LOCAL_SUMMARIZATION_ENGINES = frozenset({"gemma"})
-
-
 def get_event_queue(job_id: str) -> queue.Queue:
     with _queue_lock:
         if job_id not in _event_queues:
@@ -138,12 +133,7 @@ async def _transcribe_one(job_id, call, defendant_name, transcription_engine=Non
     job_store.update_call(job_id, call.index, status=CallStatus.TRANSCRIBING)
 
     engine_name = transcription_engine or cfg.DEFAULT_TRANSCRIPTION_ENGINE
-    engine = get_engine(
-        engine_name,
-        api_key=cfg.ASSEMBLYAI_API_KEY,
-        speech_model=cfg.ASSEMBLYAI_MODEL,
-        polling_interval=cfg.ASSEMBLYAI_POLLING_INTERVAL,
-    )
+    engine = get_engine(engine_name)
 
     channel_labels = {
         1: call.inmate_name or defendant_name or "INMATE",
@@ -350,22 +340,11 @@ async def _run_pipeline(job: Job) -> None:
 
     # ── Worker counts ──
     n_convert = max(1, (os.cpu_count() or 2) - 1)
-    transcription_engine_name = (job.transcription_engine or cfg.DEFAULT_TRANSCRIPTION_ENGINE).lower()
-    if transcription_engine_name == "parakeet":
-        n_transcribe = min(cfg.MAX_PARAKEET_CONCURRENT, max(1, total_calls))
-    else:
-        n_transcribe = min(cfg.MAX_TRANSCRIPTION_CONCURRENT, max(1, total_calls))
-    summarization_engine_name = (job.summarization_engine or cfg.DEFAULT_SUMMARIZATION_ENGINE).lower()
-    if summarization_engine_name == "gemma":
-        n_summarize = min(cfg.MAX_GEMMA_CONCURRENT, max(1, total_calls))
-    else:
-        n_summarize = min(cfg.MAX_SUMMARIZATION_CONCURRENT, max(1, total_calls))
+    transcription_engine_name = cfg.DEFAULT_TRANSCRIPTION_ENGINE
+    summarization_engine_name = cfg.DEFAULT_SUMMARIZATION_ENGINE
+    n_transcribe = min(cfg.MAX_PARAKEET_CONCURRENT, max(1, total_calls))
+    n_summarize = min(cfg.MAX_GEMMA_CONCURRENT, max(1, total_calls))
     n_pdf = min(4, max(1, total_calls))
-
-    all_local = (
-        transcription_engine_name in _LOCAL_TRANSCRIPTION_ENGINES
-        and summarization_engine_name in _LOCAL_SUMMARIZATION_ENGINES
-    )
 
     # Create summarization engine once (reused across all calls — critical for local model loading)
     from .summarization import get_engine as get_summarization_engine
@@ -534,55 +513,34 @@ async def _run_pipeline(job: Job) -> None:
     pdf_executor = ThreadPoolExecutor(max_workers=n_pdf)
 
     try:
-        if all_local:
-            # Two-phase mode: avoid loading both local models simultaneously on 8 GB.
-            # Phase 1: Convert + Transcribe (Parakeet memory freed when phase ends)
-            logger.info("All-local mode: running two-phase pipeline for job %s", job_id)
-            await asyncio.gather(
-                run_stage_group(
-                    [convert_loop(convert_executor) for _ in range(n_convert)],
-                    transcribe_q, n_transcribe,
-                ),
-                run_stage_group(
-                    [transcribe_loop() for _ in range(n_transcribe)],
-                    summarize_q, n_summarize,
-                ),
-            )
+        # Two-phase mode: avoid loading both local models simultaneously on 8 GB.
+        # Phase 1: Convert + Transcribe (Parakeet memory freed when phase ends)
+        logger.info("Local-only mode: running two-phase pipeline for job %s", job_id)
+        await asyncio.gather(
+            run_stage_group(
+                [convert_loop(convert_executor) for _ in range(n_convert)],
+                transcribe_q, n_transcribe,
+            ),
+            run_stage_group(
+                [transcribe_loop() for _ in range(n_transcribe)],
+                summarize_q, n_summarize,
+            ),
+        )
 
-            if _is_paused():
-                return
+        if _is_paused():
+            return
 
-            # Phase 2: Summarize + PDF (summarize_q already has items + sentinels)
-            await asyncio.gather(
-                run_stage_group(
-                    [summarize_loop() for _ in range(n_summarize)],
-                    pdf_q, n_pdf,
-                ),
-                run_stage_group(
-                    [pdf_loop(pdf_executor) for _ in range(n_pdf)],
-                    None, 0,
-                ),
-            )
-        else:
-            # Standard streaming pipeline: all four stages run concurrently
-            await asyncio.gather(
-                run_stage_group(
-                    [convert_loop(convert_executor) for _ in range(n_convert)],
-                    transcribe_q, n_transcribe,
-                ),
-                run_stage_group(
-                    [transcribe_loop() for _ in range(n_transcribe)],
-                    summarize_q, n_summarize,
-                ),
-                run_stage_group(
-                    [summarize_loop() for _ in range(n_summarize)],
-                    pdf_q, n_pdf,
-                ),
-                run_stage_group(
-                    [pdf_loop(pdf_executor) for _ in range(n_pdf)],
-                    None, 0,
-                ),
-            )
+        # Phase 2: Summarize + PDF (summarize_q already has items + sentinels)
+        await asyncio.gather(
+            run_stage_group(
+                [summarize_loop() for _ in range(n_summarize)],
+                pdf_q, n_pdf,
+            ),
+            run_stage_group(
+                [pdf_loop(pdf_executor) for _ in range(n_pdf)],
+                None, 0,
+            ),
+        )
     finally:
         convert_executor.shutdown(wait=False)
         pdf_executor.shutdown(wait=False)
@@ -671,5 +629,4 @@ async def _stage_package(job: Job, output_dir: str) -> str:
         return zip_path
 
     return await loop.run_in_executor(None, make_zip)
-
 
