@@ -1,7 +1,11 @@
 import unittest
 
 from backend.models import TranscriptTurn, WordTimestamp
-from backend.transcription.base import strip_preamble, strip_shared_system_turns
+from backend.transcription.base import (
+    strip_edge_system_turns,
+    strip_preamble,
+    strip_shared_system_turns,
+)
 
 
 def make_turn(speaker: str, text: str, start_sec: float, duration_sec: float = 1.0) -> TranscriptTurn:
@@ -190,6 +194,35 @@ class StripPreambleTests(unittest.TestCase):
         self.assertEqual(
             [turn.text for turn in kept],
             ["Yeah.", "Yeah.", "I heard you."],
+        )
+
+    def test_removes_leading_one_sided_system_balance_prompt(self):
+        turns = [
+            make_turn(
+                "INMATE",
+                "Your current balance is $20.00. This call is from a correctional facility and may be recorded.",
+                82.0,
+                4.0,
+            ),
+            make_turn("OUTSIDE PARTY", "Hello? Can you hear me now?", 88.0, 1.0),
+        ]
+
+        kept = strip_edge_system_turns(turns, correlation_boundary_sec=84.0)
+
+        self.assertEqual([turn.text for turn in kept], ["Hello? Can you hear me now?"])
+
+    def test_removes_trailing_one_sided_provider_outro(self):
+        turns = [
+            make_turn("INMATE", "All right, I love you.", 300.0, 1.0),
+            make_turn("OUTSIDE PARTY", "Bye.", 301.0, 0.5),
+            make_turn("OUTSIDE PARTY", "Thank you for using Global Tel Link.", 304.0, 2.0),
+        ]
+
+        kept = strip_edge_system_turns(turns)
+
+        self.assertEqual(
+            [turn.text for turn in kept],
+            ["All right, I love you.", "Bye."],
         )
 
 

@@ -5,8 +5,8 @@ Handles stereo jail call audio by:
 1. Splitting into per-channel mono 16 kHz WAV files (via ffmpeg)
 2. Transcribing each channel with fluidaudiocli (CoreML, runs on ANE)
 3. Parsing word-level timestamps from JSON output
-4. Segmenting word streams into utterances based on silence gaps
-5. Merging and interleaving utterances by timestamp
+4. Stripping duplicated / system audio on fine-grained channel-local spans
+5. Rebuilding readable speaker turns via word-level floor assignment
 """
 
 import asyncio
@@ -20,11 +20,20 @@ from typing import Dict, List, Optional, Tuple
 
 from ..audio_converter import FFMPEG_PATH, _find_binary
 from ..models import TranscriptTurn, WordTimestamp
-from .base import mark_continuation_turns, strip_preamble, strip_shared_system_turns
+from .base import (
+    mark_continuation_turns,
+    strip_edge_system_turns,
+    strip_preamble,
+    strip_shared_system_turns,
+)
 
 logger = logging.getLogger(__name__)
 
 UTTERANCE_GAP_SECONDS = 1.5
+PRESTRIP_GAP_SECONDS = 0.55
+FLOOR_BURST_GAP_SECONDS = 0.85
+FLOOR_SAME_SPEAKER_GAP_SECONDS = 8.0
+INTERRUPTION_RESUME_EPSILON_SEC = 1e-4
 
 _FLUIDAUDIO_PATH: Optional[str] = None
 
@@ -219,6 +228,173 @@ def _merge_segments(
     return turns
 
 
+def _segment_to_turn(seg: dict) -> TranscriptTurn:
+    start_sec = seg["start_sec"]
+    minutes = int(start_sec // 60)
+    seconds = int(start_sec % 60)
+    timestamp_str = f"[{minutes:02d}:{seconds:02d}]"
+    word_timestamps = [
+        WordTimestamp(
+            text=w["text"],
+            start=w["start"] * 1000,
+            end=w["end"] * 1000,
+            confidence=w.get("confidence"),
+            speaker=seg["speaker"],
+        )
+        for w in seg["words"]
+    ]
+    return TranscriptTurn(
+        speaker=seg["speaker"],
+        text=" ".join(w["text"] for w in seg["words"]),
+        timestamp=timestamp_str,
+        words=word_timestamps if word_timestamps else None,
+    )
+
+
+def _copy_segment(seg: dict) -> dict:
+    return {
+        "channel": seg["channel"],
+        "speaker": seg["speaker"],
+        "start_sec": seg["start_sec"],
+        "end_sec": seg["end_sec"],
+        "text": seg["text"],
+        "words": list(seg["words"]),
+    }
+
+
+def _extend_segment(base: dict, extra: dict) -> None:
+    if not extra["words"]:
+        return
+    base["words"].extend(extra["words"])
+    base["start_sec"] = base["words"][0]["start"]
+    base["end_sec"] = base["words"][-1]["end"]
+    base["text"] = " ".join(w["text"] for w in base["words"])
+
+
+def _append_segment(output: list[dict], seg: dict) -> None:
+    if not seg.get("words"):
+        return
+    if (
+        output
+        and output[-1]["speaker"] == seg["speaker"]
+        and seg["start_sec"] - output[-1]["end_sec"] <= FLOOR_SAME_SPEAKER_GAP_SECONDS
+    ):
+        _extend_segment(output[-1], seg)
+        return
+    output.append(_copy_segment(seg))
+
+
+def _split_segment_at(seg: dict, split_sec: float) -> list[dict]:
+    if not seg.get("words"):
+        return []
+
+    pre_words = [word for word in seg["words"] if word["start"] < split_sec]
+    post_words = [word for word in seg["words"] if word["start"] >= split_sec]
+    if not pre_words or not post_words:
+        return [_copy_segment(seg)]
+
+    pre_seg = _make_segment(pre_words, seg["channel"], seg["speaker"])
+    post_seg = _make_segment(post_words, seg["channel"], seg["speaker"])
+
+    # When the resumed speaker's next word begins at the exact same timestamp
+    # as the interrupter, bias ordering slightly toward the interrupter so we
+    # do not render resumed speech ahead of the interruption.
+    if post_seg["start_sec"] <= split_sec:
+        post_seg["start_sec"] = split_sec + INTERRUPTION_RESUME_EPSILON_SEC
+
+    return [pre_seg, post_seg]
+
+
+def _split_segments_on_interruptions(segments: list[dict]) -> list[dict]:
+    """
+    Split same-speaker channel runs anywhere the opposite speaker actually
+    enters before that run has finished.
+
+    This keeps the final transcript time-faithful: later words from speaker A
+    cannot remain trapped inside an earlier A turn once speaker B has started.
+    """
+    if len(segments) < 2:
+        return [_copy_segment(seg) for seg in segments if seg.get("words")]
+
+    runs = sorted(
+        (_copy_segment(seg) for seg in segments if seg.get("words")),
+        key=lambda seg: (seg["start_sec"], seg["end_sec"], seg["channel"]),
+    )
+
+    changed = True
+    while changed:
+        changed = False
+        updated: list[dict] = []
+
+        for seg in runs:
+            split_points = sorted({
+                other["start_sec"]
+                for other in runs
+                if other["speaker"] != seg["speaker"]
+                and seg["start_sec"] < other["start_sec"] < seg["end_sec"]
+                and any(word["start"] >= other["start_sec"] for word in seg["words"])
+            })
+            pieces = [_copy_segment(seg)]
+            for split_sec in split_points:
+                next_pieces: list[dict] = []
+                for piece in pieces:
+                    if not (piece["start_sec"] < split_sec < piece["end_sec"]):
+                        next_pieces.append(piece)
+                        continue
+                    split_parts = _split_segment_at(piece, split_sec)
+                    if len(split_parts) > 1:
+                        changed = True
+                    next_pieces.extend(split_parts)
+                pieces = next_pieces
+            updated.extend(pieces)
+
+        runs = sorted(updated, key=lambda seg: (seg["start_sec"], seg["end_sec"], seg["channel"]))
+
+    return runs
+
+
+def _extract_words_by_channel(
+    turns: List[TranscriptTurn],
+    channel_labels: Dict[int, str],
+) -> Dict[int, List[dict]]:
+    speaker_to_channel = {speaker: channel for channel, speaker in channel_labels.items()}
+    words_by_channel: Dict[int, List[dict]] = {channel: [] for channel in channel_labels}
+
+    for turn in turns:
+        channel = speaker_to_channel.get(turn.speaker)
+        if not channel or not turn.words:
+            continue
+        for word in turn.words:
+            words_by_channel[channel].append({
+                "text": word.text,
+                "start": word.start / 1000.0,
+                "end": word.end / 1000.0,
+                "confidence": word.confidence,
+            })
+
+    for channel_words in words_by_channel.values():
+        channel_words.sort(key=lambda word: (word["start"], word["end"]))
+
+    return words_by_channel
+
+
+def _interleave_words_to_turns(
+    ch1_words: list[dict],
+    ch2_words: list[dict],
+    channel_labels: Dict[int, str],
+) -> List[TranscriptTurn]:
+    ch1_runs = _segment_words(ch1_words, 1, channel_labels, gap_threshold=FLOOR_BURST_GAP_SECONDS)
+    ch2_runs = _segment_words(ch2_words, 2, channel_labels, gap_threshold=FLOOR_BURST_GAP_SECONDS)
+    runs = _split_segments_on_interruptions(ch1_runs + ch2_runs)
+    if not runs:
+        return []
+
+    output: list[dict] = []
+    for seg in runs:
+        _append_segment(output, seg)
+    return [_segment_to_turn(seg) for seg in output]
+
+
 def _analyze_preamble_audio(ch1_path: str, ch2_path: str) -> Tuple[Optional[float], List[Tuple[float, float]]]:
     """
     Analyze shared audio regions between channels during the robocall preamble.
@@ -359,24 +535,57 @@ class ParakeetEngine:
                 None, _analyze_preamble_audio, ch1_path, ch2_path,
             )
 
-            # 4. Segment words into utterances
-            ch1_segments = _segment_words(ch1_words, 1, labels)
-            ch2_segments = _segment_words(ch2_words, 2, labels)
+            # 4. Build fine-grained channel-local spans for cleanup before we
+            #    rebuild final speaker turns. This avoids letting the old
+            #    per-channel gap heuristic dictate the final reading order.
+            ch1_cleanup_segments = _segment_words(
+                ch1_words,
+                1,
+                labels,
+                gap_threshold=PRESTRIP_GAP_SECONDS,
+            )
+            ch2_cleanup_segments = _segment_words(
+                ch2_words,
+                2,
+                labels,
+                gap_threshold=PRESTRIP_GAP_SECONDS,
+            )
+            cleanup_turns = _merge_segments(ch1_cleanup_segments, ch2_cleanup_segments)
 
-            # 5. Merge and interleave
-            turns = _merge_segments(ch1_segments, ch2_segments)
-
-            # 6. Strip robocall preamble (duplicated turns on both channels)
-            turns = strip_preamble(
-                turns,
+            # 5. Strip duplicated and edge system audio on the fine-grained spans.
+            cleanup_turns = strip_preamble(
+                cleanup_turns,
                 correlation_boundary_sec=correlation_boundary,
                 correlation_regions=correlation_regions,
+                max_time_gap_sec=4.0,
+                max_span_turns=6,
             )
-            turns = strip_shared_system_turns(turns)
+            cleanup_turns = strip_shared_system_turns(
+                cleanup_turns,
+                max_span_turns=4,
+            )
+            cleanup_turns = strip_edge_system_turns(
+                cleanup_turns,
+                correlation_boundary_sec=correlation_boundary,
+            )
+
+            filtered_words = _extract_words_by_channel(cleanup_turns, labels)
+
+            # 6. Rebuild final turns from surviving words via cross-channel
+            #    floor assignment, which is much less choppy than the old
+            #    "segment each channel, then sort" flow.
+            turns = _interleave_words_to_turns(
+                filtered_words.get(1, []),
+                filtered_words.get(2, []),
+                labels,
+            )
 
             logger.info(
-                "Parakeet: %d turns from %d ch1 + %d ch2 segments for %s",
-                len(turns), len(ch1_segments), len(ch2_segments), audio_path,
+                "Parakeet: %d turns from %d/%d cleanup spans for %s",
+                len(turns),
+                len(ch1_cleanup_segments),
+                len(ch2_cleanup_segments),
+                audio_path,
             )
 
             return mark_continuation_turns(turns)

@@ -71,6 +71,7 @@ def render_viewer(calls, case_name: str = "") -> str:
     calls_json = json.dumps(call_data, ensure_ascii=False)
     escaped_case_name = html_mod.escape(case_name or "Jail Calls")
     result = template.replace("{{CALLS_JSON}}", calls_json)
+    result = result.replace("{{ CALLS_JSON }}", calls_json)
     result = result.replace("{{CASE_NAME}}", escaped_case_name)
 
     return result

@@ -50,12 +50,15 @@ PDF_PAGE_NUMBER_SIZE = 10
 PDF_LINE_NUM_RIGHT = 0.78 * inch      # right edge of line numbers
 PDF_RULE_LEFT_OUTER = 0.92 * inch     # left double-line (outer)
 PDF_RULE_LEFT_INNER = 0.97 * inch     # left double-line (inner)
-PDF_TEXT_X = 1.2 * inch               # left edge of transcript text
 PDF_RULE_RIGHT = 7.4 * inch           # right single line
 
-# Derive max characters per line from physical layout
+# Derive transcript text block from the ruled corridor, centered between the
+# inner left rule and the right rule.
 _COURIER_CHAR_W = stringWidth("M", PDF_TEXT_FONT, PDF_TEXT_SIZE)
-MAX_LINE_CHARS = int((PDF_RULE_RIGHT - PDF_TEXT_X - 6) / _COURIER_CHAR_W)
+_TRANSCRIPT_RULE_WIDTH = PDF_RULE_RIGHT - PDF_RULE_LEFT_INNER
+MAX_LINE_CHARS = int((_TRANSCRIPT_RULE_WIDTH - 12) / _COURIER_CHAR_W)
+PDF_TEXT_BLOCK_WIDTH = MAX_LINE_CHARS * _COURIER_CHAR_W
+PDF_TEXT_X = PDF_RULE_LEFT_INNER + ((_TRANSCRIPT_RULE_WIDTH - PDF_TEXT_BLOCK_WIDTH) / 2.0)
 
 # Summary page layout (professional sans-serif)
 SUMMARY_FONT = "Helvetica"
@@ -69,6 +72,7 @@ SUMMARY_LINE_HEIGHT = 13
 SUMMARY_SECTION_GAP = 10
 
 TIMESTAMP_RE = re.compile(r"(\[(?:\d{1,2}:)?\d{2}:\d{2}\])")
+DISPLAY_BLOCK_MERGE_GAP_SEC = 10.0
 
 
 def _safe_text(value: Optional[str]) -> str:
@@ -111,6 +115,88 @@ def wrap_text(text: str, max_width: int) -> List[str]:
     if current:
         lines.append(" ".join(current))
     return lines or [""]
+
+
+def _turn_end_seconds(turn: TranscriptTurn) -> float:
+    if turn.words:
+        valid = [w.end for w in turn.words if w.end is not None and w.end >= 0]
+        if valid:
+            return max(valid) / 1000.0
+    return timestamp_to_seconds(turn.timestamp)
+
+
+def _display_blocks(turns: List[TranscriptTurn]) -> List[dict]:
+    blocks: List[dict] = []
+
+    for turn_idx, turn in enumerate(turns):
+        speaker = turn.speaker.upper()
+        words = list(turn.words or [])
+        block_text = turn.text.strip()
+        start_sec = timestamp_to_seconds(turn.timestamp)
+        end_sec = _turn_end_seconds(turn)
+        if words:
+            valid_starts = [w.start for w in words if w.start is not None and w.start >= 0]
+            valid_ends = [w.end for w in words if w.end is not None and w.end >= 0]
+            if valid_starts:
+                start_sec = min(valid_starts) / 1000.0
+            if valid_ends:
+                end_sec = max(valid_ends) / 1000.0
+
+        if (
+            blocks
+            and blocks[-1]["speaker"] == speaker
+            and start_sec - blocks[-1]["end_sec"] <= DISPLAY_BLOCK_MERGE_GAP_SEC
+        ):
+            blocks[-1]["turn_indices"].append(turn_idx)
+            if words:
+                blocks[-1]["words"].extend(words)
+            if block_text:
+                blocks[-1]["text"] = (blocks[-1]["text"] + " " + block_text).strip()
+            blocks[-1]["end_sec"] = max(blocks[-1]["end_sec"], end_sec)
+        else:
+            blocks.append({
+                "speaker": speaker,
+                "words": words,
+                "text": block_text,
+                "start_sec": start_sec,
+                "end_sec": end_sec,
+                "turn_indices": [turn_idx],
+            })
+
+    return blocks
+
+
+def _wrap_word_entries(words: List[WordTimestamp], first_width: int, cont_width: int) -> List[List[WordTimestamp]]:
+    if not words:
+        return []
+
+    limits = [max(first_width, 1)]
+    lines: List[List[WordTimestamp]] = []
+    current: List[WordTimestamp] = []
+    current_len = 0
+    line_idx = 0
+
+    for word in words:
+        token = word.text.strip()
+        if not token:
+            continue
+        limit = limits[min(line_idx, len(limits) - 1)]
+        needed = len(token) + (1 if current else 0)
+        if current and current_len + needed > limit:
+            lines.append(current)
+            current = [word]
+            current_len = len(token)
+            line_idx += 1
+            if len(limits) == 1:
+                limits.append(max(cont_width, 1))
+        else:
+            current.append(word)
+            current_len += needed
+
+    if current:
+        lines.append(current)
+
+    return lines
 
 
 def _draw_transcript_rules(c: canvas.Canvas) -> None:
@@ -528,65 +614,90 @@ def compute_line_entries(
     lines_per_page: int = 25,
 ) -> List[dict]:
     """Build page/line layout data from transcript turns."""
-    line_entries: List[dict] = []
-    page = 1
-    line_in_page = 1
+    raw_entries: List[dict] = []
 
-    for turn_idx, turn in enumerate(turns):
-        start_sec = timestamp_to_seconds(turn.timestamp)
-        if turn.words:
-            word_starts = [w.start for w in turn.words if w.start is not None and w.start >= 0]
-            word_ends = [w.end for w in turn.words if w.end is not None and w.end >= 0]
-            if word_starts and word_ends:
-                start_sec = min(word_starts) / 1000.0
-
-        is_continuation = getattr(turn, 'is_continuation', False)
-        speaker_name = turn.speaker.upper()
-        text = turn.text.strip()
-
-        speaker_prefix = " " * SPEAKER_PREFIX_SPACES + speaker_name + SPEAKER_COLON
+    for block_idx, block in enumerate(_display_blocks(turns)):
+        speaker_name = block["speaker"]
         max_cont_width = MAX_LINE_CHARS - CONTINUATION_SPACES
+        max_first_line = MAX_LINE_CHARS - (
+            len(" " * SPEAKER_PREFIX_SPACES + speaker_name + SPEAKER_COLON)
+        )
 
-        if is_continuation:
-            max_first_line = max_cont_width
+        line_payloads: List[Tuple[str, float, float]] = []
+        if block["words"]:
+            for wrapped_words in _wrap_word_entries(block["words"], max_first_line, max_cont_width):
+                line_text = " ".join(word.text.strip() for word in wrapped_words if word.text.strip())
+                start_sec = min(word.start for word in wrapped_words) / 1000.0
+                end_sec = max(word.end for word in wrapped_words) / 1000.0
+                line_payloads.append((line_text, start_sec, end_sec))
         else:
-            max_first_line = MAX_LINE_CHARS - len(speaker_prefix)
+            wrapped = wrap_text(block["text"], max_first_line) or [""]
+            cont_text = " ".join(wrapped[1:])
+            cont_lines = wrap_text(cont_text, max_cont_width) if cont_text else []
+            all_lines = [wrapped[0]] + cont_lines
+            for line_text in all_lines:
+                line_payloads.append((line_text, block["start_sec"], block["end_sec"]))
 
-        wrapped = wrap_text(text, max_first_line)
-        if not wrapped:
-            wrapped = [""]
-
-        cont_text = " ".join(wrapped[1:])
-        cont_lines = wrap_text(cont_text, max_cont_width) if cont_text else []
-        all_lines = [wrapped[0]] + cont_lines
-
-        for line_idx, line_text in enumerate(all_lines):
-            is_cont_line = is_continuation or line_idx > 0
-            if line_idx == 0 and not is_continuation:
-                rendered = speaker_prefix + line_text
-            else:
-                rendered = " " * CONTINUATION_SPACES + line_text
-
-            pgln = page * 100 + line_in_page
-            line_entries.append({
-                "id": f"{turn_idx}-{line_idx}",
-                "turn_index": turn_idx,
+        for line_idx, (line_text, start_sec, end_sec) in enumerate(line_payloads):
+            raw_entries.append({
+                "id": f"{block_idx}-{line_idx}",
+                "block_index": block_idx,
+                "turn_index": block["turn_indices"][0],
                 "line_index": line_idx,
                 "speaker": speaker_name,
                 "text": line_text,
-                "rendered_text": rendered,
                 "start": start_sec,
-                "end": start_sec,
-                "page": page,
-                "line": line_in_page,
-                "pgln": pgln,
-                "is_continuation": is_cont_line,
+                "end": end_sec,
             })
 
-            line_in_page += 1
-            if line_in_page > lines_per_page:
-                page += 1
-                line_in_page = 1
+    ordered_entries = sorted(
+        raw_entries,
+        key=lambda entry: (
+            float(entry.get("start", 0.0) or 0.0),
+            float(entry.get("end", 0.0) or 0.0),
+            int(entry.get("block_index", 0) or 0),
+            int(entry.get("line_index", 0) or 0),
+        ),
+    )
+
+    line_entries: List[dict] = []
+    page = 1
+    line_in_page = 1
+    prev_entry: Optional[dict] = None
+
+    for entry in ordered_entries:
+        is_cont_line = (
+            prev_entry is not None
+            and prev_entry.get("block_index") == entry.get("block_index")
+            and int(prev_entry.get("line_index", 0) or 0) + 1 == int(entry.get("line_index", 0) or 0)
+        )
+        speaker_prefix = " " * SPEAKER_PREFIX_SPACES + entry["speaker"] + SPEAKER_COLON
+        if is_cont_line:
+            rendered = " " * CONTINUATION_SPACES + entry["text"]
+        else:
+            rendered = speaker_prefix + entry["text"]
+
+        pgln = page * 100 + line_in_page
+        line_entries.append({
+            "id": entry["id"],
+            "turn_index": entry["turn_index"],
+            "line_index": entry["line_index"],
+            "speaker": entry["speaker"],
+            "text": entry["text"],
+            "rendered_text": rendered,
+            "start": entry["start"],
+            "end": entry["end"],
+            "page": page,
+            "line": line_in_page,
+            "pgln": pgln,
+            "is_continuation": is_cont_line,
+        })
+
+        line_in_page += 1
+        if line_in_page > lines_per_page:
+            page += 1
+            line_in_page = 1
+        prev_entry = entry
 
     return line_entries
 

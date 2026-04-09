@@ -29,6 +29,62 @@ _SYSTEM_DUP_MAX_DURATION_SEC = 18.0
 _SYSTEM_DUP_MIN_OVERLAP_TOKENS = 4
 _SYSTEM_DUP_MIN_SCORE = 0.88
 _SYSTEM_DUP_MAX_SPAN_TURNS = 2
+_SYSTEM_EDGE_START_FALLBACK_SCAN_SEC = 60.0
+_SYSTEM_EDGE_START_BUFFER_SEC = 20.0
+_SYSTEM_EDGE_TAIL_SCAN_SEC = 25.0
+_SYSTEM_EDGE_MIN_CHAR_COUNT = 18
+_SYSTEM_EDGE_CUE_THRESHOLD = 3
+
+_SYSTEM_CUE_TOKENS = frozenset({
+    "<num>",
+    "accept",
+    "balance",
+    "call",
+    "calling",
+    "collect",
+    "connected",
+    "connection",
+    "correctional",
+    "debit",
+    "english",
+    "facility",
+    "hold",
+    "inmate",
+    "minute",
+    "minutes",
+    "monitored",
+    "number",
+    "operator",
+    "phone",
+    "pin",
+    "prepaid",
+    "press",
+    "recorded",
+    "refuse",
+    "remaining",
+    "thank",
+    "using",
+    "wait",
+})
+
+_SYSTEM_STRONG_PATTERNS = (
+    re.compile(r"\bthank you for using\b"),
+    re.compile(r"\b(?:you have )?<num> minute(?:s)? remaining\b"),
+    re.compile(r"\bplease hold\b"),
+    re.compile(r"\bplease wait\b"),
+    re.compile(r"\bprepaid call\b"),
+    re.compile(r"\bcollect call\b"),
+    re.compile(r"\bdebit call\b"),
+    re.compile(r"\baccept this call\b"),
+    re.compile(r"\brefuse this call\b"),
+    re.compile(r"\bcurrent balance\b"),
+    re.compile(r"\bpin number\b"),
+    re.compile(r"\bphone number\b"),
+    re.compile(r"\bcorrectional facility\b"),
+    re.compile(r"\bcall is being connected\b"),
+    re.compile(r"\bcall may be recorded\b"),
+    re.compile(r"\bcall is from\b"),
+)
 
 
 @dataclass(frozen=True)
@@ -220,6 +276,55 @@ def strip_shared_system_turns(
         len(selected),
     )
     return [t for i, t in enumerate(turns) if i not in duplicate_indices]
+
+
+def strip_edge_system_turns(
+    turns: List[TranscriptTurn],
+    *,
+    correlation_boundary_sec: Optional[float] = None,
+    tail_scan_sec: float = _SYSTEM_EDGE_TAIL_SCAN_SEC,
+    start_buffer_sec: float = _SYSTEM_EDGE_START_BUFFER_SEC,
+) -> List[TranscriptTurn]:
+    """
+    Remove strong machine-style prompts that survive only on one channel at the
+    very start or end of the call.
+
+    This is intentionally narrower than duplicate stripping: it only trims
+    contiguous edge spans that look strongly like telecom/jail-call system
+    language. That keeps genuine one-sided speech such as "hello?" intact.
+    """
+    if not turns:
+        return turns
+
+    remove_indices: set[int] = set()
+    start_scan_limit = (
+        (correlation_boundary_sec + start_buffer_sec)
+        if correlation_boundary_sec is not None
+        else _SYSTEM_EDGE_START_FALLBACK_SCAN_SEC
+    )
+
+    for idx, turn in enumerate(turns):
+        start_sec = _turn_start_sec(turn)
+        if start_sec is None or start_sec > start_scan_limit:
+            break
+        if not _looks_like_system_message(turn):
+            break
+        remove_indices.add(idx)
+
+    call_end_sec = max((_turn_end_sec(turn) or 0.0) for turn in turns)
+    for idx in range(len(turns) - 1, -1, -1):
+        turn = turns[idx]
+        start_sec = _turn_start_sec(turn)
+        if start_sec is None or start_sec < call_end_sec - tail_scan_sec:
+            break
+        if not _looks_like_system_message(turn):
+            break
+        remove_indices.add(idx)
+
+    if remove_indices:
+        logger.info("Edge system audio: stripped %d one-sided edge turns", len(remove_indices))
+
+    return [turn for idx, turn in enumerate(turns) if idx not in remove_indices]
 
 
 def _build_spans_by_speaker(
@@ -522,6 +627,24 @@ def _normalize_match_text(text: str) -> str:
     text = re.sub(r"[^a-z0-9\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def _looks_like_system_message(turn: TranscriptTurn) -> bool:
+    norm_text = _normalize_match_text(turn.text)
+    if len(norm_text) < _SYSTEM_EDGE_MIN_CHAR_COUNT:
+        return False
+
+    if any(pattern.search(norm_text) for pattern in _SYSTEM_STRONG_PATTERNS):
+        return True
+
+    tokens = norm_text.split()
+    cue_hits = sum(1 for token in tokens if token in _SYSTEM_CUE_TOKENS)
+    if cue_hits < _SYSTEM_EDGE_CUE_THRESHOLD:
+        return False
+
+    # Prefer obviously templated language over everyday conversation.
+    unique_ratio = len(set(tokens)) / max(len(tokens), 1)
+    return unique_ratio < 0.95 or "call" in tokens
 
 
 def _speaker_key(speaker: str) -> str:
