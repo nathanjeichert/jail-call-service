@@ -1,0 +1,1428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+/* ════════════════════════════════════════════════════════════════
+   Case Report — shares all design tokens with pdf_cover_template.html
+   and guide_template.html.
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+    --ink: #111315;
+    --ink-soft: #25282b;
+    --body: #3e4449;
+    --muted: #717980;
+    --quiet: #9ba3aa;
+    --rule: #d9dee2;
+    --rule-strong: #b7c0c6;
+    --paper: #ffffff;
+    --wash: #f4f7f6;
+    --wash-strong: #e6eeee;
+    --teal: #00746b;
+    --teal-soft: #dcefed;
+    --green: #1f7a48;
+    --green-soft: #e0f1e7;
+    --amber: #a97813;
+    --amber-soft: #f4ead5;
+    --red: #a83242;
+    --red-soft: #f3dfe3;
+}
+
+/* Inner pages reserve a small bottom margin so the @page footer margin
+   boxes (which is the only place WeasyPrint reliably increments
+   counter(page)) have somewhere to render. The cover overrides the
+   margin via :first below. */
+@page {
+    size: letter;
+    margin: 0 0 0.7in 0;
+
+    @bottom-left {
+        content: "Case Report  ·  " string(chapter-name);
+        font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 7.8pt;
+        color: #717980;
+        border-top: 1px solid #111315;
+        padding: 0.12in 0 0 0.74in;
+        margin-left: 0;
+        vertical-align: top;
+        text-align: left;
+    }
+    @bottom-right {
+        content: counter(page, decimal-leading-zero);
+        font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 8pt;
+        color: #9ba3aa;
+        border-top: 1px solid #111315;
+        padding: 0.12in 0.62in 0 0;
+        vertical-align: top;
+        text-align: right;
+    }
+}
+
+@page :first {
+    margin: 0;
+    @bottom-left { content: ""; border: none; padding: 0; }
+    @bottom-right { content: ""; border: none; padding: 0; }
+}
+
+/* Fixed page chrome — spine and a soft bottom wash. Negative bottom on the
+   spine extends it through the @page bottom margin so it reaches the page
+   edge on inner pages. */
+.fixed-spine {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: -0.7in;
+    width: 0.18in;
+    background: var(--ink);
+    z-index: 50;
+}
+
+.fixed-wash {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: -0.7in;
+    height: 3.3in;
+    background: linear-gradient(180deg, rgba(247,249,249,0) 0, #f7f9f9 100%);
+    z-index: -10;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: transparent;
+    font-size: 10pt;
+    line-height: 1.5;
+}
+
+a { color: inherit; text-decoration: none; }
+
+.label, .eyebrow, .meta-label, .footer-label, .page-num {
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+/* Hidden marker that supplies the running footer's section name string. */
+.chapter-marker {
+    string-set: chapter-name content();
+    display: block;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    font-size: 0;
+    line-height: 0;
+    color: transparent;
+}
+
+/* ════════════════════ Cover (full-bleed page 1) ════════════════════ */
+
+.cover {
+    position: relative;
+    width: 8.5in;
+    height: 11in;
+    overflow: hidden;
+    page-break-after: always;
+}
+
+.cover::after {
+    content: "";
+    position: absolute;
+    right: -0.05in;
+    top: 0.7in;
+    width: 2.05in;
+    height: 8.7in;
+    background: linear-gradient(145deg, transparent 0 45%, rgba(0,116,107,0.08) 45% 51%, transparent 51%);
+}
+
+.cover-header {
+    position: absolute;
+    left: 0.68in; right: 0.62in; top: 0.55in;
+    height: 0.43in;
+    border-bottom: 1px solid var(--rule);
+}
+.cover-doc-type {
+    position: absolute; left: 0; bottom: 0.16in;
+    color: var(--teal);
+    font-size: 8.2pt;
+    font-weight: 800;
+}
+.cover-confidential {
+    position: absolute; right: 0; bottom: 0.16in;
+    color: var(--muted);
+    font-size: 8pt;
+}
+
+.cover-main {
+    position: absolute;
+    left: 0.68in; right: 0.62in;
+    top: 1.4in;
+}
+.cover-doclabel {
+    color: var(--muted);
+    font-size: 8pt;
+    font-weight: 700;
+    margin-bottom: 0.13in;
+}
+.cover-title {
+    margin: 0;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 58pt;
+    font-weight: normal;
+    line-height: 0.95;
+    letter-spacing: -0.5pt;
+}
+.cover-title .period { color: var(--teal); }
+.cover-rule {
+    width: 1.36in;
+    height: 0.045in;
+    background: var(--teal);
+    margin-top: 0.32in;
+}
+.cover-subtitle {
+    margin: 0.28in 0 0;
+    max-width: 5.1in;
+    color: var(--ink-soft);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13pt;
+    font-style: italic;
+    line-height: 1.42;
+}
+
+.cover-case {
+    position: absolute;
+    left: 0.68in; right: 0.62in;
+    top: 5.05in;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--rule-strong);
+    padding: 0.26in 0 0.25in;
+}
+.cover-case-label {
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 800;
+    margin-bottom: 0.08in;
+}
+.cover-case-name {
+    margin: 0;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 22pt;
+    font-weight: normal;
+    line-height: 1.18;
+    max-width: 6.6in;
+}
+.cover-defendant {
+    margin-top: 0.1in;
+    color: var(--muted);
+    font-size: 9pt;
+}
+.cover-defendant strong {
+    color: var(--ink);
+    font-weight: 700;
+}
+
+.title-meta {
+    position: absolute;
+    left: 0.68in; right: 0.62in;
+    top: 6.6in;
+    border-top: 1px solid var(--rule-strong);
+    border-left: 1px solid var(--rule);
+}
+.title-meta table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.title-meta td {
+    width: 25%;
+    padding: 0.18in 0.18in 0.16in;
+    border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+}
+.meta-label {
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 800;
+    margin-bottom: 0.08in;
+}
+.meta-value {
+    color: var(--ink-soft);
+    font-size: 12pt;
+    font-weight: 700;
+    line-height: 1.32;
+}
+
+.cover-note {
+    position: absolute;
+    left: 0.68in; right: 0.62in;
+    bottom: 1.18in;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.16in 0 0.14in 0.26in;
+    color: var(--body);
+    font-size: 9.4pt;
+    line-height: 1.5;
+}
+.cover-note::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.21in;
+    width: 0.09in;
+    height: 0.09in;
+    background: var(--teal);
+}
+.cover-note strong {
+    display: block;
+    color: var(--ink);
+    font-size: 10.2pt;
+    font-weight: 800;
+    margin-bottom: 0.04in;
+}
+
+.cover-pagenum {
+    position: absolute;
+    right: 0.62in;
+    bottom: 0.5in;
+    color: var(--quiet);
+    font-size: 8pt;
+}
+
+/* ════════════════════ Chapters (flowing pages) ════════════════════ */
+
+section.chapter {
+    page-break-before: always;
+    /* The chapter content carries its own inset since @page margin is 0. */
+    padding: 0.85in 0.62in 0.55in 0.68in;
+}
+
+.chapter-header {
+    border-bottom: 1px solid var(--ink);
+    padding-bottom: 0.10in;
+    margin-bottom: 0.18in;
+}
+.chapter-eyebrow {
+    color: var(--teal);
+    font-size: 8pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.06in;
+}
+.chapter-title {
+    margin: 0;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 24pt;
+    font-weight: normal;
+    line-height: 1;
+}
+.chapter-meta {
+    margin-top: 0.05in;
+    color: var(--muted);
+    font-size: 8.5pt;
+}
+.chapter-meta strong { color: var(--ink); font-weight: 800; }
+
+.lede {
+    margin: 0 0 0.18in;
+    max-width: 6.7in;
+    color: var(--body);
+    font-size: 10pt;
+    line-height: 1.5;
+}
+.lede strong { color: var(--ink); font-weight: 700; }
+
+/* ── Section heading rule (used inside chapters) ── */
+.section-heading {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.04in 0 0.10in;
+}
+.section-heading td.h-text {
+    width: 1px;
+    white-space: nowrap;
+    color: var(--teal);
+    font-size: 8.2pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 0 0.18in 0 0;
+    vertical-align: middle;
+}
+.section-heading td.h-rule {
+    border-bottom: 1px solid var(--rule);
+    height: 0;
+    vertical-align: middle;
+}
+
+/* ════════════════════ At a glance ════════════════════ */
+
+.hero-grid {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--ink);
+    border-left: 1px solid var(--rule);
+    margin-bottom: 0.18in;
+}
+.hero-grid td {
+    width: 25%;
+    border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.16in 0.18in 0.18in;
+    vertical-align: top;
+}
+.hero-label {
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.08in;
+}
+.hero-value {
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 26pt;
+    font-weight: normal;
+    line-height: 0.95;
+}
+.hero-suffix {
+    margin-top: 0.06in;
+    color: var(--muted);
+    font-size: 8pt;
+    line-height: 1.35;
+}
+.hero-grid .hero-cell-accent .hero-value { color: var(--teal); }
+
+.dist-card {
+    border: 1px solid var(--rule-strong);
+    background: var(--wash);
+    padding: 0.16in 0.22in 0.16in 0.32in;
+    position: relative;
+    margin-bottom: 0.18in;
+}
+.dist-card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 0.05in;
+    background: var(--teal);
+}
+.dist-card-label {
+    color: var(--teal);
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.16in;
+}
+
+.rel-bar {
+    width: 100%;
+    border-collapse: collapse;
+    height: 0.42in;
+}
+.rel-bar td {
+    height: 0.42in;
+    color: #fff;
+    font-size: 9pt;
+    font-weight: 800;
+    text-align: center;
+    vertical-align: middle;
+    padding: 0 0.06in;
+    border-right: 1px solid #fff;
+}
+.rel-bar td:last-child { border-right: none; }
+.rel-bar td.rel-high   { background: var(--red); }
+.rel-bar td.rel-medium { background: var(--amber); }
+.rel-bar td.rel-low    { background: var(--green); }
+.rel-bar td.rel-unknown{ background: var(--quiet); }
+.rel-bar td .pct       { font-family: Georgia, "Times New Roman", serif; font-weight: normal; font-size: 13pt; display: block; }
+
+.rel-legend {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.16in;
+}
+.rel-legend td {
+    width: 25%;
+    padding: 0.06in 0.1in 0;
+    color: var(--body);
+    font-size: 8.5pt;
+    vertical-align: top;
+}
+.rel-legend .swatch {
+    display: inline-block;
+    width: 0.16in;
+    height: 0.16in;
+    margin-right: 0.06in;
+    vertical-align: -2pt;
+}
+.rel-legend .swatch.rel-high   { background: var(--red); }
+.rel-legend .swatch.rel-medium { background: var(--amber); }
+.rel-legend .swatch.rel-low    { background: var(--green); }
+.rel-legend .swatch.rel-unknown{ background: var(--quiet); }
+.rel-legend strong { color: var(--ink); font-weight: 700; }
+
+/* ── Activity timeline ── */
+.timeline-card {
+    border: 1px solid var(--rule-strong);
+    background: var(--paper);
+    padding: 0.14in 0.22in 0.14in 0.32in;
+    position: relative;
+    margin-bottom: 0.18in;
+}
+.timeline-card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 0.05in;
+    background: var(--teal);
+}
+.timeline-card-head {
+    margin-bottom: 0.08in;
+    height: 0.13in;
+    position: relative;
+}
+.timeline-card-label {
+    color: var(--teal);
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+.timeline-card-meta {
+    color: var(--muted);
+    font-size: 7.4pt;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.2pt;
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+
+.timeline-bars {
+    position: relative;
+    width: 100%;
+    height: 0.85in;
+    border-bottom: 1px solid var(--rule);
+}
+.timeline-bars .tick {
+    position: absolute;
+    bottom: 0;
+    height: 0.85in;
+    text-align: center;
+}
+.timeline-bars .bar {
+    position: absolute;
+    bottom: 0;
+    left: 14%;
+    right: 14%;
+    background: var(--teal);
+}
+
+.timeline-axis {
+    position: relative;
+    margin-top: 0.06in;
+    height: 0.14in;
+    color: var(--muted);
+    font-size: 7.4pt;
+}
+.timeline-axis .ax-left { position: absolute; left: 0; top: 0; }
+.timeline-axis .ax-right { position: absolute; right: 0; top: 0; }
+.timeline-axis .ax-mid {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    margin-left: -0.6in;
+    width: 1.2in;
+    text-align: center;
+    color: var(--quiet);
+}
+
+/* ── Highlights row (bottom of At a Glance) ── */
+.highlights-grid {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--ink);
+    border-left: 1px solid var(--rule);
+    margin-top: 0.06in;
+}
+.highlights-grid td {
+    width: 25%;
+    border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.16in 0.18in 0.18in;
+    vertical-align: top;
+}
+.hl-label {
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.08in;
+}
+.hl-value {
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 14pt;
+    line-height: 1.16;
+}
+.hl-suffix {
+    margin-top: 0.05in;
+    color: var(--muted);
+    font-size: 7.8pt;
+    line-height: 1.35;
+}
+
+/* ── Inferred caller identity (under phone number) ── */
+.caller-inferred {
+    margin-top: 0.04in;
+    color: var(--muted);
+    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-style: italic;
+    font-size: 8.2pt;
+    font-weight: 400;
+    line-height: 1.32;
+    white-space: normal;
+}
+.caller-inferred .approx {
+    color: var(--teal);
+    font-style: normal;
+    font-weight: 800;
+    margin-right: 0.04in;
+}
+.caller-inferred .conf {
+    display: inline-block;
+    margin-left: 0.06in;
+    padding: 0 0.05in;
+    border: 1px solid var(--rule-strong);
+    color: var(--quiet);
+    font-style: normal;
+    font-size: 6.6pt;
+    font-weight: 800;
+    letter-spacing: 0.2pt;
+    text-transform: uppercase;
+    vertical-align: 1pt;
+}
+.caller-inferred .conf.low { color: var(--quiet); border-color: var(--rule-strong); }
+.caller-inferred .conf.medium { color: var(--amber); border-color: var(--amber); }
+.caller-inferred .conf.high { display: none; } /* high confidence is the default; no badge needed */
+
+/* ════════════════════ Top findings ════════════════════ */
+
+.finding {
+    border-top: 1px solid var(--rule);
+    padding: 0.18in 0;
+    page-break-inside: avoid;
+    position: relative;
+}
+.finding:first-of-type { border-top: 1px solid var(--ink); }
+.finding:last-of-type { border-bottom: 1px solid var(--rule); }
+
+.finding-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.finding-table td {
+    vertical-align: top;
+}
+.finding-num {
+    width: 0.78in;
+    color: var(--teal);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 26pt;
+    line-height: 0.85;
+    padding-top: 0.025in;
+}
+.finding-body {
+    padding-left: 0.06in;
+}
+.finding-headline {
+    margin: 0 0 0.08in;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 14pt;
+    font-weight: normal;
+    line-height: 1.18;
+}
+.finding-detail {
+    color: var(--body);
+    font-size: 9.6pt;
+    line-height: 1.5;
+    margin: 0 0 0.1in;
+}
+.finding-cite {
+    color: var(--muted);
+    font-size: 8pt;
+}
+.finding-cite a {
+    color: var(--teal);
+    font-weight: 700;
+}
+.finding-cite .file {
+    font-family: "Courier New", Courier, monospace;
+    color: var(--ink-soft);
+}
+.finding-cite .ts {
+    color: var(--teal);
+    font-weight: 800;
+}
+.finding-cite .pdf {
+    color: var(--quiet);
+    font-weight: 700;
+    margin-left: 0.08in;
+}
+
+.empty-card {
+    border: 1px solid var(--rule);
+    background: var(--wash);
+    padding: 0.3in 0.34in;
+    color: var(--body);
+    font-size: 9.5pt;
+    line-height: 1.5;
+}
+.empty-card strong {
+    display: block;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13pt;
+    font-weight: normal;
+    margin-bottom: 0.06in;
+}
+
+/* ════════════════════ High relevance call cards ════════════════════ */
+
+.call-card {
+    border: 1px solid var(--rule-strong);
+    background: var(--paper);
+    padding: 0;
+    margin-bottom: 0.22in;
+    page-break-inside: avoid;
+}
+
+.call-card-head {
+    position: relative;
+    background: var(--wash);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.16in 0.22in 0.16in 1.5in;
+    min-height: 0.78in;
+}
+.call-card-head .pill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 1.3in;
+    color: #fff;
+    padding: 0.16in 0.16in;
+}
+.call-card.rel-high   .pill { background: var(--red); }
+.call-card.rel-medium .pill { background: var(--amber); }
+.call-card .pill .label {
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.05in;
+}
+.call-card .pill .value {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 17pt;
+    line-height: 1;
+}
+.call-card .pill .sub {
+    margin-top: 0.06in;
+    font-size: 7.4pt;
+    font-weight: 700;
+    color: rgba(255,255,255,0.78);
+    text-transform: uppercase;
+}
+
+.call-head-title {
+    margin: 0;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13pt;
+    font-weight: normal;
+    line-height: 1.18;
+}
+.call-head-title a { color: var(--ink); }
+.call-head-title a:hover { color: var(--teal); }
+
+.call-head-meta {
+    margin-top: 0.05in;
+    color: var(--muted);
+    font-size: 8.2pt;
+    line-height: 1.4;
+}
+.call-head-meta strong { color: var(--ink); font-weight: 800; }
+.call-head-meta .sep { color: var(--quiet); margin: 0 0.08in; }
+
+.call-head-links {
+    margin-top: 0.06in;
+    font-size: 7.6pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3pt;
+}
+.call-head-links a {
+    color: var(--teal);
+    font-weight: 800;
+    margin-right: 0.18in;
+}
+.call-head-links a::before {
+    content: "›  ";
+    color: var(--quiet);
+}
+
+.call-body {
+    padding: 0.16in 0.22in 0.18in;
+}
+.call-brief {
+    color: var(--ink-soft);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 11pt;
+    font-style: italic;
+    line-height: 1.42;
+    margin: 0 0 0.15in;
+}
+.call-speakers {
+    color: var(--muted);
+    font-size: 8.4pt;
+    margin: -0.1in 0 0.15in;
+}
+.call-speakers strong { color: var(--ink); font-weight: 700; }
+
+.cue-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--rule);
+}
+.cue-table tr {
+    page-break-inside: avoid;
+}
+.cue-table td {
+    vertical-align: top;
+    padding: 0.085in 0;
+    border-bottom: 1px solid var(--rule);
+}
+.cue-time {
+    width: 0.74in;
+    color: var(--teal);
+    font-size: 9pt;
+    font-weight: 800;
+    padding-right: 0.1in;
+    padding-top: 0.025in;
+}
+.cue-time a { color: var(--teal); }
+.cue-text {
+    padding-left: 0.05in;
+}
+.cue-speaker {
+    color: var(--muted);
+    font-size: 7.4pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.025in;
+}
+.cue-quote {
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 9.6pt;
+    line-height: 1.32;
+    margin-bottom: 0.025in;
+}
+.cue-note {
+    color: var(--body);
+    font-size: 8.6pt;
+    line-height: 1.4;
+}
+
+/* ════════════════════ Medium relevance compact rows ════════════════════ */
+
+.med-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--ink);
+}
+.med-table tr {
+    border-bottom: 1px solid var(--rule);
+    page-break-inside: avoid;
+}
+.med-table td {
+    vertical-align: top;
+    padding: 0.13in 0.06in 0.14in 0;
+}
+.med-num {
+    width: 0.42in;
+    color: var(--quiet);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13pt;
+    line-height: 0.85;
+    padding-top: 0.04in;
+}
+.med-main { padding-right: 0.16in; }
+.med-name {
+    margin: 0;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 11.5pt;
+    font-weight: normal;
+    line-height: 1.18;
+}
+.med-name a { color: var(--ink); }
+.med-name a:hover { color: var(--teal); }
+.med-meta {
+    margin-top: 0.04in;
+    color: var(--muted);
+    font-size: 8pt;
+}
+.med-meta .sep { color: var(--quiet); margin: 0 0.08in; }
+.med-meta strong { color: var(--ink); font-weight: 700; }
+.med-brief {
+    margin-top: 0.05in;
+    color: var(--body);
+    font-size: 8.8pt;
+    line-height: 1.42;
+}
+.med-side {
+    width: 1.0in;
+    text-align: right;
+    color: var(--muted);
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    font-weight: 800;
+    padding-top: 0.06in;
+}
+.med-side a { color: var(--teal); }
+
+/* ════════════════════ Frequent callers ════════════════════ */
+
+.callers-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--ink);
+}
+.callers-table thead th {
+    text-align: left;
+    padding: 0.1in 0.08in 0.1in 0;
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--rule);
+}
+.callers-table thead th.right { text-align: right; }
+.callers-table tbody tr {
+    border-bottom: 1px solid var(--rule);
+}
+.callers-table tbody td {
+    padding: 0.12in 0.08in 0.13in 0;
+    vertical-align: middle;
+    color: var(--body);
+    font-size: 9.2pt;
+}
+.callers-table .rank {
+    width: 0.38in;
+    color: var(--quiet);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13pt;
+}
+.callers-table .num {
+    color: var(--ink);
+    font-family: "Courier New", Courier, monospace;
+    font-size: 9pt;
+    font-weight: 700;
+}
+.callers-table .count {
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 14pt;
+    text-align: right;
+    width: 0.7in;
+    padding-right: 0.18in;
+}
+.callers-table .duration {
+    text-align: right;
+    color: var(--ink-soft);
+    font-weight: 700;
+    width: 1.0in;
+}
+.callers-table .range {
+    text-align: right;
+    color: var(--muted);
+    font-size: 8.4pt;
+    width: 1.7in;
+}
+.callers-table .pill-cell {
+    text-align: right;
+    width: 0.95in;
+    padding-right: 0;
+}
+.rel-mini {
+    display: inline-block;
+    color: #fff;
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 0.04in 0.1in;
+    border-radius: 0.02in;
+}
+.rel-mini.rel-high   { background: var(--red); }
+.rel-mini.rel-medium { background: var(--amber); }
+.rel-mini.rel-low    { background: var(--green); }
+.rel-mini.rel-none   { background: var(--quiet); }
+
+/* tiny utilities */
+.muted { color: var(--muted); }
+.mono  { font-family: "Courier New", Courier, monospace; }
+.nowrap { white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div class="fixed-spine"></div>
+<div class="fixed-wash"></div>
+
+<!-- ═══════════════════════ 01 · Cover ═══════════════════════ -->
+<div class="cover">
+    <span class="chapter-marker">Cover</span>
+    <div class="cover-header">
+        <div class="cover-doc-type">Jail Call Service</div>
+        <div class="cover-confidential">Confidential &middot; Counsel Use</div>
+    </div>
+
+    <div class="cover-main">
+        <div class="cover-doclabel">Document</div>
+        <h1 class="cover-title">Case Report<span class="period">.</span></h1>
+        <div class="cover-rule"></div>
+        <p class="cover-subtitle">Top findings, high-relevance calls, and frequent-caller statistics, synthesized from the per-call AI analysis.</p>
+    </div>
+
+    <div class="cover-case">
+        <div class="cover-case-label">Prepared For</div>
+        <h2 class="cover-case-name">{{ case_name }}</h2>
+        {% if defendant_name %}
+        <div class="cover-defendant">Defendant: <strong>{{ defendant_name }}</strong></div>
+        {% endif %}
+    </div>
+
+    <div class="title-meta">
+        <table>
+            <tr>
+                <td>
+                    <div class="meta-label">Generated</div>
+                    <div class="meta-value">{{ gen_date }}</div>
+                </td>
+                <td>
+                    <div class="meta-label">Total Calls</div>
+                    <div class="meta-value">{{ glance.total_calls }}</div>
+                </td>
+                <td>
+                    <div class="meta-label">High Relevance</div>
+                    <div class="meta-value">{{ high_count }}</div>
+                </td>
+                <td>
+                    <div class="meta-label">Date Range</div>
+                    <div class="meta-value">{{ glance.date_range }}</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="cover-note">
+        <strong>How to read this report.</strong>
+        Top findings synthesized by AI appear first, followed by detailed cards for every high-relevance call, a compact list of medium-relevance calls, and frequent-caller statistics. Every filename and timestamp is a link into the call viewer or the individual transcript PDF. See <span class="mono" style="color: var(--ink); font-weight: 700;">guide.pdf</span> for methodology and caveats.
+    </div>
+</div>
+
+
+<!-- ═══════════════════════ 02 · At a Glance ═══════════════════════ -->
+<section class="chapter">
+    <header class="chapter-header">
+        <div class="chapter-eyebrow">Section One</div>
+        <span class="chapter-marker">At a Glance</span>
+        <h2 class="chapter-title">At a Glance</h2>
+        <div class="chapter-meta">
+            <strong>{{ glance.total_calls }}</strong> call{{ "s" if glance.total_calls != 1 else "" }} processed &middot; <strong>{{ glance.unique_callers }}</strong> unique outside number{{ "s" if glance.unique_callers != 1 else "" }} &middot; {{ glance.date_range }}
+        </div>
+    </header>
+
+    <p class="lede">
+        Top-line metrics for the entire delivery. Detailed per-call records appear on the pages that follow.
+    </p>
+
+    <table class="hero-grid">
+        <tr>
+            <td>
+                <div class="hero-label">Total Calls</div>
+                <div class="hero-value">{{ glance.total_calls }}</div>
+                <div class="hero-suffix">processed and summarized</div>
+            </td>
+            <td class="hero-cell-accent">
+                <div class="hero-label">High Relevance</div>
+                <div class="hero-value">{{ high_count }}</div>
+                <div class="hero-suffix">flagged for priority review</div>
+            </td>
+            <td>
+                <div class="hero-label">Total Audio</div>
+                <div class="hero-value">{{ glance.total_duration_display }}</div>
+                <div class="hero-suffix">{{ glance.avg_duration_display }} average</div>
+            </td>
+            <td>
+                <div class="hero-label">Notes Flagged</div>
+                <div class="hero-value">{{ glance.total_notes }}</div>
+                <div class="hero-suffix">across {{ glance.calls_with_notes }} call{{ "s" if glance.calls_with_notes != 1 else "" }}</div>
+            </td>
+        </tr>
+    </table>
+
+    {% if timeline %}
+    <table class="section-heading"><tr><td class="h-text">Activity Over Time</td><td class="h-rule"></td></tr></table>
+
+    <div class="timeline-card">
+        <div class="timeline-card-head">
+            <div class="timeline-card-label">Calls Per {{ timeline.granularity|capitalize }}</div>
+            <div class="timeline-card-meta">{{ timeline.tick_count }} {{ timeline.granularity_plural }} &middot; peak {{ timeline.max_count }}</div>
+        </div>
+
+        <div class="timeline-bars">
+            {% for b in timeline.buckets %}
+            <div class="tick" style="left: {{ '%.4f' % b.left_pct }}%; width: {{ '%.4f' % timeline.tick_width_pct }}%;">
+                {% if b.count > 0 %}
+                <div class="bar" style="height: {{ '%.3f' % b.height_in }}in;"></div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="timeline-axis">
+            <span class="ax-left">{{ timeline.start_label }}</span>
+            {% if timeline.show_mid_label %}<span class="ax-mid">{{ timeline.mid_label }}</span>{% endif %}
+            <span class="ax-right">{{ timeline.end_label }}</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <table class="section-heading"><tr><td class="h-text">Relevance Distribution</td><td class="h-rule"></td></tr></table>
+
+    <div class="dist-card">
+        <div class="dist-card-label">All {{ glance.total_calls }} Calls</div>
+
+        {% if glance.total_calls > 0 %}
+        <table class="rel-bar">
+            <tr>
+                {% if glance.rel_counts.HIGH > 0 %}
+                <td class="rel-high" style="width: {{ '%.2f' % glance.rel_percents.HIGH }}%;">
+                    {% if glance.rel_percents.HIGH >= 8 %}HIGH<span class="pct">{{ glance.rel_counts.HIGH }}</span>{% endif %}
+                </td>
+                {% endif %}
+                {% if glance.rel_counts.MEDIUM > 0 %}
+                <td class="rel-medium" style="width: {{ '%.2f' % glance.rel_percents.MEDIUM }}%;">
+                    {% if glance.rel_percents.MEDIUM >= 8 %}MEDIUM<span class="pct">{{ glance.rel_counts.MEDIUM }}</span>{% endif %}
+                </td>
+                {% endif %}
+                {% if glance.rel_counts.LOW > 0 %}
+                <td class="rel-low" style="width: {{ '%.2f' % glance.rel_percents.LOW }}%;">
+                    {% if glance.rel_percents.LOW >= 8 %}LOW<span class="pct">{{ glance.rel_counts.LOW }}</span>{% endif %}
+                </td>
+                {% endif %}
+                {% if glance.rel_counts.UNKNOWN > 0 %}
+                <td class="rel-unknown" style="width: {{ '%.2f' % glance.rel_percents.UNKNOWN }}%;">
+                    {% if glance.rel_percents.UNKNOWN >= 8 %}UNRATED<span class="pct">{{ glance.rel_counts.UNKNOWN }}</span>{% endif %}
+                </td>
+                {% endif %}
+            </tr>
+        </table>
+
+        <table class="rel-legend">
+            <tr>
+                <td><span class="swatch rel-high"></span><strong>{{ glance.rel_counts.HIGH }}</strong> high relevance &mdash; priority review</td>
+                <td><span class="swatch rel-medium"></span><strong>{{ glance.rel_counts.MEDIUM }}</strong> medium &mdash; potential context</td>
+                <td><span class="swatch rel-low"></span><strong>{{ glance.rel_counts.LOW }}</strong> low &mdash; routine personal</td>
+                {% if glance.rel_counts.UNKNOWN > 0 %}
+                <td><span class="swatch rel-unknown"></span><strong>{{ glance.rel_counts.UNKNOWN }}</strong> unrated</td>
+                {% else %}
+                <td></td>
+                {% endif %}
+            </tr>
+        </table>
+        {% else %}
+        <p class="muted" style="margin: 0; font-size: 9pt;">No completed calls.</p>
+        {% endif %}
+    </div>
+
+    <table class="section-heading"><tr><td class="h-text">Highlights</td><td class="h-rule"></td></tr></table>
+
+    <table class="highlights-grid">
+        <tr>
+            <td>
+                <div class="hl-label">Most Active Day</div>
+                <div class="hl-value">{{ glance.most_active_day_display }}</div>
+                <div class="hl-suffix">{{ glance.most_active_day_count }} call{{ "s" if glance.most_active_day_count != 1 else "" }}</div>
+            </td>
+            <td>
+                <div class="hl-label">Longest Call</div>
+                <div class="hl-value">{{ glance.longest_call_display }}</div>
+                <div class="hl-suffix">with {{ glance.longest_call_party }}</div>
+            </td>
+            <td>
+                <div class="hl-label">Date Range</div>
+                <div class="hl-value">{{ glance.date_range }}</div>
+                <div class="hl-suffix">{{ glance.unique_callers }} unique caller{{ "s" if glance.unique_callers != 1 else "" }}</div>
+            </td>
+            <td>
+                <div class="hl-label">Avg Duration</div>
+                <div class="hl-value">{{ glance.avg_duration_display }}</div>
+                <div class="hl-suffix">per call</div>
+            </td>
+        </tr>
+    </table>
+</section>
+
+
+<!-- ═══════════════════════ 03 · Top Findings ═══════════════════════ -->
+<section class="chapter">
+    <header class="chapter-header">
+        <div class="chapter-eyebrow">Section Two</div>
+        <span class="chapter-marker">Top Findings</span>
+        <h2 class="chapter-title">Top Findings</h2>
+        <div class="chapter-meta">
+            {% if findings %}
+            <strong>{{ findings|length }}</strong> finding{{ "s" if findings|length != 1 else "" }} &middot; synthesized from {{ synthesis_input_count }} call{{ "s" if synthesis_input_count != 1 else "" }}{% if synthesis_used_medium %} (HIGH + top MEDIUM){% else %} (HIGH only){% endif %}
+            {% else %}
+            no calls met the threshold for synthesis
+            {% endif %}
+        </div>
+    </header>
+
+    {% if findings %}
+    <p class="lede">
+        The most consequential moments across the delivery, drawn from the per-call AI notes and ranked in priority order. Each citation is a link into the call viewer at the exact timestamp.
+    </p>
+
+    {% for f in findings %}
+    <div class="finding">
+        <table class="finding-table">
+            <tr>
+                <td class="finding-num">{{ "%02d"|format(loop.index) }}</td>
+                <td class="finding-body">
+                    <h3 class="finding-headline">{{ f.headline }}</h3>
+                    <p class="finding-detail">{{ f.detail }}</p>
+                    <div class="finding-cite">
+                        <a href="{{ f.viewer_link }}">
+                            <span class="file">{{ f.call_filename }}</span>{% if f.timestamp %} &middot; <span class="ts">{{ f.timestamp }}</span>{% endif %} &middot; {{ f.call_date }}
+                        </a>
+                        <a class="pdf" href="{{ f.pdf_link }}">PDF&nbsp;&rsaquo;</a>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+    {% endfor %}
+
+    {% else %}
+    <div class="empty-card">
+        <strong>No top findings to surface.</strong>
+        {% if synthesis_state == "no_input" %}
+        Every call in this delivery was rated LOW relevance by the per-call analysis &mdash; no high or medium calls were available to synthesize. The frequent-caller statistics and the full call index remain the best entry points for review.
+        {% elif synthesis_state == "gemini_unavailable" %}
+        The synthesis step could not reach the AI service. The high-relevance and medium-relevance call cards in the following sections still contain the per-call AI analysis.
+        {% elif synthesis_state == "parse_failed" %}
+        The synthesis step ran but its output could not be parsed into structured findings. The high-relevance call cards on the following pages still contain the per-call AI notes.
+        {% else %}
+        See the high-relevance call cards in the following section.
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+
+
+<!-- ═══════════════════════ 04 · High Relevance Calls ═══════════════════════ -->
+<section class="chapter">
+    <header class="chapter-header">
+        <div class="chapter-eyebrow">Section Three</div>
+        <span class="chapter-marker">High Relevance Calls</span>
+        <h2 class="chapter-title">High Relevance Calls</h2>
+        <div class="chapter-meta">
+            <strong>{{ high_count }}</strong> call{{ "s" if high_count != 1 else "" }} flagged HIGH by per-call analysis
+        </div>
+    </header>
+
+    {% if high_cards %}
+    <p class="lede">
+        One card per call flagged as high relevance: brief summary, outside party, and the timestamped notes from the AI analysis. The filename and any timestamp are links into the call viewer.
+    </p>
+
+    {% for c in high_cards %}
+    <div class="call-card rel-high">
+        <div class="call-card-head">
+            <div class="pill">
+                <div class="label">Relevance</div>
+                <div class="value">High</div>
+                <div class="sub">Call {{ "%03d"|format(c.call_index) }}</div>
+            </div>
+            <h3 class="call-head-title"><a href="{{ c.viewer_link }}">{{ c.filename }}</a></h3>
+            <div class="call-head-meta">
+                <strong>{{ c.datetime }}</strong>
+                <span class="sep">·</span> {{ c.duration }}
+                <span class="sep">·</span> {{ c.party }}
+            </div>
+            <div class="call-head-links">
+                <a href="{{ c.viewer_link }}">Open in viewer</a>
+                <a href="{{ c.pdf_link }}">Transcript PDF</a>
+            </div>
+        </div>
+        <div class="call-body">
+            {% if c.brief %}
+            <p class="call-brief">{{ c.brief }}</p>
+            {% endif %}
+            {% if c.speakers %}
+            <div class="call-speakers"><strong>Outside party:</strong> {{ c.speakers }}</div>
+            {% endif %}
+
+            {% if c.has_cues %}
+            <table class="cue-table">
+                {% for cue in c.cues %}
+                <tr>
+                    <td class="cue-time">
+                        {% if cue.timestamp %}
+                        <a href="{{ cue.viewer_link }}">{{ cue.timestamp }}</a>
+                        {% endif %}
+                    </td>
+                    <td class="cue-text">
+                        {% if cue.speaker %}<div class="cue-speaker">{{ cue.speaker }}</div>{% endif %}
+                        {% if cue.quote %}<div class="cue-quote">&ldquo;{{ cue.quote }}&rdquo;</div>{% endif %}
+                        {% if cue.note %}<div class="cue-note">{{ cue.note }}</div>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+
+    {% else %}
+    <div class="empty-card">
+        <strong>No high-relevance calls.</strong>
+        The per-call analysis did not flag any calls as HIGH. {{ medium_count }} medium-relevance call{{ "s are" if medium_count != 1 else " is" }} listed in the following section, and {{ low_count }} low-relevance call{{ "s remain" if low_count != 1 else " remains" }} in the call index.
+    </div>
+    {% endif %}
+</section>
+
+
+<!-- ═══════════════════════ 05 · Medium Relevance Calls ═══════════════════════ -->
+<section class="chapter">
+    <header class="chapter-header">
+        <div class="chapter-eyebrow">Section Four</div>
+        <span class="chapter-marker">Medium Relevance Calls</span>
+        <h2 class="chapter-title">Medium Relevance Calls</h2>
+        <div class="chapter-meta">
+            <strong>{{ medium_count }}</strong> call{{ "s" if medium_count != 1 else "" }} flagged MEDIUM by per-call analysis
+        </div>
+    </header>
+
+    {% if medium_rows %}
+    <p class="lede">
+        Calls flagged as potential context but not priority. The filename opens the call in the viewer; full notes live in the per-call transcript PDF.
+    </p>
+
+    <table class="med-table">
+        {% for r in medium_rows %}
+        <tr>
+            <td class="med-num">{{ "%02d"|format(loop.index) }}</td>
+            <td class="med-main">
+                <h4 class="med-name"><a href="{{ r.viewer_link }}">{{ r.filename }}</a></h4>
+                <div class="med-meta">
+                    <strong>{{ r.datetime }}</strong>
+                    <span class="sep">·</span> {{ r.duration }}
+                    <span class="sep">·</span> {{ r.party }}
+                    {% if r.cue_count %}<span class="sep">·</span> {{ r.cue_count }} note{{ "s" if r.cue_count != 1 else "" }}{% endif %}
+                </div>
+                {% if r.brief %}<div class="med-brief">{{ r.brief }}</div>{% endif %}
+            </td>
+            <td class="med-side"><a href="{{ r.pdf_link }}">Transcript&nbsp;PDF&nbsp;&rsaquo;</a></td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    {% else %}
+    <div class="empty-card">
+        <strong>No medium-relevance calls.</strong>
+        The per-call analysis did not flag any calls in this category.
+    </div>
+    {% endif %}
+</section>
+
+
+<!-- ═══════════════════════ 06 · Frequent Callers ═══════════════════════ -->
+<section class="chapter">
+    <header class="chapter-header">
+        <div class="chapter-eyebrow">Section Five</div>
+        <span class="chapter-marker">Frequent Callers</span>
+        <h2 class="chapter-title">Frequent Callers</h2>
+        <div class="chapter-meta">
+            <strong>{{ total_caller_count }}</strong> unique outside number{{ "s" if total_caller_count != 1 else "" }} &middot; ranked by call volume
+        </div>
+    </header>
+
+    {% if top_callers %}
+    <p class="lede">
+        Outside-party numbers ranked by call volume. The defendant and any automated telecom messages are excluded — only the outside party of each call is counted. The italic line under each number is an <strong>AI-inferred identity</strong> drawn from the per-call analyses; it is a starting hypothesis, not an established fact.
+    </p>
+
+    <table class="callers-table">
+        <thead>
+            <tr>
+                <th></th>
+                <th>Outside Number</th>
+                <th class="right">Calls</th>
+                <th class="right">Total Duration</th>
+                <th class="right">Date Range</th>
+                <th class="right">Top Relevance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for caller in top_callers %}
+            <tr>
+                <td class="rank">{{ "%02d"|format(loop.index) }}</td>
+                <td class="num">
+                    {{ caller.display }}
+                    {% if caller.inferred %}
+                    <div class="caller-inferred">
+                        <span class="approx">&asymp;</span>{{ caller.inferred }}{% if caller.confidence_class %}<span class="conf {{ caller.confidence_class }}">{{ caller.confidence }} CONF</span>{% endif %}
+                    </div>
+                    {% endif %}
+                </td>
+                <td class="count">{{ caller.count }}</td>
+                <td class="duration">{{ caller.total_duration_display }}</td>
+                <td class="range">{{ caller.date_range }}</td>
+                <td class="pill-cell">
+                    <span class="rel-mini rel-{{ caller.max_relevance_class }}">{{ caller.max_relevance }}</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if total_caller_count > top_callers|length %}
+    <p class="muted" style="font-size: 8.4pt; margin-top: 0.18in;">
+        Showing the top {{ top_callers|length }} of {{ total_caller_count }} unique outside numbers. The full list lives in <span class="mono">call-index.xlsx</span>.
+    </p>
+    {% endif %}
+
+    {% else %}
+    <div class="empty-card">
+        <strong>No caller statistics available.</strong>
+        Outside-party phone numbers were not present in the source metadata for these calls.
+    </div>
+    {% endif %}
+</section>
+
+
+</body>
+</html>

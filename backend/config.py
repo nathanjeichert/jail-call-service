@@ -30,9 +30,12 @@ os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 # Processing
 DEFAULT_LINES_PER_PAGE = 25
-MAX_TRANSCRIPTION_CONCURRENT = int(os.getenv("MAX_TRANSCRIPTION_CONCURRENT", "200"))
-MAX_SUMMARIZATION_CONCURRENT = int(os.getenv("MAX_SUMMARIZATION_CONCURRENT", "100"))
+# 50 keeps AssemblyAI submission bursts well under the 100/min new-stream rate
+# and Gemini Flash Tier 1's 300 RPM with headroom for retries.
+MAX_TRANSCRIPTION_CONCURRENT = int(os.getenv("MAX_TRANSCRIPTION_CONCURRENT", "50"))
+MAX_SUMMARIZATION_CONCURRENT = int(os.getenv("MAX_SUMMARIZATION_CONCURRENT", "50"))
 ASSEMBLYAI_POLLING_INTERVAL = int(os.getenv("ASSEMBLYAI_POLLING_INTERVAL", "15"))
+ASSEMBLYAI_TRANSCRIPTION_TIMEOUT_SEC = int(os.getenv("ASSEMBLYAI_TRANSCRIPTION_TIMEOUT_SEC", "900"))
 
 # Default summary prompt - structured for high-volume attorney review
 DEFAULT_SUMMARY_PROMPT = (

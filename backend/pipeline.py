@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from .models import Job, JobStage, CallResult, CallStatus
+from .models import Job, JobStage, CallResult, CallStatus, call_stem
 from .icm_parser import find_icm_report, parse_icm_report
 from . import job_store, config as cfg
 
@@ -77,13 +77,7 @@ def _discover_wav_files(input_folder: str) -> List[str]:
 
 
 def _call_stem(index: int, filename: str) -> str:
-    """Generate an output stem like 001-originalname from the WAV filename."""
-    base = filename
-    if base.lower().endswith('.wav'):
-        base = base[:-4]
-    safe = re.sub(r'[^\w.\-]', '_', base)
-    safe = re.sub(r'_+', '_', safe).strip('_') or "call"
-    return f"{index + 1:03d}-{safe}"
+    return call_stem(index, filename)
 
 
 def _format_duration(seconds: Optional[float]) -> str:
@@ -392,6 +386,23 @@ async def _run_pipeline(job: Job) -> None:
         and summarization_engine_name in _LOCAL_SUMMARIZATION_ENGINES
     )
 
+    # Fail-fast on missing API keys for the selected cloud engines, before
+    # spending compute on conversion. Local engines don't need keys.
+    if transcription_engine_name not in _LOCAL_TRANSCRIPTION_ENGINES and not cfg.ASSEMBLYAI_API_KEY:
+        raise RuntimeError(
+            f"ASSEMBLYAI_API_KEY is required for transcription engine "
+            f"'{transcription_engine_name}' but is not set in .env"
+        )
+    if (
+        not job.skip_summary
+        and summarization_engine_name not in _LOCAL_SUMMARIZATION_ENGINES
+        and not cfg.GEMINI_API_KEY
+    ):
+        raise RuntimeError(
+            f"GEMINI_API_KEY is required for summarization engine "
+            f"'{summarization_engine_name}' but is not set in .env"
+        )
+
     # Create summarization engine once (reused across all calls — critical for local model loading)
     from .summarization import get_engine as get_summarization_engine
     summarization_engine = get_summarization_engine(summarization_engine_name) if not job.skip_summary else None
@@ -501,10 +512,14 @@ async def _run_pipeline(job: Job) -> None:
                 logger.error("Summarization error for %s: %s", item.filename, e)
                 err_msg = "Summary unavailable for this call."
                 job_store.update_call(
-                    job_id, item.index, summary=err_msg, status=CallStatus.GENERATING_PDF,
+                    job_id, item.index,
+                    summary=err_msg,
+                    status=CallStatus.GENERATING_PDF,
+                    error=f"Summarization failed: {e}",
                 )
                 item.summary = err_msg
                 item.status = CallStatus.GENERATING_PDF
+                item.error = f"Summarization failed: {e}"
                 progress["summarizing"] += 1
                 _emit(job_id, {
                     "type": "call_update", "index": item.index,
@@ -637,7 +652,14 @@ async def _run_pipeline(job: Job) -> None:
     job.completed_at = datetime.now(timezone.utc).isoformat()
     job_store.update_job(job)
     _emit(job_id, {"type": "done", "zip_path": zip_path})
-    logger.info("Job %s completed. Zip: %s", job_id, zip_path)
+
+    done_count = sum(1 for c in job.calls if c.status == CallStatus.DONE and not c.error)
+    hard_error_count = sum(1 for c in job.calls if c.status == CallStatus.ERROR)
+    partial_error_count = sum(1 for c in job.calls if c.status == CallStatus.DONE and c.error)
+    logger.info(
+        "Job %s completed: %d clean, %d partial (summary failed), %d errored. Zip: %s",
+        job_id, done_count, partial_error_count, hard_error_count, zip_path,
+    )
 
 
 # ── Batch stages (kept for repackaging and index generation) ──
@@ -649,7 +671,13 @@ async def _stage_generate_indexes(job: Job, output_dir: str, audio_dir: str) -> 
 
     loop = asyncio.get_event_loop()
     done_calls = [c for c in job.calls if c.status == CallStatus.DONE]
-    error_calls = [c for c in job.calls if c.status == CallStatus.ERROR]
+    # Errors sheet includes both hard failures (status == ERROR) and partial
+    # failures (call completed but a stage recorded an error — e.g. a
+    # summarization failure that still produced a fallback transcript PDF).
+    error_calls = [
+        c for c in job.calls
+        if c.status == CallStatus.ERROR or (c.error and c.status == CallStatus.DONE)
+    ]
 
     def write_excel():
         data = generate_excel(done_calls, error_calls=error_calls or None)
@@ -674,11 +702,28 @@ async def _stage_generate_indexes(job: Job, output_dir: str, audio_dir: str) -> 
         with open(os.path.join(output_dir, "guide.pdf"), 'wb') as f:
             f.write(guide_bytes)
 
-    for fn in [write_excel, write_search, write_viewer, write_guide]:
+    def write_case_report():
+        from .case_report import generate_case_report_pdf
+        report_bytes = generate_case_report_pdf(job=job, done_calls=done_calls)
+        with open(os.path.join(output_dir, "case-report.pdf"), 'wb') as f:
+            f.write(report_bytes)
+
+    index_failures: List[str] = []
+    for fn in [write_excel, write_search, write_viewer, write_guide, write_case_report]:
         try:
             await loop.run_in_executor(None, fn)
         except Exception as e:
             logger.error("Index generation failed (%s): %s", fn.__name__, e)
+            index_failures.append(fn.__name__)
+            _emit(job.id, {
+                "type": "warning",
+                "message": f"{fn.__name__} failed: {e}",
+            })
+    if index_failures:
+        logger.warning(
+            "Index generation completed with %d failure(s): %s",
+            len(index_failures), ", ".join(index_failures),
+        )
 
 
 async def _stage_package(job: Job, output_dir: str) -> str:

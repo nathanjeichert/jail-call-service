@@ -5,10 +5,12 @@ AssemblyAI transcription engine for multichannel jail call audio.
 import asyncio
 import inspect
 import logging
+import time
 from typing import Dict, List, Optional
 
 from tenacity import retry, retry_if_exception_type, wait_random_exponential, stop_after_attempt
 
+from .. import config as cfg
 from ..models import TranscriptTurn, WordTimestamp
 from .base import mark_continuation_turns
 
@@ -71,12 +73,18 @@ class AssemblyAIEngine:
 
         transcript = await loop.run_in_executor(None, _submit)
 
+        deadline = time.monotonic() + cfg.ASSEMBLYAI_TRANSCRIPTION_TIMEOUT_SEC
         while True:
             status = transcript.status
             if status == aai.TranscriptStatus.completed:
                 break
             if status == aai.TranscriptStatus.error:
                 raise RuntimeError(f"AssemblyAI error: {transcript.error}")
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"AssemblyAI transcription timeout after "
+                    f"{cfg.ASSEMBLYAI_TRANSCRIPTION_TIMEOUT_SEC}s: {audio_path}"
+                )
             await asyncio.sleep(self.polling_interval)
             tid = transcript.id
             transcript = await loop.run_in_executor(

@@ -1,6 +1,23 @@
+import re
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from enum import Enum
+
+
+def call_stem(index: int, filename: str) -> str:
+    """Canonical output stem (e.g. ``042-original_name``) for a call.
+
+    This is the single source of truth for how a call's output files
+    (transcript PDFs, per-call audio, viewer deep-links) are named. The
+    pipeline, the case report, and the search page all build links using
+    this helper so the names stay in lockstep.
+    """
+    base = filename
+    if base.lower().endswith(".wav"):
+        base = base[:-4]
+    safe = re.sub(r"[^\w.\-]", "_", base)
+    safe = re.sub(r"_+", "_", safe).strip("_") or "call"
+    return f"{index + 1:03d}-{safe}"
 
 
 class WordTimestamp(BaseModel):

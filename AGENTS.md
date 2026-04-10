@@ -17,22 +17,31 @@ This project was originally a branch within the TranscribeAlpha monorepo but has
 * **Summarization:** Dual-engine — Gemini Flash (cloud) or Gemma 4 E2B via MLX (local, 4-bit quantized, ~3.6 GB RAM). Selectable per-job from the UI.
 * **Frontend:** Next.js (Tailwind + TypeScript).
 * **Delivery Payload:** The software produces a `.zip` artifact containing:
-  - Repaired and converted MP3 audio files.
+  - Repaired and converted MP3 audio files (`audio/`).
   - A spreadsheet index (`call-index.xlsx`) linking to transcript/viewer payloads.
-  - Formatted transcript PDFs (`transcripts/`).
+  - Formatted transcript PDFs (`transcripts/` and `transcripts-no-summary/`).
   - A responsive local HTML viewer dashboard (`viewer/index.html`) using WaveSurfer.js.
+  - A dossier-style HTML search landing page (`search.html`) with a sortable, filterable table and per-row expanding detail panels.
+  - A user guide PDF (`guide.pdf`) explaining how to use the delivery package.
+  - A case-level report PDF (`case-report.pdf`) with at-a-glance metrics, timeline, Gemini-synthesized top findings, outside-party identity inference, and high/medium relevance call cards.
 
 ## Critical Technical Details
-1. **Parallelization:** `_stage_convert` handles conversion via `ThreadPoolExecutor` (bottlenecked dynamically to CPU count) to avoid exhaustion, while Gemini and AssemblyAI use asyncio semaphores. When both transcription and summarization use local engines (Parakeet + Gemma), the pipeline serializes the stages to avoid competing for GPU/unified memory.
-2. **Resiliency:** SQLite is used with SQLAlchemy models (`db_models.py`) to checkpoint job progression (`job_store.py`) to survive crashes without wasting API credits.
+1. **Parallelization:** Conversion runs on a `ThreadPoolExecutor` sized to CPU count; AssemblyAI and Gemini calls are driven by asyncio worker pools capped by `MAX_TRANSCRIPTION_CONCURRENT` (default **50**) and `MAX_SUMMARIZATION_CONCURRENT` (default **50**). These defaults are tuned to keep burst traffic safely under AssemblyAI's pay-as-you-go "100 new streams/minute" rate and Gemini Flash Tier 1's 300 RPM with headroom for retries; bump them via `.env` only if you've verified your account tier. When both transcription and summarization use local engines (Parakeet + Gemma), the pipeline serializes the stages to avoid competing for GPU/unified memory.
+2. **Resiliency & cost control:**
+   - SQLite (`backend/db.py`, `db_models.py`, `job_store.py`) checkpoints every stage transition per call so that a crash or pause resumes without re-spending API credits. Resumption is keyed by `original_path` and routes each call back to the correct worker queue based on its stored `CallStatus` — **resume the same job id; do not re-upload, since that creates a new job and re-pays for everything**.
+   - `_run_pipeline` validates required API keys for the selected cloud engines at job start and raises immediately if they're missing, so a bad `.env` fails *before* the conversion stage spends compute.
+   - AssemblyAI's polling loop is bounded by `ASSEMBLYAI_TRANSCRIPTION_TIMEOUT_SEC` (default **900s / 15min**). A stuck transcript raises `TimeoutError`, lands in the Errors sheet, and does not stall the batch.
+   - Gemini summarization failures are not silent: the call still finishes with a `"Summary unavailable for this call."` fallback, but the `error` field is set so the call appears in the Excel Errors sheet as a partial failure.
+   - The case-report Gemini call is wrapped in tenacity retry (3 attempts, exponential backoff) plus a 120-second per-attempt timeout via `concurrent.futures`.
+   - The final completion log breaks out clean / partial / errored call counts.
 3. **Database Concurrency:** SQLite is configured with WAL mode and a 30-second busy timeout to handle concurrent writes from parallel pipeline stages (conversion threads, async transcription/summarization).
 4. **Transcription Format:** Both engines produce the same `List[TranscriptTurn]` output. **Channel 1** = Inmate (Defendant), **Channel 2** = Outside Party.
 5. **Export Deep Linking:** When generating PDFs and Excel spreadsheets, the app creates `../viewer/index.html?call=[file]&t=[xx:xx]` links directly pointing to specific timestamps within the self-contained static HTML viewer.
-6. **PDF Architecture:** `backend/transcript_formatting.py` builds PDFs as a hybrid document:
-   - Title and Gemini summary pages are rendered from `backend/pdf_cover_template.html` with WeasyPrint / HTML / CSS.
-   - Transcript body pages remain ReportLab-generated legal transcript pages with Courier text, line numbers, and page numbers.
-   - The summary page parses Gemini's structured sections (`RELEVANCE`, `NOTES`, `IDENTITY OF OUTSIDE PARTY`, `BRIEF SUMMARY`). `NOTES: NONE` renders as a polished "No relevant information found" panel.
-   - Notes display audio timestamps plus transcript page:line cites, with a single legend explaining `[MM:SS]` and `Page:Line`.
+6. **Canonical call stem:** `backend/models.py` exposes `call_stem(index, filename)` — the single source of truth for how per-call output files (transcript PDFs, per-call audio, viewer deep-links) are named. `pipeline.py`, `case_report.py`, and `search_html.py` all call it so filenames stay in lockstep. Any new consumer that builds a per-call filename must use this helper, not a local copy.
+7. **PDF Architecture:** The delivery contains four PDF artifacts, all ultimately rendered through Jinja + WeasyPrint templates that share the same teal/ink/Georgia + Avenir design language:
+   - **Per-call transcript PDF** (`backend/transcript_formatting.py`, `pdf_cover_template.html`) — hybrid document: title and Gemini summary pages are WeasyPrint/HTML/CSS; transcript body pages are ReportLab-generated legal-deposition style with Courier text, line numbers, and page numbers. The summary page parses Gemini's structured sections (`RELEVANCE`, `NOTES`, `IDENTITY OF OUTSIDE PARTY`, `BRIEF SUMMARY`). `NOTES: NONE` renders as a polished "No relevant information found" panel. Notes display audio timestamps plus transcript page:line cites, with a single legend explaining `[MM:SS]` and `Page:Line`.
+   - **User guide PDF** (`backend/guide_pdf.py`, `guide_template.html`) — 7-page how-to-use document (cover, package tree, viewer, search, Excel, AI analysis, important notes). Includes three screenshot pages that pull PNGs from `backend/guide_assets/`; if the PNGs are missing the template falls back to visible dashed placeholder boxes, so those assets must always be present.
+   - **Case report PDF** — see "Case Report Architecture" below.
 
 If editing the `template.html` for the viewer, note that template parameters (like `{{CALLS_JSON}}`) are pre-populated by Python string manipulation, hence why TypeScript/Javascript linting will report errors inside the HTML syntax. Ignore these syntactical lint warnings during development.
 
@@ -97,6 +106,29 @@ When system-audio detection is enabled, `backend/pipeline.py` also removes any G
 
 **Important:** System audio filtering only runs when Gemini summarization is active (`skip_summary=False`). Test runs with dummy summaries get no filtering.
 
+## Case Report Architecture
+
+`backend/case_report.py` + `case_report_template.html` generate `case-report.pdf`, a case-level dossier aggregating per-call analysis. It runs at the end of the pipeline inside `_stage_generate_indexes` and is packaged into the delivery ZIP automatically.
+
+Pipeline:
+1. Parse every call's summary once through `_parse_summary_sections` and reuse the result everywhere downstream.
+2. Bucket calls by `RELEVANCE` (HIGH / MEDIUM / LOW / UNKNOWN).
+3. Select a synthesis input set — HIGH calls first, topping up from MEDIUM if there are fewer than `TARGET_FINDINGS_INPUT_COUNT` (10) HIGH calls.
+4. Issue **one** extra Gemini call that performs BOTH "top findings" synthesis AND per-outside-number "identity inference" in a single prompt, using a block-delimited output format (`FINDING_START…FINDING_END`, `IDENTITY_START…IDENTITY_END`). This call is wrapped in a 3-attempt tenacity retry and a 120-second per-attempt `concurrent.futures` timeout.
+5. Render a multi-section PDF: at-a-glance metrics, activity timeline, relevance distribution, top findings, high-relevance call cards, medium-relevance compact rows, and frequent-caller stats (including AI-inferred identities).
+
+**Graceful degradation:** The template reads a `synthesis_state` variable (`ok` / `no_input` / `gemini_unavailable` / `parse_failed`) and renders a differentiated empty-state panel in the Top Findings section for each case, so a failed synthesis still produces a usable report.
+
+**When editing `case_report_template.html`:** do a dry-run job end-to-end (even a small one) and spot-check the rendered PDF — its multi-section WeasyPrint layout uses absolute positioning and @page margins that can regress silently.
+
+## Guide Assets
+
+`backend/guide_assets/` must contain `viewer_screenshot.png`, `search_screenshot.png`, and `excel_screenshot.png` — the three screenshots embedded in `guide.pdf`. These are **synthetic** samples built from a fake "State v. Marcus Reeves" dataset, not from any real client job, so they can ship with every delivery without leaking case data. If you need to regenerate them (e.g., after a UI refresh):
+- Build samples by calling `render_viewer`, `generate_search_html`, and `generate_excel` against synthetic `CallResult` objects.
+- Screenshot the viewer and search HTML via Chrome headless at `1600×1040`.
+- For the Excel screenshot, prefer rendering an HTML facsimile of the same column layout and styling (navy header, cream alternating rows) because macOS `qlmanage -t` crops the real xlsx at ~3 rows due to tall auto-sized summary-cell heights.
+- Keep the scratch scripts out of the repo.
+
 ## Viewer Architecture
 
 The HTML viewer (`backend/viewer/template.html`) is a self-contained static page with all call data embedded as JSON. It supports two audio backends:
@@ -104,3 +136,13 @@ The HTML viewer (`backend/viewer/template.html`) is a self-contained static page
 - **Native `<audio>` element** (automatic when opened via `file://` protocol, or forced with `?native_audio=1`) — lightweight shim that avoids WaveSurfer's CORS issues with local files.
 
 **Word-level timestamps:** Each word in the transcript is rendered as a clickable `<span class="word-ts">` with `data-ws`/`data-we` attributes (start/end in seconds). Clicking a word seeks to that exact timestamp. During playback, the current word is highlighted with `active-word` class. When search is active, the view falls back to plain text rendering with `<mark>` highlights.
+
+**Collapsible AI Summary pane:** The right-hand summary pane can be collapsed to a 36px vertical rail via a collapse button; state is persisted in `localStorage` under `jcs_summary_collapsed`. When collapsed, the header text is rotated with `writing-mode: vertical-rl` + `transform: rotate(180deg)`.
+
+**Search mode:** Typing in the search box adds a `searching` class to `.trans-scroll`, which shows every transcript page at once and hides pages with no match (`.trans-page.no-match`). The pager switches from `Page N / M` to `N pages with matches` while search is active.
+
+## Search Page Architecture
+
+`backend/search_html.py` emits `search.html`, a single self-contained page that serves as the client-facing "home" of the delivery. It's a dossier-style sortable, filterable table (not a simple search box) — one row per call with relevance chip, inline summary, per-row expanding detail panel containing the full set of review cues and the full transcript, and deep-link buttons to the viewer and the transcript PDF. All data is embedded in an inline `<script>` JSON blob; there are no external dependencies.
+
+Per-call `line_cite` (`Tr. 4:12`-style) values are computed Python-side at generation time via `compute_line_entries`, matching what the transcript PDF would show.

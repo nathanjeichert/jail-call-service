@@ -1,0 +1,1196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+@page {
+    size: letter;
+    margin: 0;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+:root {
+    --ink: #111315;
+    --ink-soft: #25282b;
+    --body: #3e4449;
+    --muted: #717980;
+    --quiet: #9ba3aa;
+    --rule: #d9dee2;
+    --rule-strong: #b7c0c6;
+    --paper: #ffffff;
+    --wash: #f4f7f6;
+    --wash-strong: #e6eeee;
+    --teal: #00746b;
+    --teal-soft: #dcefed;
+    --green: #1f7a48;
+    --green-soft: #e0f1e7;
+    --amber: #a97813;
+    --amber-soft: #f4ead5;
+    --red: #a83242;
+    --red-soft: #f3dfe3;
+}
+
+body {
+    margin: 0;
+    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+}
+
+.page {
+    position: relative;
+    width: 8.5in;
+    height: 11in;
+    overflow: hidden;
+    page-break-after: always;
+    background: var(--paper);
+}
+
+.page:last-child {
+    page-break-after: auto;
+}
+
+.label,
+.eyebrow,
+.meta-label,
+.footer-label,
+.page-num {
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.cover,
+.inner {
+    background:
+        linear-gradient(90deg, var(--ink) 0, var(--ink) 0.18in, transparent 0.18in),
+        linear-gradient(180deg, #ffffff 0, #ffffff 70%, #f7f9f9 100%);
+}
+
+.cover::after,
+.inner::after {
+    content: "";
+    position: absolute;
+    right: -0.05in;
+    top: 0.7in;
+    width: 2.05in;
+    height: 8.7in;
+    background: linear-gradient(145deg, transparent 0 45%, rgba(0,116,107,0.07) 45% 51%, transparent 51%);
+    z-index: 0;
+}
+
+/* ──────────────── Cover ──────────────── */
+
+.cover-header {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 0.55in;
+    height: 0.43in;
+    border-bottom: 1px solid var(--rule);
+    z-index: 1;
+}
+
+.cover-doc-type {
+    position: absolute;
+    left: 0;
+    bottom: 0.16in;
+    color: var(--teal);
+    font-size: 8.2pt;
+    font-weight: 800;
+}
+
+.cover-confidential {
+    position: absolute;
+    right: 0;
+    bottom: 0.16in;
+    color: var(--muted);
+    font-size: 8pt;
+}
+
+.cover-main {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 1.4in;
+    z-index: 1;
+}
+
+.cover-doclabel {
+    color: var(--muted);
+    font-size: 8pt;
+    font-weight: 700;
+    margin-bottom: 0.13in;
+}
+
+.cover-title {
+    margin: 0;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 58pt;
+    font-weight: normal;
+    line-height: 0.95;
+    letter-spacing: -0.5pt;
+}
+
+.cover-title .period {
+    color: var(--teal);
+}
+
+.cover-rule {
+    width: 1.36in;
+    height: 0.045in;
+    background: var(--teal);
+    margin-top: 0.32in;
+}
+
+.cover-subtitle {
+    margin: 0.28in 0 0;
+    max-width: 5.1in;
+    color: var(--ink-soft);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13pt;
+    font-style: italic;
+    line-height: 1.42;
+}
+
+.cover-case {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 5.05in;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--rule-strong);
+    padding: 0.26in 0 0.25in;
+    z-index: 1;
+}
+
+.cover-case-label {
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 800;
+    margin-bottom: 0.08in;
+}
+
+.cover-case-name {
+    margin: 0;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 22pt;
+    font-weight: normal;
+    line-height: 1.18;
+    max-width: 6.6in;
+}
+
+.title-meta {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 6.55in;
+    border-top: 1px solid var(--rule-strong);
+    border-left: 1px solid var(--rule);
+    z-index: 1;
+}
+
+.title-meta table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.title-meta td {
+    width: 33.33%;
+    padding: 0.17in 0.18in 0.16in;
+    border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+}
+
+.meta-label {
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 800;
+    margin-bottom: 0.08in;
+}
+
+.meta-value {
+    color: var(--ink-soft);
+    font-size: 12pt;
+    font-weight: 700;
+    line-height: 1.32;
+}
+
+.cover-note {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    bottom: 1.18in;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.16in 0 0.14in 0.26in;
+    color: var(--body);
+    font-size: 9.4pt;
+    line-height: 1.5;
+    z-index: 1;
+}
+
+.cover-note::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.21in;
+    width: 0.09in;
+    height: 0.09in;
+    background: var(--teal);
+}
+
+.cover-note strong {
+    display: block;
+    color: var(--ink);
+    font-size: 10.2pt;
+    font-weight: 800;
+    margin-bottom: 0.04in;
+}
+
+.cover-note .mono {
+    font-family: "Courier New", Courier, monospace;
+    color: var(--ink);
+    font-weight: 700;
+}
+
+/* ──────────────── Footer (shared) ──────────────── */
+
+.footer {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    bottom: 0.43in;
+    border-top: 1px solid var(--ink);
+    padding-top: 0.12in;
+    color: var(--muted);
+    font-size: 7.8pt;
+    z-index: 1;
+}
+
+.footer-doc {
+    color: var(--ink);
+    font-weight: 800;
+}
+
+.footer-divider {
+    color: var(--quiet);
+    margin: 0 0.08in;
+}
+
+.footer-section {
+    color: var(--body);
+}
+
+.page-num {
+    position: absolute;
+    right: 0;
+    top: 0.12in;
+    color: var(--quiet);
+    font-size: 8pt;
+}
+
+/* ──────────────── Inner page header ──────────────── */
+
+.inner-header {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 0.55in;
+    height: 0.94in;
+    border-bottom: 1px solid var(--ink);
+    z-index: 1;
+}
+
+.inner-eyebrow {
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--teal);
+    font-size: 8pt;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.inner-title {
+    position: absolute;
+    left: 0;
+    bottom: 0.13in;
+    margin: 0;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 24pt;
+    font-weight: normal;
+    line-height: 1;
+}
+
+.inner-meta {
+    position: absolute;
+    right: 0;
+    bottom: 0.14in;
+    color: var(--muted);
+    font-size: 7.8pt;
+    line-height: 1.42;
+    text-align: right;
+    max-width: 3.4in;
+}
+
+.inner-meta strong {
+    color: var(--ink);
+    font-weight: 800;
+}
+
+.inner-meta .mono {
+    font-family: "Courier New", Courier, monospace;
+    color: var(--ink-soft);
+}
+
+.inner-body {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 1.78in;
+    bottom: 0.85in;
+    z-index: 1;
+}
+
+/* ──────────────── Section heading with right rule ──────────────── */
+
+.section-heading {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 0.13in;
+}
+
+.section-heading td.h-text {
+    width: 1px;
+    white-space: nowrap;
+    color: var(--teal);
+    font-size: 8.2pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 0 0.18in 0 0;
+    vertical-align: middle;
+}
+
+.section-heading td.h-rule {
+    border-bottom: 1px solid var(--rule);
+    height: 0;
+    vertical-align: middle;
+}
+
+.lede {
+    margin: 0 0 0.22in;
+    max-width: 6.7in;
+    color: var(--body);
+    font-size: 10pt;
+    line-height: 1.55;
+}
+
+.lede strong {
+    color: var(--ink);
+    font-weight: 700;
+}
+
+/* ──────────────── Tree card ──────────────── */
+
+.tree-card {
+    position: relative;
+    border: 1px solid var(--rule-strong);
+    background: var(--wash);
+    padding: 0.2in 0.28in 0.22in 0.36in;
+    margin-bottom: 0.28in;
+}
+
+.tree-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0.05in;
+    background: var(--teal);
+}
+
+.tree-card-label {
+    color: var(--teal);
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.1in;
+}
+
+.tree {
+    margin: 0;
+    color: var(--ink-soft);
+    font-family: "Courier New", Courier, monospace;
+    font-size: 8.6pt;
+    line-height: 1.6;
+    white-space: pre;
+}
+
+.tree .branch {
+    color: var(--quiet);
+}
+
+.tree .folder {
+    color: var(--ink);
+    font-weight: 700;
+}
+
+.tree .file {
+    color: var(--ink);
+}
+
+.tree .note {
+    color: var(--muted);
+    font-style: italic;
+}
+
+/* ──────────────── Contents table ──────────────── */
+
+.contents-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--ink);
+}
+
+.contents-table tr {
+    border-bottom: 1px solid var(--rule);
+    page-break-inside: avoid;
+}
+
+.contents-table td {
+    vertical-align: top;
+    padding: 0.115in 0;
+}
+
+.contents-name {
+    width: 1.95in;
+    padding-right: 0.18in;
+    color: var(--ink);
+    font-family: "Courier New", Courier, monospace;
+    font-size: 9pt;
+    font-weight: 700;
+}
+
+.contents-desc {
+    color: var(--body);
+    font-size: 9.5pt;
+    line-height: 1.45;
+}
+
+/* ──────────────── Screenshot frame ──────────────── */
+
+.shot {
+    position: relative;
+    margin: 0 0 0.22in;
+    padding: 0.16in;
+    border: 1px solid var(--rule-strong);
+    background: var(--paper);
+}
+
+.shot::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0.42in;
+    height: 0.045in;
+    background: var(--teal);
+}
+
+.shot-img {
+    width: 100%;
+    display: block;
+    border: 1px solid var(--rule);
+}
+
+.shot-placeholder {
+    position: relative;
+    width: 100%;
+    height: 2.45in;
+    border: 1px dashed var(--rule-strong);
+    background: var(--wash);
+    text-align: center;
+    padding-top: 0.95in;
+    color: var(--muted);
+    font-size: 9pt;
+    font-style: italic;
+}
+
+.shot-placeholder strong {
+    display: block;
+    margin-top: 0.06in;
+    color: var(--quiet);
+    font-style: normal;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 7.6pt;
+    letter-spacing: 0.5pt;
+}
+
+.shot-caption {
+    margin-top: 0.1in;
+    color: var(--muted);
+    font-size: 8pt;
+    font-style: italic;
+    text-align: center;
+}
+
+/* ──────────────── Steps ──────────────── */
+
+.steps {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--ink);
+}
+
+.steps tr {
+    border-bottom: 1px solid var(--rule);
+    page-break-inside: avoid;
+}
+
+.steps td {
+    vertical-align: top;
+    padding: 0.13in 0;
+}
+
+.step-num {
+    width: 0.85in;
+    color: var(--teal);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 17pt;
+    line-height: 0.85;
+    font-weight: normal;
+    padding-top: 0.025in;
+}
+
+.step-text {
+    color: var(--body);
+    font-size: 9.6pt;
+    line-height: 1.5;
+    padding-left: 0.04in;
+}
+
+.step-text strong {
+    color: var(--ink);
+    font-weight: 700;
+}
+
+.step-text .kbd {
+    display: inline-block;
+    color: var(--ink);
+    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 8.4pt;
+    font-weight: 700;
+    border: 1px solid var(--rule-strong);
+    background: var(--wash);
+    padding: 0 0.05in;
+}
+
+.step-text .mono {
+    font-family: "Courier New", Courier, monospace;
+    color: var(--ink);
+    font-size: 9.1pt;
+}
+
+/* ──────────────── Relevance pills (analysis page) ──────────────── */
+
+.relevance-row {
+    position: relative;
+    height: 0.78in;
+    margin-bottom: 0.16in;
+    border: 1px solid var(--rule-strong);
+    background: var(--wash);
+}
+
+.relevance-row .relevance-pill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 1.42in;
+    color: #fff;
+    padding: 0.15in 0.16in;
+}
+
+.relevance-row.rel-high .relevance-pill { background: var(--red); }
+.relevance-row.rel-medium .relevance-pill { background: var(--amber); }
+.relevance-row.rel-low .relevance-pill { background: var(--green); }
+
+.relevance-pill .label {
+    font-size: 7pt;
+    font-weight: 800;
+    margin-bottom: 0.06in;
+}
+
+.relevance-pill .relevance-value {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 18pt;
+    line-height: 1;
+}
+
+.relevance-row .desc {
+    position: absolute;
+    left: 1.42in;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    padding: 0.16in 0.22in 0;
+    color: var(--body);
+    font-size: 9.2pt;
+    line-height: 1.46;
+}
+
+.relevance-row .desc strong {
+    display: block;
+    color: var(--ink);
+    font-size: 10.5pt;
+    font-weight: 700;
+    line-height: 1.28;
+    margin-bottom: 0.04in;
+}
+
+/* ──────────────── Sections list ──────────────── */
+
+.sections-list {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--ink);
+}
+
+.sections-list tr {
+    border-bottom: 1px solid var(--rule);
+    page-break-inside: avoid;
+}
+
+.sections-list td {
+    vertical-align: top;
+    padding: 0.13in 0;
+}
+
+.sections-list .key {
+    width: 1.85in;
+    padding-right: 0.18in;
+    padding-top: 0.025in;
+    color: var(--teal);
+    font-size: 8pt;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.sections-list .desc {
+    color: var(--body);
+    font-size: 9.5pt;
+    line-height: 1.5;
+}
+
+.sections-list .desc strong {
+    color: var(--ink);
+    font-weight: 700;
+}
+
+.sections-list .desc .mono {
+    font-family: "Courier New", Courier, monospace;
+    color: var(--ink);
+    font-size: 9pt;
+}
+
+/* ──────────────── Disclaimer card ──────────────── */
+
+.disclaimer {
+    position: relative;
+    border: 1px solid var(--rule-strong);
+    background: var(--wash);
+    padding: 0.22in 0.28in 0.24in 0.42in;
+    margin-bottom: 0.32in;
+}
+
+.disclaimer::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0.08in;
+    background: var(--teal);
+}
+
+.disclaimer-label {
+    color: var(--teal);
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.08in;
+}
+
+.disclaimer-title {
+    margin: 0 0 0.1in;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 14pt;
+    font-weight: normal;
+    line-height: 1.22;
+}
+
+.disclaimer-body {
+    color: var(--body);
+    font-size: 9.3pt;
+    line-height: 1.5;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ 01 · Cover ═══════════════════════ -->
+<div class="page cover">
+    <div class="cover-header">
+        <div class="cover-doc-type">Jail Call Service</div>
+        <div class="cover-confidential">Confidential &middot; Counsel Use</div>
+    </div>
+
+    <div class="cover-main">
+        <div class="cover-doclabel">Document</div>
+        <h1 class="cover-title">User Guide<span class="period">.</span></h1>
+        <div class="cover-rule"></div>
+        <p class="cover-subtitle">A reference for navigating this delivery &mdash; what&rsquo;s inside, how to use the viewer and search, and how to read the AI analysis.</p>
+    </div>
+
+    <div class="cover-case">
+        <div class="cover-case-label">Prepared For</div>
+        <h2 class="cover-case-name">{{ case_name }}</h2>
+    </div>
+
+    <div class="title-meta">
+        <table>
+            <tr>
+                <td>
+                    <div class="meta-label">Generated</div>
+                    <div class="meta-value">{{ gen_date }}</div>
+                </td>
+                <td>
+                    <div class="meta-label">Total Calls</div>
+                    <div class="meta-value">{{ call_count_display }}</div>
+                </td>
+                <td>
+                    <div class="meta-label">Contents</div>
+                    <div class="meta-value">Audio &middot; Transcripts &middot; Analysis &middot; Index</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="cover-note">
+        <strong>Start here.</strong>
+        Open <span class="mono">viewer/index.html</span> in any modern browser to begin reviewing the calls offline. Everything in this delivery works without an internet connection.
+    </div>
+
+    <div class="footer">
+        <span class="footer-doc">User Guide</span><span class="footer-divider">&middot;</span><span class="footer-section">Cover</span>
+        <span class="page-num">01</span>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════ 02 · Package contents ═══════════════════════ -->
+<div class="page inner">
+    <div class="inner-header">
+        <div class="inner-eyebrow">Section One</div>
+        <h2 class="inner-title">What&rsquo;s in This Package</h2>
+        <div class="inner-meta">
+            <strong>{{ case_name_short }}</strong><br>
+            {{ call_count_display }} processed
+        </div>
+    </div>
+
+    <div class="inner-body">
+        <p class="lede">
+            Everything we process for a case lives in a single self-contained folder. <strong>No internet connection is required</strong> &mdash; every page below opens directly in any modern browser.
+        </p>
+
+        <table class="section-heading"><tr><td class="h-text">Folder Structure</td><td class="h-rule"></td></tr></table>
+
+        <div class="tree-card">
+            <div class="tree-card-label">Delivery Layout</div>
+<pre class="tree"><span class="folder">{{ case_name_short }}/</span>
+<span class="branch">&#9500;&#9472;&#9472;</span> <span class="folder">viewer/</span><span class="file">index.html</span>            <span class="note"># interactive call viewer</span>
+<span class="branch">&#9500;&#9472;&#9472;</span> <span class="file">search.html</span>                  <span class="note"># full&#8209;text search across every transcript</span>
+<span class="branch">&#9500;&#9472;&#9472;</span> <span class="file">call-index.xlsx</span>              <span class="note"># spreadsheet index of every call</span>
+<span class="branch">&#9500;&#9472;&#9472;</span> <span class="folder">transcripts/</span>                 <span class="note"># PDF transcripts with AI summary pages</span>
+<span class="branch">&#9500;&#9472;&#9472;</span> <span class="folder">transcripts-no-summary/</span>      <span class="note"># clean PDFs (no AI summary)</span>
+<span class="branch">&#9500;&#9472;&#9472;</span> <span class="folder">audio/</span>                       <span class="note"># MP3 versions of every call</span>
+<span class="branch">&#9492;&#9472;&#9472;</span> <span class="file">guide.pdf</span>                    <span class="note"># this document</span></pre>
+        </div>
+
+        <table class="section-heading"><tr><td class="h-text">What Each Item Is</td><td class="h-rule"></td></tr></table>
+
+        <table class="contents-table">
+            <tr>
+                <td class="contents-name">viewer/index.html</td>
+                <td class="contents-desc">Interactive call viewer &mdash; play audio with synced, clickable transcripts. The primary way to review calls.</td>
+            </tr>
+            <tr>
+                <td class="contents-name">search.html</td>
+                <td class="contents-desc">Full-text search across every transcript. Find names, phrases, or topics and jump directly to the matching call.</td>
+            </tr>
+            <tr>
+                <td class="contents-name">call-index.xlsx</td>
+                <td class="contents-desc">Spreadsheet listing every call with date, duration, phone number, AI relevance rating, summary, and full transcript text.</td>
+            </tr>
+            <tr>
+                <td class="contents-name">transcripts/</td>
+                <td class="contents-desc">PDF transcript per call. Page one is the title page, page two is the AI summary, then the legal-formatted body with line numbers.</td>
+            </tr>
+            <tr>
+                <td class="contents-name">transcripts-no-summary/</td>
+                <td class="contents-desc">Same transcripts without the AI analysis pages &mdash; clean copies for filing or printing.</td>
+            </tr>
+            <tr>
+                <td class="contents-name">audio/</td>
+                <td class="contents-desc">Converted MP3 files. Played by the viewer, but also openable in any standalone media player.</td>
+            </tr>
+            <tr>
+                <td class="contents-name">guide.pdf</td>
+                <td class="contents-desc">This document.</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="footer">
+        <span class="footer-doc">User Guide</span><span class="footer-divider">&middot;</span><span class="footer-section">What&rsquo;s in This Package</span>
+        <span class="page-num">02</span>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════ 03 · Viewer ═══════════════════════ -->
+<div class="page inner">
+    <div class="inner-header">
+        <div class="inner-eyebrow">Section Two</div>
+        <h2 class="inner-title">Using the Call Viewer</h2>
+        <div class="inner-meta">
+            <strong>{{ case_name_short }}</strong><br>
+            <span class="mono">viewer/index.html</span>
+        </div>
+    </div>
+
+    <div class="inner-body">
+        <p class="lede">
+            The viewer is a single self-contained page. Open it from the delivery folder and every call, transcript, and audio file is right there &mdash; no install, no upload, no internet.
+        </p>
+
+        <table class="section-heading"><tr><td class="h-text">Interface</td><td class="h-rule"></td></tr></table>
+
+        <div class="shot">
+            {% if viewer_shot_url %}
+            <img class="shot-img" src="{{ viewer_shot_url }}" alt="Call viewer screenshot">
+            {% else %}
+            <div class="shot-placeholder">
+                Interface preview
+                <strong>Viewer Screenshot</strong>
+            </div>
+            {% endif %}
+            <div class="shot-caption">The Call Viewer &mdash; sidebar of calls, audio waveform, and synchronized transcript.</div>
+        </div>
+
+        <table class="section-heading"><tr><td class="h-text">Steps</td><td class="h-rule"></td></tr></table>
+
+        <table class="steps">
+            <tr>
+                <td class="step-num">01</td>
+                <td class="step-text">Pick a call from the sidebar on the left to load its audio and transcript.</td>
+            </tr>
+            <tr>
+                <td class="step-num">02</td>
+                <td class="step-text">Press <span class="kbd">Space</span> to play or pause; <span class="kbd">&larr;</span>&thinsp;<span class="kbd">&rarr;</span> skip back or forward five seconds.</td>
+            </tr>
+            <tr>
+                <td class="step-num">03</td>
+                <td class="step-text">Click any line in the transcript to jump the audio to that exact moment in the conversation.</td>
+            </tr>
+            <tr>
+                <td class="step-num">04</td>
+                <td class="step-text">Use the search box at the top right to search within the current call&rsquo;s transcript only.</td>
+            </tr>
+            <tr>
+                <td class="step-num">05</td>
+                <td class="step-text">Adjust playback speed (<strong>0.5&times;</strong> to <strong>2&times;</strong>) for faster or slower review.</td>
+            </tr>
+            <tr>
+                <td class="step-num">06</td>
+                <td class="step-text">The active line highlights as audio plays, so you always know where you are in the conversation.</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="footer">
+        <span class="footer-doc">User Guide</span><span class="footer-divider">&middot;</span><span class="footer-section">Using the Call Viewer</span>
+        <span class="page-num">03</span>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════ 04 · Search ═══════════════════════ -->
+<div class="page inner">
+    <div class="inner-header">
+        <div class="inner-eyebrow">Section Three</div>
+        <h2 class="inner-title">Using the Search Page</h2>
+        <div class="inner-meta">
+            <strong>{{ case_name_short }}</strong><br>
+            <span class="mono">search.html</span>
+        </div>
+    </div>
+
+    <div class="inner-body">
+        <p class="lede">
+            The search page sweeps every transcript at once &mdash; useful for finding a name, phrase, or topic without opening calls one by one.
+        </p>
+
+        <table class="section-heading"><tr><td class="h-text">Interface</td><td class="h-rule"></td></tr></table>
+
+        <div class="shot">
+            {% if search_shot_url %}
+            <img class="shot-img" src="{{ search_shot_url }}" alt="Search page screenshot">
+            {% else %}
+            <div class="shot-placeholder">
+                Interface preview
+                <strong>Search Screenshot</strong>
+            </div>
+            {% endif %}
+            <div class="shot-caption">The Search Page &mdash; query bar, filters, and result list with highlighted matches.</div>
+        </div>
+
+        <table class="section-heading"><tr><td class="h-text">Steps</td><td class="h-rule"></td></tr></table>
+
+        <table class="steps">
+            <tr>
+                <td class="step-num">01</td>
+                <td class="step-text">Type a name, phrase, or keyword and press <span class="kbd">Enter</span> to search across every transcript.</td>
+            </tr>
+            <tr>
+                <td class="step-num">02</td>
+                <td class="step-text">Use the <strong>date</strong> and <strong>phone number</strong> filters to narrow results to specific calls.</td>
+            </tr>
+            <tr>
+                <td class="step-num">03</td>
+                <td class="step-text">Matching text is highlighted in context so you can quickly see what surrounds each hit.</td>
+            </tr>
+            <tr>
+                <td class="step-num">04</td>
+                <td class="step-text">Double-click any result to open that call in the viewer, positioned at the matching line.</td>
+            </tr>
+            <tr>
+                <td class="step-num">05</td>
+                <td class="step-text">Results are paginated &mdash; use the controls at the bottom to browse through all matches.</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="footer">
+        <span class="footer-doc">User Guide</span><span class="footer-divider">&middot;</span><span class="footer-section">Using the Search Page</span>
+        <span class="page-num">04</span>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════ 05 · Excel ═══════════════════════ -->
+<div class="page inner">
+    <div class="inner-header">
+        <div class="inner-eyebrow">Section Four</div>
+        <h2 class="inner-title">Using the Excel Index</h2>
+        <div class="inner-meta">
+            <strong>{{ case_name_short }}</strong><br>
+            <span class="mono">call-index.xlsx</span>
+        </div>
+    </div>
+
+    <div class="inner-body">
+        <p class="lede">
+            The Excel index is the master spreadsheet of every call. Each row is one call; columns include date, duration, phone number, AI relevance, summary, and the full transcript text &mdash; ideal for triage and bulk filtering.
+        </p>
+
+        <table class="section-heading"><tr><td class="h-text">Interface</td><td class="h-rule"></td></tr></table>
+
+        <div class="shot">
+            {% if excel_shot_url %}
+            <img class="shot-img" src="{{ excel_shot_url }}" alt="Excel index screenshot">
+            {% else %}
+            <div class="shot-placeholder">
+                Interface preview
+                <strong>Excel Index Screenshot</strong>
+            </div>
+            {% endif %}
+            <div class="shot-caption">The call index spreadsheet with header filters and clickable file links.</div>
+        </div>
+
+        <table class="section-heading"><tr><td class="h-text">Steps</td><td class="h-rule"></td></tr></table>
+
+        <table class="steps">
+            <tr>
+                <td class="step-num">01</td>
+                <td class="step-text">Open <strong>call-index.xlsx</strong> in Excel or Google Sheets. Each row represents a single call.</td>
+            </tr>
+            <tr>
+                <td class="step-num">02</td>
+                <td class="step-text">Use the header dropdowns to sort or filter &mdash; start with <strong>Relevance&nbsp;=&nbsp;HIGH</strong> to surface the calls that matter most.</td>
+            </tr>
+            <tr>
+                <td class="step-num">03</td>
+                <td class="step-text">Click a filename in the <strong>File</strong> column to open that call directly in the viewer.</td>
+            </tr>
+            <tr>
+                <td class="step-num">04</td>
+                <td class="step-text">The <strong>Summary</strong> column gives a brief AI-generated overview of each call&rsquo;s content.</td>
+            </tr>
+            <tr>
+                <td class="step-num">05</td>
+                <td class="step-text">The <strong>Full Transcript</strong> column has the complete text &mdash; useful for searching within Excel using <span class="kbd">Ctrl</span>&thinsp;+&thinsp;<span class="kbd">F</span>.</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="footer">
+        <span class="footer-doc">User Guide</span><span class="footer-divider">&middot;</span><span class="footer-section">Using the Excel Index</span>
+        <span class="page-num">05</span>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════ 06 · AI Analysis ═══════════════════════ -->
+<div class="page inner">
+    <div class="inner-header">
+        <div class="inner-eyebrow">Section Five</div>
+        <h2 class="inner-title">Understanding AI Analysis</h2>
+        <div class="inner-meta">
+            <strong>{{ case_name_short }}</strong><br>
+            <span class="mono">transcripts/*.pdf</span>
+        </div>
+    </div>
+
+    <div class="inner-body">
+        <p class="lede">
+            Every transcript PDF includes an AI-generated summary page right after the title page. It&rsquo;s designed for quick triage &mdash; <strong>a starting point, not a substitute for listening to the audio.</strong>
+        </p>
+
+        <table class="section-heading"><tr><td class="h-text">Relevance Ratings</td><td class="h-rule"></td></tr></table>
+
+        <div class="relevance-row rel-high">
+            <div class="relevance-pill">
+                <div class="label">Relevance</div>
+                <div class="relevance-value">High</div>
+            </div>
+            <div class="desc">
+                <strong>Likely material to the case.</strong>
+                Discussion of charges, co-defendants, witnesses, or potentially significant admissions.
+            </div>
+        </div>
+
+        <div class="relevance-row rel-medium">
+            <div class="relevance-pill">
+                <div class="label">Relevance</div>
+                <div class="relevance-value">Medium</div>
+            </div>
+            <div class="desc">
+                <strong>Potential context worth checking.</strong>
+                Indirect references to the case, court dates, or legal proceedings that may add useful context.
+            </div>
+        </div>
+
+        <div class="relevance-row rel-low">
+            <div class="relevance-pill">
+                <div class="label">Relevance</div>
+                <div class="relevance-value">Low</div>
+            </div>
+            <div class="desc">
+                <strong>Routine personal conversation.</strong>
+                No apparent connection to case content. Safe to skip on the first review pass.
+            </div>
+        </div>
+
+        <table class="section-heading"><tr><td class="h-text">Summary Sections</td><td class="h-rule"></td></tr></table>
+
+        <table class="sections-list">
+            <tr>
+                <td class="key">Notes</td>
+                <td class="desc">Timestamped, attorney-relevant moments only. Each cue carries the audio timestamp and the transcript page:line cite. <span class="mono">NOTES: NONE</span> means there&rsquo;s nothing the model thought you&rsquo;d need to flag.</td>
+            </tr>
+            <tr>
+                <td class="key">Identity of Outside Party</td>
+                <td class="desc">Who the inmate is speaking with and their apparent relationship &mdash; populated only when the call itself supports the inference.</td>
+            </tr>
+            <tr>
+                <td class="key">Brief Summary</td>
+                <td class="desc">A one or two sentence narrative overview of the call&rsquo;s content and tone.</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="footer">
+        <span class="footer-doc">User Guide</span><span class="footer-divider">&middot;</span><span class="footer-section">Understanding AI Analysis</span>
+        <span class="page-num">06</span>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════ 07 · Important Notes ═══════════════════════ -->
+<div class="page inner">
+    <div class="inner-header">
+        <div class="inner-eyebrow">Section Six</div>
+        <h2 class="inner-title">Important Notes</h2>
+        <div class="inner-meta">
+            <strong>{{ case_name_short }}</strong><br>
+            disclaimer &middot; review tips
+        </div>
+    </div>
+
+    <div class="inner-body">
+        <table class="section-heading"><tr><td class="h-text">Disclaimer</td><td class="h-rule"></td></tr></table>
+
+        <div class="disclaimer">
+            <div class="disclaimer-label">Read Before Use</div>
+            <div class="disclaimer-title">Verify against the source recording before quoting or filing.</div>
+            <div class="disclaimer-body">
+                This package is generated using automated speech recognition and AI analysis. Transcripts may contain errors with names, technical terms, slang, or overlapping speech. Relevance ratings and summaries are intended as a triage aid, not a definitive assessment. Always verify critical details by listening to the original audio recording before quotation, filing, or use in court.
+            </div>
+        </div>
+
+        <table class="section-heading"><tr><td class="h-text">Tips for Efficient Review</td><td class="h-rule"></td></tr></table>
+
+        <table class="steps">
+            <tr>
+                <td class="step-num">01</td>
+                <td class="step-text">Start with the Excel index sorted by the <strong>Relevance</strong> column to prioritize the calls most likely to matter.</td>
+            </tr>
+            <tr>
+                <td class="step-num">02</td>
+                <td class="step-text">Use the search page to sweep for specific names, phrases, or topics across every call at once.</td>
+            </tr>
+            <tr>
+                <td class="step-num">03</td>
+                <td class="step-text">In the viewer, click any line in the transcript to jump the audio to that exact moment.</td>
+            </tr>
+            <tr>
+                <td class="step-num">04</td>
+                <td class="step-text">Viewer keyboard shortcuts: <span class="kbd">Space</span> play/pause, <span class="kbd">&larr;</span>&thinsp;<span class="kbd">&rarr;</span> skip 5 seconds, <span class="kbd">&uarr;</span>&thinsp;<span class="kbd">&darr;</span> change speed.</td>
+            </tr>
+            <tr>
+                <td class="step-num">05</td>
+                <td class="step-text">Everything works offline &mdash; no internet, no upload. Just open any HTML file in a modern browser.</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="footer">
+        <span class="footer-doc">User Guide</span><span class="footer-divider">&middot;</span><span class="footer-section">Important Notes</span>
+        <span class="page-num">07</span>
+    </div>
+</div>
+
+</body>
+</html>

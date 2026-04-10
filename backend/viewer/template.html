@@ -422,6 +422,14 @@
       display: block;
     }
 
+    /* When search is active, show all pages so matches on any page are visible. */
+    .trans-scroll.searching .trans-page {
+      display: block;
+    }
+    .trans-scroll.searching .trans-page.no-match {
+      display: none;
+    }
+
     .trans-line {
       font-family: 'Courier New', Courier, monospace;
       font-size: 12pt;
@@ -479,12 +487,22 @@
 
     /* ── Summary pane ── */
     .summary-pane {
-      width: 280px;
+      width: 320px;
       background: var(--bg-card);
       border-left: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
+      transition: width 0.2s ease;
+    }
+
+    .summary-pane.collapsed {
+      width: 36px;
+    }
+
+    .summary-pane.collapsed .summary-header-title,
+    .summary-pane.collapsed .summary-body {
+      display: none;
     }
 
     .summary-header {
@@ -493,6 +511,52 @@
       font-size: 12px;
       font-weight: 600;
       color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .summary-pane.collapsed .summary-header {
+      padding: 10px 6px;
+      justify-content: center;
+      border-bottom: none;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      height: 100%;
+      cursor: pointer;
+    }
+
+    .summary-header-title {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 11px;
+    }
+
+    .summary-collapse-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      font-family: inherit;
+      flex-shrink: 0;
+    }
+    .summary-collapse-btn:hover {
+      background: var(--bg-alt);
+      color: var(--text);
+      border-color: var(--text-muted);
+    }
+    .summary-pane.collapsed .summary-collapse-btn {
+      display: none;
     }
 
     .summary-body {
@@ -634,8 +698,11 @@
         </div>
 
         <!-- Summary -->
-        <div class="summary-pane">
-          <div class="summary-header">AI Summary</div>
+        <div class="summary-pane" id="summaryPane">
+          <div class="summary-header" id="summaryHeader">
+            <span class="summary-header-title">AI Summary</span>
+            <button class="summary-collapse-btn" id="summaryCollapseBtn" title="Collapse summary">&#8250;</button>
+          </div>
           <div class="summary-body" id="summaryBody"><span class="summary-empty">No call selected.</span></div>
         </div>
       </div>
@@ -665,6 +732,9 @@
     const searchClear = document.getElementById('searchClear');
     const transScroll = document.getElementById('transScroll');
     const summaryBody = document.getElementById('summaryBody');
+    const summaryPane = document.getElementById('summaryPane');
+    const summaryHeader = document.getElementById('summaryHeader');
+    const summaryCollapseBtn = document.getElementById('summaryCollapseBtn');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
     const pageInfo = document.getElementById('pageInfo');
@@ -749,15 +819,19 @@
       });
 
       transScroll.innerHTML = '';
+      transScroll.classList.toggle('searching', !!q);
       const maxPage = Math.max(...Object.keys(pages).map(Number), 1);
 
       for (let p = 1; p <= maxPage; p++) {
         const pageEl = document.createElement('div');
         pageEl.className = 'trans-page' + (p === page ? ' active' : '');
         pageEl.dataset.page = p;
+        let pageHasMatch = false;
 
         const lines = (pages[p] || []).sort((a, b) => (a.line || 0) - (b.line || 0));
         lines.forEach(entry => {
+          const lineText = entry.rendered_text || entry.text || '';
+          if (q && lineText.toLowerCase().includes(q)) pageHasMatch = true;
           const div = document.createElement('div');
           div.className = 'trans-line';
           div.dataset.start = entry.start || 0;
@@ -789,7 +863,6 @@
           } else {
             // Fallback: no word data or search active — render as before
             div.addEventListener('click', () => seekTo(parseFloat(entry.start) || 0));
-            const lineText = entry.rendered_text || entry.text || '';
             const highlighted = q ? highlightText(lineText, q) : esc(lineText);
             div.innerHTML = `${lineNum}<span class="line-text">${highlighted}</span>`;
           }
@@ -797,10 +870,11 @@
           pageEl.appendChild(div);
         });
 
+        if (q && !pageHasMatch) pageEl.classList.add('no-match');
         transScroll.appendChild(pageEl);
       }
 
-      updatePageNav(page, maxPage);
+      updatePageNav(page, maxPage, q);
     }
 
     function goToPage(page) {
@@ -813,11 +887,20 @@
       goToPage(currentPage + delta);
     }
 
-    function updatePageNav(page, maxPage) {
+    function updatePageNav(page, maxPage, query) {
       totalPages = maxPage;
-      pageInfo.textContent = maxPage > 1 ? `Page ${page} / ${maxPage}` : `Page ${page}`;
-      prevBtn.disabled = page <= 1;
-      nextBtn.disabled = page >= maxPage;
+      if (query) {
+        const visible = transScroll.querySelectorAll('.trans-page:not(.no-match)').length;
+        pageInfo.textContent = visible
+          ? `${visible} page${visible === 1 ? '' : 's'} with matches`
+          : 'No matches';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+      } else {
+        pageInfo.textContent = maxPage > 1 ? `Page ${page} / ${maxPage}` : `Page ${page}`;
+        prevBtn.disabled = page <= 1;
+        nextBtn.disabled = page >= maxPage;
+      }
     }
 
     // ── Search ──
@@ -832,6 +915,23 @@
       searchClear.style.display = 'none';
       renderPage(currentPage, '');
     }
+
+    // ── Summary panel collapse ──
+    function toggleSummaryPane() {
+      const collapsed = summaryPane.classList.toggle('collapsed');
+      summaryCollapseBtn.innerHTML = collapsed ? '&#8249;' : '&#8250;';
+      try { localStorage.setItem('jcs_summary_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+    }
+    summaryCollapseBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSummaryPane(); });
+    summaryHeader.addEventListener('click', () => {
+      if (summaryPane.classList.contains('collapsed')) toggleSummaryPane();
+    });
+    try {
+      if (localStorage.getItem('jcs_summary_collapsed') === '1') {
+        summaryPane.classList.add('collapsed');
+        summaryCollapseBtn.innerHTML = '&#8249;';
+      }
+    } catch (e) {}
 
     // ── Audio Setup ──
     const waveformEl = document.getElementById('waveform');
