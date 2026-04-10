@@ -61,6 +61,16 @@ PDF_TEXT_X = PDF_RULE_LEFT_INNER + ((_TRANSCRIPT_RULE_WIDTH - PDF_TEXT_BLOCK_WID
 
 TIMESTAMP_RE = re.compile(r"(\[(?:\d{1,2}:)?\d{2}:\d{2}\])")
 
+# Maximum review cues that fit on the summary page 1 alongside the relevance
+# pill, Identity of Outside Party, and Brief Summary blocks. For HIGH-relevance
+# calls with more cues than this, the excess spills onto a continuation page
+# so that attorney-relevant notes are never clipped.
+SUMMARY_PAGE1_CUE_CAP = 7
+# Safety ceiling on the continuation page so an unusually long note list can
+# still never overflow. In practice Gemini is bounded by a 500-word response
+# cap which keeps total cues under ~18, well below this limit.
+SUMMARY_PAGE2_CUE_CAP = 14
+
 
 def _safe_text(value: Optional[str]) -> str:
     return str(value or "").strip()
@@ -529,6 +539,22 @@ def _render_cover_pages(
             for cue in ctx["review_cues"]:
                 cue["line_cite"] = _line_cite_for_timestamp(cue.get("timestamp", ""), line_entries)
             ctx["cue_count"] = len(ctx["review_cues"])
+
+            # Split review cues across two summary pages for HIGH-relevance
+            # calls when they exceed what fits on page 1 alongside Identity +
+            # Brief Summary. MEDIUM/LOW keep the existing single-page layout.
+            all_cues = ctx["review_cues"]
+            if rel == "HIGH" and len(all_cues) > SUMMARY_PAGE1_CUE_CAP:
+                ctx["page1_review_cues"] = all_cues[:SUMMARY_PAGE1_CUE_CAP]
+                ctx["page2_review_cues"] = all_cues[SUMMARY_PAGE1_CUE_CAP:SUMMARY_PAGE1_CUE_CAP + SUMMARY_PAGE2_CUE_CAP]
+                ctx["has_continuation"] = True
+                ctx["page2_cue_count"] = len(ctx["page2_review_cues"])
+                ctx["page2_first_index"] = SUMMARY_PAGE1_CUE_CAP + 1
+                ctx["page2_last_index"] = SUMMARY_PAGE1_CUE_CAP + len(ctx["page2_review_cues"])
+            else:
+                ctx["page1_review_cues"] = all_cues
+                ctx["page2_review_cues"] = []
+                ctx["has_continuation"] = False
 
             spk = sections.get("speakers", "")
             ctx["speakers"] = spk.replace("\n", " ").strip() if spk else ""
