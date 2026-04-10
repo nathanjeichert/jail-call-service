@@ -690,10 +690,8 @@ async def _stage_generate_indexes(job: Job, output_dir: str, audio_dir: str) -> 
             f.write(html)
 
     def write_viewer():
-        viewer_dir = os.path.join(output_dir, "viewer")
-        os.makedirs(viewer_dir, exist_ok=True)
         html = render_viewer(done_calls, case_name=job.case_name)
-        with open(os.path.join(viewer_dir, "index.html"), 'w', encoding='utf-8') as f:
+        with open(os.path.join(output_dir, "viewer.html"), 'w', encoding='utf-8') as f:
             f.write(html)
 
     def write_guide():

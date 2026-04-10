@@ -120,7 +120,7 @@ def generate_excel(calls, error_calls=None) -> bytes:
             if base.lower().endswith(".wav"):
                 base = base[:-4] + ".mp3"
             audio_name = base
-        fn_cell.hyperlink = f"viewer/index.html?call={quote(audio_name)}"
+        fn_cell.hyperlink = f"viewer.html?call={quote(audio_name)}"
         fn_cell.font = Font(underline="single", color="1B2D4A")
 
         write(7, _format_duration(call.duration_seconds))

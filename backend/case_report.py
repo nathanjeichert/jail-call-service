@@ -59,13 +59,14 @@ You have TWO tasks. Complete BOTH in your single response.
 TASK 1 — TOP FINDINGS
 ═══════════════════════════════════════════════════════════════════
 
-From the calls in INPUT_CALLS below, identify between {min_findings} and {max_findings} findings that are MOST consequential for case strategy — the things the reviewing attorney must know first when picking up this case. Quality over quantity. Each finding should tie to a specific moment in a specific call when possible.
+From the calls in INPUT_CALLS below, identify between {min_findings} and {max_findings} findings that are MOST consequential for case strategy — the things a reviewing attorney must know first when picking up this case. Quality over quantity. Each finding should tie to a specific moment in a specific call when possible.
 
 VOICE FOR HEADLINE AND DETAIL:
-- The reader of this report IS the attorney. Do not refer to "the attorney" or "an attorney" in third person.
-- Do not address the reader with imperatives ("review this," "note that," "click here").
-- State what happened in the call and why it matters, in neutral past-tense factual prose.
-- Do not include recommendations, instructions, or commentary about the report itself.
+- The audience is a legal professional reviewing the case — this may be DEFENSE counsel OR PROSECUTION. Write in a neutral, objective, reader-agnostic tone. Do not take sides.
+- Narrate in third person, neutral past-tense factual prose. Refer to participants by role or name (e.g. "the defendant", "Lowe", "the outside party", "Seth").
+- NEVER use the second person ("you", "your", "yours"). The defendant is NEVER "you" — even when the transcript has the defendant speaking in the first person. If the outside party told the defendant something, write "the outside party told the defendant…", NOT "the outside party informs you…".
+- NEVER use imperatives directed at the reader ("review this", "note that", "see", "click here").
+- Do not include recommendations, legal advice, strategic suggestions, or commentary about the report itself. Just state what happened and why it matters.
 
 CRITERIA (what makes a finding important):
 - Discussion of charges, alleged offense, or related criminal conduct
@@ -138,7 +139,7 @@ def _stem(call: CallResult) -> str:
 
 def _viewer_link(call: CallResult, timestamp: Optional[str] = None) -> str:
     audio_filename = f"{_stem(call)}.mp3"
-    base = f"viewer/index.html?call={quote(audio_filename)}"
+    base = f"viewer.html?call={quote(audio_filename)}"
     if timestamp:
         ts = timestamp.strip("[]").strip()
         if ts:
@@ -874,4 +875,10 @@ def generate_case_report_pdf(
 
     template = Template(TEMPLATE_PATH.read_text())
     html_str = template.render(**ctx)
-    return HTML(string=html_str, base_url=str(TEMPLATE_PATH.parent)).write_pdf()
+    # base_url is intentionally omitted so that relative <a href> values
+    # (e.g. "viewer.html?call=...", "transcripts/xxx.pdf") are written into
+    # the PDF link annotations as-is. The delivery zip places case-report.pdf
+    # at its root, next to viewer.html and the transcripts/ directory, so PDF
+    # readers resolve those relative URIs against wherever the end user
+    # extracts the zip.
+    return HTML(string=html_str).write_pdf()

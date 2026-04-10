@@ -390,6 +390,12 @@ section.chapter {
     font-weight: normal;
     line-height: 0.95;
 }
+/* Total Audio can hit "XXX h XX min" — cap it so the whole value fits
+   on a single line at any delivery size under ~999 hours. */
+.hero-value.hero-value-duration {
+    font-size: 18pt;
+    white-space: nowrap;
+}
 .hero-suffix {
     margin-top: 0.06in;
     color: var(--muted);
@@ -441,31 +447,6 @@ section.chapter {
 .rel-bar td.rel-low    { background: var(--green); }
 .rel-bar td.rel-unknown{ background: var(--quiet); }
 .rel-bar td .pct       { font-family: Georgia, "Times New Roman", serif; font-weight: normal; font-size: 13pt; display: block; }
-
-.rel-legend {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 0.16in;
-}
-.rel-legend td {
-    width: 25%;
-    padding: 0.06in 0.1in 0;
-    color: var(--body);
-    font-size: 8.5pt;
-    vertical-align: top;
-}
-.rel-legend .swatch {
-    display: inline-block;
-    width: 0.16in;
-    height: 0.16in;
-    margin-right: 0.06in;
-    vertical-align: -2pt;
-}
-.rel-legend .swatch.rel-high   { background: var(--red); }
-.rel-legend .swatch.rel-medium { background: var(--amber); }
-.rel-legend .swatch.rel-low    { background: var(--green); }
-.rel-legend .swatch.rel-unknown{ background: var(--quiet); }
-.rel-legend strong { color: var(--ink); font-weight: 700; }
 
 /* ── Activity timeline ── */
 .timeline-card {
@@ -704,8 +685,11 @@ section.chapter {
     background: var(--paper);
     padding: 0;
     margin-bottom: 0.22in;
-    page-break-inside: avoid;
 }
+/* Keep the card header (pill + filename + meta) together so a page break
+   never lands between the pill and its call title, but allow the cue
+   table below to split cleanly across pages for long call cards. */
+.call-card-head { page-break-inside: avoid; page-break-after: avoid; }
 
 .call-card-head {
     position: relative;
@@ -1069,7 +1053,7 @@ section.chapter {
             </td>
             <td>
                 <div class="hero-label">Total Audio</div>
-                <div class="hero-value">{{ glance.total_duration_display }}</div>
+                <div class="hero-value hero-value-duration">{{ glance.total_duration_display }}</div>
                 <div class="hero-suffix">{{ glance.avg_duration_display }} average</div>
             </td>
             <td>
@@ -1134,19 +1118,6 @@ section.chapter {
                 <td class="rel-unknown" style="width: {{ '%.2f' % glance.rel_percents.UNKNOWN }}%;">
                     {% if glance.rel_percents.UNKNOWN >= 8 %}UNRATED<span class="pct">{{ glance.rel_counts.UNKNOWN }}</span>{% endif %}
                 </td>
-                {% endif %}
-            </tr>
-        </table>
-
-        <table class="rel-legend">
-            <tr>
-                <td><span class="swatch rel-high"></span><strong>{{ glance.rel_counts.HIGH }}</strong> high relevance &mdash; priority review</td>
-                <td><span class="swatch rel-medium"></span><strong>{{ glance.rel_counts.MEDIUM }}</strong> medium &mdash; potential context</td>
-                <td><span class="swatch rel-low"></span><strong>{{ glance.rel_counts.LOW }}</strong> low &mdash; routine personal</td>
-                {% if glance.rel_counts.UNKNOWN > 0 %}
-                <td><span class="swatch rel-unknown"></span><strong>{{ glance.rel_counts.UNKNOWN }}</strong> unrated</td>
-                {% else %}
-                <td></td>
                 {% endif %}
             </tr>
         </table>
@@ -1253,17 +1224,12 @@ section.chapter {
     </header>
 
     {% if high_cards %}
-    <p class="lede">
-        One card per call flagged as high relevance: brief summary, outside party, and the timestamped notes from the AI analysis. The filename and any timestamp are links into the call viewer.
-    </p>
-
     {% for c in high_cards %}
     <div class="call-card rel-high">
         <div class="call-card-head">
             <div class="pill">
                 <div class="label">Relevance</div>
                 <div class="value">High</div>
-                <div class="sub">Call {{ "%03d"|format(c.call_index) }}</div>
             </div>
             <h3 class="call-head-title"><a href="{{ c.viewer_link }}">{{ c.filename }}</a></h3>
             <div class="call-head-meta">
@@ -1327,10 +1293,6 @@ section.chapter {
     </header>
 
     {% if medium_rows %}
-    <p class="lede">
-        Calls flagged as potential context but not priority. The filename opens the call in the viewer; full notes live in the per-call transcript PDF.
-    </p>
-
     <table class="med-table">
         {% for r in medium_rows %}
         <tr>
@@ -1372,7 +1334,7 @@ section.chapter {
 
     {% if top_callers %}
     <p class="lede">
-        Outside-party numbers ranked by call volume. The defendant and any automated telecom messages are excluded — only the outside party of each call is counted. The italic line under each number is an <strong>AI-inferred identity</strong> drawn from the per-call analyses; it is a starting hypothesis, not an established fact.
+        Outside party numbers ranked by call volume. The identity of the callers and their relationship to defendant is an AI-generated hypothesis, and should be confirmed by manual review.
     </p>
 
     <table class="callers-table">

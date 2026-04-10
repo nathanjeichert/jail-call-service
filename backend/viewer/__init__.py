@@ -2,7 +2,8 @@
 Multi-call viewer HTML generator.
 
 Renders template.html with all call data embedded as JSON.
-Audio references use relative paths (../audio/<filename>.mp3).
+Audio references use paths relative to the delivery root (audio/<filename>.mp3),
+since the rendered file ships as viewer.html alongside the audio/ directory.
 """
 
 import html as html_mod

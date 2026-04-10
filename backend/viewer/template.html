@@ -1037,7 +1037,7 @@
     let pendingSeek = 0;
 
     function loadAudioForCall(call) {
-      const audioUrl = '../audio/' + encodeURIComponent(call.audio_filename || '');
+      const audioUrl = 'audio/' + encodeURIComponent(call.audio_filename || '');
       ws.load(audioUrl);
     }
 

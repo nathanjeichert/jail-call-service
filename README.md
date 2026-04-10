@@ -49,7 +49,7 @@ Select the engine per-job from the UI. The local engine uses NVIDIA Parakeet TDT
 {CaseName}/
 ├── transcripts/          # PDF per call (summary on page 2)
 ├── audio/                # Converted MP3 files
-├── viewer/index.html     # Multi-call browser player
+├── viewer.html           # Multi-call browser player
 ├── search.html           # Full-text search
 ├── call-index.xlsx       # Spreadsheet index
 └── README.txt            # Instructions for the attorney

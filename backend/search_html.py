@@ -4,7 +4,7 @@ Self-contained search + browse HTML page generator.
 This is the client-facing "home page" for a delivery package. It serves
 as a spreadsheet-like sortable/filterable table of every call and as a
 full-text search engine that surfaces relevant transcript excerpts. From
-any row, clients can jump to the call in viewer.html (with audio deep-link
+any row, clients can jump to the call in the viewer (with audio deep-link
 to a specific timestamp) or open the formatted transcript PDF.
 
 All call data is embedded in a <script> JSON blob; no external deps.
@@ -1086,7 +1086,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
   }
   function viewerUrl(call, timeSec) {
     if (!call.audio_filename) return '';
-    let u = 'viewer/index.html?call=' + encodeURIComponent(call.audio_filename);
+    let u = 'viewer.html?call=' + encodeURIComponent(call.audio_filename);
     if (timeSec != null && !isNaN(timeSec)) u += '&t=' + encodeURIComponent(secondsToLabel(timeSec));
     return u;
   }
