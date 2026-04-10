@@ -50,12 +50,15 @@ PDF_PAGE_NUMBER_SIZE = 10
 PDF_LINE_NUM_RIGHT = 0.78 * inch      # right edge of line numbers
 PDF_RULE_LEFT_OUTER = 0.92 * inch     # left double-line (outer)
 PDF_RULE_LEFT_INNER = 0.97 * inch     # left double-line (inner)
-PDF_TEXT_X = 1.2 * inch               # left edge of transcript text
 PDF_RULE_RIGHT = 7.4 * inch           # right single line
 
-# Derive max characters per line from physical layout
+# Derive transcript text block from the ruled corridor, centered between the
+# inner left rule and the right rule.
 _COURIER_CHAR_W = stringWidth("M", PDF_TEXT_FONT, PDF_TEXT_SIZE)
-MAX_LINE_CHARS = int((PDF_RULE_RIGHT - PDF_TEXT_X - 6) / _COURIER_CHAR_W)
+_TRANSCRIPT_RULE_WIDTH = PDF_RULE_RIGHT - PDF_RULE_LEFT_INNER
+MAX_LINE_CHARS = int((_TRANSCRIPT_RULE_WIDTH - 12) / _COURIER_CHAR_W)
+PDF_TEXT_BLOCK_WIDTH = MAX_LINE_CHARS * _COURIER_CHAR_W
+PDF_TEXT_X = PDF_RULE_LEFT_INNER + ((_TRANSCRIPT_RULE_WIDTH - PDF_TEXT_BLOCK_WIDTH) / 2.0)
 
 # Summary page layout (professional sans-serif)
 SUMMARY_FONT = "Helvetica"

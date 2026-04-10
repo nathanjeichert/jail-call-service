@@ -430,7 +430,7 @@
       cursor: pointer;
       border-radius: 2px;
       display: flex;
-      gap: 10px;
+      gap: 8px;
       padding: 0 2px;
       transition: background 0.1s;
     }
@@ -455,14 +455,6 @@
       min-width: 24px;
       text-align: right;
       user-select: none;
-    }
-
-    .line-ts {
-      color: var(--text-faint);
-      font-size: 9pt;
-      min-width: 44px;
-      user-select: none;
-      opacity: 0.6;
     }
 
     .line-text {
@@ -708,7 +700,7 @@
       // Update audio
       loadingOverlay.classList.remove('hidden');
       ws.stop();
-      ws.load('../audio/' + call.audio_filename);
+      loadAudioForCall(call);
 
       // Update summary
       if (call.summary) {
@@ -758,9 +750,7 @@
 
           const lineText = entry.rendered_text || entry.text || '';
           const highlighted = q ? highlightText(lineText, q) : esc(lineText);
-
-          const ts = formatTime(parseFloat(entry.start) || 0);
-          div.innerHTML = `<span class="line-num">${entry.line || ''}</span><span class="line-ts">${ts}</span><span class="line-text">${highlighted}</span>`;
+          div.innerHTML = `<span class="line-num">${entry.line || ''}</span><span class="line-text">${highlighted}</span>`;
           pageEl.appendChild(div);
         });
 
@@ -800,49 +790,113 @@
       renderPage(currentPage, '');
     }
 
-    // ── WaveSurfer Setup ──
+    // ── Audio Setup ──
     const waveformEl = document.getElementById('waveform');
-    const ws = WaveSurfer.create({
-      container: waveformEl,
-      waveColor: 'rgba(255,255,255,0.3)',
-      progressColor: '#ffffff',
-      cursorColor: '#B8A06A',
-      barWidth: 2,
-      barGap: 2,
-      barRadius: 2,
-      height: 40,
-      normalize: true,
-      mediaControls: false,
-      autoplay: false
-    });
+    const audioEl = document.getElementById('audio');
+    const forceNativeAudio = new URLSearchParams(location.search).get('native_audio') === '1';
+    const useNativeAudio = forceNativeAudio || location.protocol === 'file:';
+    let ws;
 
-    ws.on('timeupdate', (t) => {
+    function onPlayerTimeUpdate(t) {
       timeCurrent.textContent = formatTime(t);
       syncActiveLines(t);
-    });
+    }
 
-    ws.on('ready', () => {
+    function onPlayerReady() {
       loadingOverlay.classList.add('hidden');
       timeDuration.textContent = formatTime(ws.getDuration());
       if (pendingSeek > 0) {
         ws.setTime(pendingSeek);
         pendingSeek = 0;
       }
-    });
+    }
 
-    ws.on('error', (err) => {
+    function onPlayerError() {
       loadingOverlay.classList.add('hidden');
       showToast('Failed to load audio file', true);
-    });
+    }
 
-    ws.on('play', () => {
+    function onPlayerPlay() {
       playIcon.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
-    });
-    ws.on('pause', () => {
+    }
+
+    function onPlayerPause() {
       playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
-    });
+    }
+
+    if (useNativeAudio) {
+      ws = {
+        stop() {
+          audioEl.pause();
+          try { audioEl.currentTime = 0; } catch {}
+        },
+        load(url) {
+          audioEl.src = url;
+          audioEl.load();
+        },
+        getDuration() {
+          return Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+        },
+        setTime(seconds) {
+          try { audioEl.currentTime = seconds; } catch {}
+        },
+        playPause() {
+          if (audioEl.paused) {
+            audioEl.play().catch(() => onPlayerError());
+          } else {
+            audioEl.pause();
+          }
+        },
+        play() {
+          return audioEl.play();
+        },
+        getCurrentTime() {
+          return audioEl.currentTime || 0;
+        },
+        setPlaybackRate(rate) {
+          audioEl.playbackRate = rate;
+        },
+        setVolume(volume) {
+          audioEl.volume = volume;
+        },
+        isPlaying() {
+          return !audioEl.paused;
+        }
+      };
+
+      audioEl.addEventListener('timeupdate', () => onPlayerTimeUpdate(audioEl.currentTime || 0));
+      audioEl.addEventListener('loadedmetadata', onPlayerReady);
+      audioEl.addEventListener('play', onPlayerPlay);
+      audioEl.addEventListener('pause', onPlayerPause);
+      audioEl.addEventListener('error', onPlayerError);
+    } else {
+      ws = WaveSurfer.create({
+        container: waveformEl,
+        waveColor: 'rgba(255,255,255,0.3)',
+        progressColor: '#ffffff',
+        cursorColor: '#B8A06A',
+        barWidth: 2,
+        barGap: 2,
+        barRadius: 2,
+        height: 40,
+        normalize: true,
+        mediaControls: false,
+        autoplay: false
+      });
+
+      ws.on('timeupdate', onPlayerTimeUpdate);
+      ws.on('ready', onPlayerReady);
+      ws.on('error', onPlayerError);
+      ws.on('play', onPlayerPlay);
+      ws.on('pause', onPlayerPause);
+    }
 
     let pendingSeek = 0;
+
+    function loadAudioForCall(call) {
+      const audioUrl = '../audio/' + encodeURIComponent(call.audio_filename || '');
+      ws.load(audioUrl);
+    }
 
     function togglePlay() {
       ws.playPause();
@@ -876,13 +930,28 @@
     ws.setVolume(0.8);
 
     function syncActiveLines(t) {
-      const tMs = t * 1000;
+      let activePage = 0;
+      for (const entry of lineEntries) {
+        const start = parseFloat(entry.start) || 0;
+        const end = parseFloat(entry.end) || 0;
+        if (t >= start && t < (end || start + 5)) {
+          activePage = entry.page || 1;
+          break;
+        }
+      }
+
+      if (activePage && activePage !== currentPage) {
+        goToPage(activePage);
+      }
+
+      let didScroll = false;
       document.querySelectorAll('.trans-line').forEach(el => {
         const start = parseFloat(el.dataset.start) || 0;
         const end = parseFloat(el.dataset.end) || 0;
         const isActive = t >= start && t < (end || start + 5);
         el.classList.toggle('active', isActive);
-        if (isActive) {
+        if (isActive && !didScroll) {
+          didScroll = true;
           el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
       });
