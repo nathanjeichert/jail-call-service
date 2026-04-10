@@ -10,11 +10,12 @@ from ..models import TranscriptTurn
 # ── Shared utilities ──
 
 def build_transcript_text(turns: List[TranscriptTurn]) -> str:
-    """Convert TranscriptTurn list to plain text for the LLM."""
+    """Convert TranscriptTurn list to plain text for the LLM.
+    Each line is prefixed with a turn index so Gemini can reference specific turns."""
     lines = []
-    for turn in turns:
+    for i, turn in enumerate(turns):
         ts = turn.timestamp or "[00:00]"
-        lines.append(f"{ts} {turn.speaker}: {turn.text}")
+        lines.append(f"[{i}] {ts} {turn.speaker}: {turn.text}")
     return "\n".join(lines)
 
 

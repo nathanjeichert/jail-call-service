@@ -461,6 +461,22 @@
       flex: 1;
     }
 
+    .word-ts {
+      cursor: pointer;
+      border-radius: 2px;
+      padding: 0 0.5px;
+      transition: background 0.1s, color 0.1s;
+    }
+
+    .word-ts:hover {
+      background: var(--highlight);
+    }
+
+    .word-ts.active-word {
+      background: rgba(184, 160, 106, 0.35);
+      color: var(--accent);
+    }
+
     /* ── Summary pane ── */
     .summary-pane {
       width: 280px;
@@ -746,11 +762,38 @@
           div.className = 'trans-line';
           div.dataset.start = entry.start || 0;
           div.dataset.end = entry.end || 0;
-          div.addEventListener('click', () => seekTo(parseFloat(entry.start) || 0));
 
-          const lineText = entry.rendered_text || entry.text || '';
-          const highlighted = q ? highlightText(lineText, q) : esc(lineText);
-          div.innerHTML = `<span class="line-num">${entry.line || ''}</span><span class="line-text">${highlighted}</span>`;
+          const lineNum = `<span class="line-num">${entry.line || ''}</span>`;
+
+          if (entry.words && entry.words.length > 0 && !q) {
+            // Render prefix (speaker label / continuation indent) as plain text
+            const rendered = entry.rendered_text || '';
+            const plainText = entry.text || '';
+            const prefixLen = rendered.length - plainText.length;
+            const prefix = prefixLen > 0 ? esc(rendered.substring(0, prefixLen)) : '';
+
+            const wordSpans = entry.words.map(w =>
+              `<span class="word-ts" data-ws="${w.s}" data-we="${w.e}">${esc(w.t)}</span>`
+            ).join(' ');
+            div.innerHTML = `${lineNum}<span class="line-text">${prefix}${wordSpans}</span>`;
+
+            // Click on a word seeks to that word's timestamp
+            div.querySelectorAll('.word-ts').forEach(span => {
+              span.addEventListener('click', (e) => {
+                e.stopPropagation();
+                seekTo(parseFloat(span.dataset.ws) || 0);
+              });
+            });
+            // Click on the line (but not a word) seeks to line start
+            div.addEventListener('click', () => seekTo(parseFloat(entry.start) || 0));
+          } else {
+            // Fallback: no word data or search active — render as before
+            div.addEventListener('click', () => seekTo(parseFloat(entry.start) || 0));
+            const lineText = entry.rendered_text || entry.text || '';
+            const highlighted = q ? highlightText(lineText, q) : esc(lineText);
+            div.innerHTML = `${lineNum}<span class="line-text">${highlighted}</span>`;
+          }
+
           pageEl.appendChild(div);
         });
 
@@ -954,6 +997,12 @@
           didScroll = true;
           el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
+        // Highlight active word within the line
+        el.querySelectorAll('.word-ts').forEach(ws => {
+          const ws0 = parseFloat(ws.dataset.ws) || 0;
+          const we0 = parseFloat(ws.dataset.we) || 0;
+          ws.classList.toggle('active-word', t >= ws0 && t < we0);
+        });
       });
     }
 

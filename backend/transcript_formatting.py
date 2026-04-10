@@ -525,6 +525,45 @@ def _draw_transcript_page(
         c.drawString(PDF_TEXT_X, y, str(entry.get("rendered_text", "")))
 
 
+def _distribute_words_to_lines(
+    words: Optional[List[WordTimestamp]],
+    all_lines: List[str],
+) -> List[List[dict]]:
+    """Map word timestamps to wrapped lines by matching word text sequentially."""
+    result: List[List[dict]] = [[] for _ in all_lines]
+    if not words or not all_lines:
+        return result
+
+    word_idx = 0
+    for line_idx, line_text in enumerate(all_lines):
+        # Walk through words, assigning to this line while they match
+        line_remaining = line_text.strip()
+        while word_idx < len(words) and line_remaining:
+            w = words[word_idx]
+            wtext = w.text.strip()
+            if not wtext:
+                word_idx += 1
+                continue
+            # Check if this word appears at the start of remaining text
+            if line_remaining.lower().startswith(wtext.lower()):
+                result[line_idx].append({
+                    "t": wtext,
+                    "s": round(w.start / 1000.0, 3),
+                    "e": round(w.end / 1000.0, 3),
+                })
+                line_remaining = line_remaining[len(wtext):].lstrip()
+                word_idx += 1
+            else:
+                # Skip non-matching characters (punctuation differences, etc.)
+                # Try advancing past one character in line_remaining
+                stripped = line_remaining.lstrip(" ,;:!?.'\"—-–()")
+                if stripped != line_remaining:
+                    line_remaining = stripped
+                else:
+                    break
+    return result
+
+
 def compute_line_entries(
     turns: List[TranscriptTurn],
     audio_duration: float,
@@ -563,6 +602,8 @@ def compute_line_entries(
         cont_lines = wrap_text(cont_text, max_cont_width) if cont_text else []
         all_lines = [wrapped[0]] + cont_lines
 
+        words_per_line = _distribute_words_to_lines(turn.words, all_lines)
+
         for line_idx, line_text in enumerate(all_lines):
             is_cont_line = is_continuation or line_idx > 0
             if line_idx == 0 and not is_continuation:
@@ -570,21 +611,32 @@ def compute_line_entries(
             else:
                 rendered = " " * CONTINUATION_SPACES + line_text
 
+            line_words = words_per_line[line_idx]
+            if line_words:
+                line_start = line_words[0]["s"]
+                line_end = line_words[-1]["e"]
+            else:
+                line_start = start_sec
+                line_end = start_sec
+
             pgln = page * 100 + line_in_page
-            line_entries.append({
+            entry = {
                 "id": f"{turn_idx}-{line_idx}",
                 "turn_index": turn_idx,
                 "line_index": line_idx,
                 "speaker": speaker_name,
                 "text": line_text,
                 "rendered_text": rendered,
-                "start": start_sec,
-                "end": start_sec,
+                "start": line_start,
+                "end": line_end,
                 "page": page,
                 "line": line_in_page,
                 "pgln": pgln,
                 "is_continuation": is_cont_line,
-            })
+            }
+            if line_words:
+                entry["words"] = line_words
+            line_entries.append(entry)
 
             line_in_page += 1
             if line_in_page > lines_per_page:

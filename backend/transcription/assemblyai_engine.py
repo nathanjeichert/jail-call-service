@@ -38,13 +38,8 @@ class AssemblyAIEngine:
         self.polling_interval = polling_interval
 
     def _build_config(self) -> "aai.TranscriptionConfig":
-        prompt = (
-            "Produce a verbatim transcript of this phone call. "
-            "Preserve the speakers' exact words and phrasing."
-        )
         kwargs = {
             "speech_models": [self.speech_model],
-            "prompt": prompt,
             "format_text": True,
             "multichannel": True,
         }

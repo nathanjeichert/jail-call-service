@@ -77,6 +77,7 @@ class CreateJobRequest(BaseModel):
     xml_metadata_path: Optional[str] = None
     transcription_engine: Optional[str] = None
     summarization_engine: Optional[str] = None
+    auto_message_mode: Optional[str] = None  # "exclude", "label", or None
 
 
 class UpdateSummaryRequest(BaseModel):
@@ -226,6 +227,7 @@ def create_job(req: CreateJobRequest):
         xml_metadata_path=req.xml_metadata_path,
         transcription_engine=req.transcription_engine,
         summarization_engine=req.summarization_engine,
+        auto_message_mode=req.auto_message_mode,
     )
     return _job_summary(job)
 
@@ -281,6 +283,7 @@ def get_job_settings(job_id: str):
         "skip_summary": job.skip_summary,
         "transcription_engine": job.transcription_engine or "",
         "summarization_engine": job.summarization_engine or "",
+        "auto_message_mode": job.auto_message_mode or "",
     }
 
 

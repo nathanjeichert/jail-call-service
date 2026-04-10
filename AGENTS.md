@@ -49,6 +49,8 @@ backend/transcription/
 
 Both engines return identical `List[TranscriptTurn]` — the rest of the pipeline (summarization, PDF generation, viewer) is engine-agnostic.
 
+**AssemblyAI config notes:** No `prompt` parameter is sent — it caused the model to insert spurious `[SPEAKER]` tags into transcript text. Only `speech_models`, `format_text`, `multichannel`, and `temperature` are set.
+
 ## Summarization Engine Architecture
 
 The summarization system follows the same modular pattern, located in `backend/summarization/`:
@@ -64,3 +66,24 @@ backend/summarization/
 **Gemini (cloud):** Calls the Gemini Flash API. Requires API key. Concurrency controlled by `MAX_SUMMARIZATION_CONCURRENT`.
 
 **Gemma (local):** Runs Gemma 4 E2B (4-bit quantized) via mlx-lm for Metal-accelerated inference. Lazy-loads the model on first call with a warm-up pass to trigger Metal JIT compilation. Concurrency capped at 1 to stay within 8GB RAM. The engine instance is created once per pipeline run and reused across all calls to avoid repeated model loading.
+
+## System Audio Filtering
+
+Automated telecom messages (IVR prompts, time warnings, provider sign-offs) are detected and filtered via `backend/system_audio.py`. The approach piggybacks on the Gemini summarization call — the prompt is extended to ask Gemini to also identify automated turns by index, returned as a `SYSTEM_AUDIO: [...]` JSON line appended to the summary response.
+
+**Job-level `auto_message_mode` setting (UI toggle):**
+- `None` / "Keep": No filtering, automated messages left as-is.
+- `"exclude"`: System audio turns/words are removed entirely from the transcript.
+- `"label"`: System audio turns are relabeled with speaker `"AUTOMATED MESSAGE"`. Consecutive automated turns are deduplicated (both channels carry the same audio) and merged into single turns.
+
+For partial turns (real speech + system text in the same turn, e.g. "...they're playing us— You have 1 minute remaining."), the system text substring is split out — either stripped (exclude) or broken into a separate AUTOMATED MESSAGE turn (label).
+
+**Important:** System audio filtering only runs when Gemini summarization is active (`skip_summary=False`). Test runs with dummy summaries get no filtering.
+
+## Viewer Architecture
+
+The HTML viewer (`backend/viewer/template.html`) is a self-contained static page with all call data embedded as JSON. It supports two audio backends:
+- **WaveSurfer.js** (default when served via HTTP) — waveform visualization.
+- **Native `<audio>` element** (automatic when opened via `file://` protocol, or forced with `?native_audio=1`) — lightweight shim that avoids WaveSurfer's CORS issues with local files.
+
+**Word-level timestamps:** Each word in the transcript is rendered as a clickable `<span class="word-ts">` with `data-ws`/`data-we` attributes (start/end in seconds). Clicking a word seeks to that exact timestamp. During playback, the current word is highlighted with `active-word` class. When search is active, the view falls back to plain text rendering with `<mark>` highlights.

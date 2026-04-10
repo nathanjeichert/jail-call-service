@@ -96,6 +96,7 @@ class Job(BaseModel):
     xml_metadata_path: Optional[str] = None
     transcription_engine: Optional[str] = None
     summarization_engine: Optional[str] = None
+    auto_message_mode: Optional[str] = None  # "exclude", "label", or None (keep)
 
     class Config:
         use_enum_values = True

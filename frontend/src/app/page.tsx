@@ -122,6 +122,7 @@ export default function JobsPage() {
 
   const [selectedEngine, setSelectedEngine] = useState('');
   const [selectedSumEngine, setSelectedSumEngine] = useState('');
+  const [autoMessageMode, setAutoMessageMode] = useState('');
 
   const caseNameRef = useRef<HTMLInputElement>(null);
   const defendantNameRef = useRef<HTMLInputElement>(null);
@@ -201,6 +202,7 @@ export default function JobsPage() {
       skip_summary: skipSummaryRef.current?.checked || false,
       transcription_engine: selectedEngine || undefined,
       summarization_engine: selectedSumEngine || undefined,
+      auto_message_mode: autoMessageMode || undefined,
     };
 
     if (!body.case_name || (!body.input_folder && (!body.file_paths || body.file_paths.length === 0))) {
@@ -229,6 +231,7 @@ export default function JobsPage() {
         if (xmlInputRef.current) xmlInputRef.current.value = '';
         setSelectedEngine(config?.default_transcription_engine || 'assemblyai');
         setSelectedSumEngine(config?.default_summarization_engine || 'gemini');
+        setAutoMessageMode('');
         await loadJobs();
       }
     } catch (e) {
@@ -269,6 +272,7 @@ export default function JobsPage() {
       if (skipSummaryRef.current) skipSummaryRef.current.checked = s.skip_summary || false;
       if (s.transcription_engine) setSelectedEngine(s.transcription_engine);
       if (s.summarization_engine) setSelectedSumEngine(s.summarization_engine);
+      setAutoMessageMode(s.auto_message_mode || '');
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch {}
   };
@@ -423,6 +427,34 @@ export default function JobsPage() {
               onSelect={setSelectedSumEngine}
               labels={SUMMARIZATION_ENGINE_LABELS}
             />
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Automated Messages</label>
+              <div className="flex gap-3">
+                {[
+                  { value: '', label: 'Keep' },
+                  { value: 'exclude', label: 'Exclude' },
+                  { value: 'label', label: 'Label as Speaker' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setAutoMessageMode(opt.value)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      autoMessageMode === opt.value
+                        ? 'bg-slate-800 text-white border-slate-800'
+                        : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                {autoMessageMode === 'exclude' ? 'IVR prompts, time warnings, and provider messages will be removed from transcripts' :
+                 autoMessageMode === 'label' ? 'Automated messages will appear as "AUTOMATED MESSAGE:" speaker in transcripts' :
+                 'Telecom system audio (IVR prompts, time warnings) will be included as-is'}
+              </p>
+            </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Audio Files Path(s)</label>
               <div className="flex gap-2 items-start">

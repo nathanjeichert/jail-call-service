@@ -156,8 +156,14 @@ async def _transcribe_one(job_id, call, defendant_name, transcription_engine=Non
     return call
 
 
-async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine):
+async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, auto_message_mode=None):
     """Summarize a single call's transcript using the provided engine instance."""
+    from .system_audio import (
+        SYSTEM_AUDIO_DETECTION_PROMPT,
+        parse_system_audio_response,
+        apply_system_audio_filter,
+    )
+
     job_store.update_call(job_id, call.index, status=CallStatus.SUMMARIZING)
 
     if skip_summary:
@@ -169,17 +175,34 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine):
         token_kwargs = {}
         await asyncio.sleep(0.1)
     else:
+        effective_prompt = summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT
+        if auto_message_mode in ("exclude", "label"):
+            effective_prompt += "\n\n" + SYSTEM_AUDIO_DETECTION_PROMPT
+
         result = await engine.summarize(
             call.turns,
-            prompt=summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT,
+            prompt=effective_prompt,
             metadata={"filename": call.filename, "duration_seconds": call.duration_seconds},
         )
-        summary_text = result["text"]
+        raw_text = result["text"]
         token_kwargs = {
             "input_tokens": result["input_tokens"],
             "output_tokens": result["output_tokens"],
             "thinking_tokens": result["thinking_tokens"],
         }
+
+        # Parse system audio markers and apply filtering
+        if auto_message_mode in ("exclude", "label"):
+            summary_text, markers = parse_system_audio_response(raw_text)
+            if markers:
+                call.turns = apply_system_audio_filter(call.turns, markers, auto_message_mode)
+                job_store.update_call(job_id, call.index, turns=call.turns)
+                logger.info(
+                    "Applied system audio filter (%s) to %s: %d markers",
+                    auto_message_mode, call.filename, len(markers),
+                )
+        else:
+            summary_text = raw_text
 
     job_store.update_call(job_id, call.index, summary=summary_text, status=CallStatus.GENERATING_PDF, **token_kwargs)
     call.summary = summary_text
@@ -464,7 +487,7 @@ async def _run_pipeline(job: Job) -> None:
                 continue
             _advance_stage(JobStage.SUMMARIZING)
             try:
-                result = await _summarize_one(job_id, item, job.summary_prompt, job.skip_summary, summarization_engine)
+                result = await _summarize_one(job_id, item, job.summary_prompt, job.skip_summary, summarization_engine, job.auto_message_mode)
                 progress["summarizing"] += 1
                 _emit(job_id, {
                     "type": "call_update", "index": result.index,
