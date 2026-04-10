@@ -41,9 +41,9 @@ RELEVANCE_COLORS = {
     "LOW": colors.Color(0.09, 0.40, 0.20),
 }
 RELEVANCE_DESC = {
-    "HIGH": "Likely case-relevant content identified",
-    "MEDIUM": "Indirect references or useful context",
-    "LOW": "No apparent case relevance",
+    "HIGH": "Potentially jury-relevant or case-substantive content",
+    "MEDIUM": "Substantive legal or case context, not clearly central",
+    "LOW": "Little to no apparent case relevance",
 }
 
 # ── Estate geometry ──

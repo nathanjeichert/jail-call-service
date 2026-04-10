@@ -10,10 +10,11 @@ Ported and trimmed from main/backend/transcript_formatting.py.
 """
 
 import io
-import logging
 import re
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -28,8 +29,6 @@ pdfmetrics.registerFont(TTFont("CourierNew-Bold", "/System/Library/Fonts/Supplem
 
 from . import design as D
 from .models import TranscriptTurn, WordTimestamp
-
-logger = logging.getLogger(__name__)
 
 # Text layout constants
 SPEAKER_PREFIX_SPACES = 10
@@ -60,22 +59,45 @@ MAX_LINE_CHARS = int((_TRANSCRIPT_RULE_WIDTH - 12) / _COURIER_CHAR_W)
 PDF_TEXT_BLOCK_WIDTH = MAX_LINE_CHARS * _COURIER_CHAR_W
 PDF_TEXT_X = PDF_RULE_LEFT_INNER + ((_TRANSCRIPT_RULE_WIDTH - PDF_TEXT_BLOCK_WIDTH) / 2.0)
 
-# Summary page layout (professional sans-serif)
-SUMMARY_FONT = "Helvetica"
-SUMMARY_FONT_BOLD = "Helvetica-Bold"
-SUMMARY_FONT_OBLIQUE = "Helvetica-Oblique"
-SUMMARY_TITLE_SIZE = 15
-SUMMARY_HEADING_SIZE = 10.5
-SUMMARY_BODY_SIZE = 9.5
-SUMMARY_META_SIZE = 8.5
-SUMMARY_LINE_HEIGHT = 13
-SUMMARY_SECTION_GAP = 10
-
 TIMESTAMP_RE = re.compile(r"(\[(?:\d{1,2}:)?\d{2}:\d{2}\])")
 
 
 def _safe_text(value: Optional[str]) -> str:
     return str(value or "").strip()
+
+
+def _shorten_middle(value: Optional[str], max_chars: int = 44) -> str:
+    text = _safe_text(value)
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 8:
+        return text[:max_chars]
+
+    keep = max_chars - 3
+    head = (keep + 1) // 2
+    tail = keep // 2
+    return f"{text[:head]}...{text[-tail:]}"
+
+
+def _format_display_datetime(value: Optional[str]) -> str:
+    """Make XML-style call datetimes readable without inventing timezone data."""
+    text = _safe_text(value)
+    if not text:
+        return ""
+    for fmt, size in (("%Y-%m-%d %H:%M", 16), ("%Y-%m-%dT%H:%M:%S", 19), ("%Y-%m-%d", 10)):
+        try:
+            dt = datetime.strptime(text[:size], fmt)
+            if fmt == "%Y-%m-%d":
+                return f"{dt.strftime('%b.')} {dt.day}, {dt.year}"
+            time_text = dt.strftime("%I:%M %p").lstrip("0")
+            return f"{dt.strftime('%b.')} {dt.day}, {dt.year} at {time_text}"
+        except ValueError:
+            continue
+    return text
+
+
+def _timestamp_sort_key(timestamp: str) -> float:
+    return timestamp_to_seconds(timestamp)
 
 
 def timestamp_to_seconds(timestamp: Optional[str]) -> float:
@@ -129,359 +151,160 @@ def _draw_transcript_rules(c: canvas.Canvas) -> None:
     c.line(PDF_RULE_RIGHT, rule_bottom, PDF_RULE_RIGHT, rule_top)
 
 
-def _draw_title_page(c: canvas.Canvas, title_data: dict) -> None:
-    # Estate design: cream paper + forest stripe + gold pinstripe
-    D.draw_estate_page_bg(c)
+def _parse_review_cue_line(line: str) -> Optional[dict]:
+    """Parse a Gemini cue bullet into timestamp/speaker/quote/note fields."""
+    clean = line.strip()
+    if not clean:
+        return None
+    clean = re.sub(r'^[-\u2022*]\s*', '', clean)
+    clean = re.sub(r'^\d+[.)]\s*', '', clean)
+    if re.fullmatch(r'(?i)(none|n/?a|no\s+notes?|no\s+relevant\s+(?:information|moments?)(?:\s+found)?\.?)', clean):
+        return None
 
-    # Forest gradient band — top 38% of page
-    band_h = D.PAGE_H * 0.38
-    band_y = D.PAGE_H - band_h
-    bar = D.gradient_image(D.PAGE_W - D.STRIPE_W, band_h,
-                           D.PRIMARY_RGB, D.PRIMARY_LIGHT_RGB, noise=1)
-    c.drawImage(bar, D.STRIPE_W, band_y, D.PAGE_W - D.STRIPE_W, band_h)
+    ts_match = TIMESTAMP_RE.search(clean)
+    if not ts_match:
+        return None
 
-    cx = D.PAGE_W / 2 + D.STRIPE_W / 2
-    y = D.PAGE_H - 0.95 * inch
+    timestamp = ts_match.group(1)
+    rest = clean[ts_match.end():].strip(" :-\u2013\u2014")
 
-    # Gold label
-    c.setFillColor(D.ACCENT)
-    c.setFont("Helvetica", 9)
-    c.drawCentredString(cx, y, "GENERATED  TRANSCRIPT")
-    y -= 0.55 * inch
+    speaker = ""
+    speaker_match = re.match(r'\[?([A-Z][A-Z0-9 /&.\'-]{1,34})\]?\s*:\s+', rest)
+    if speaker_match:
+        speaker = speaker_match.group(1).strip()
+        rest = rest[speaker_match.end():].strip()
 
-    # Case name — large, white on dark
-    case_name = _safe_text(title_data.get("CASE_NAME"))
-    if case_name:
-        c.setFillColor(colors.white)
-        c.setFont("Helvetica-Bold", 24)
-        c.drawCentredString(cx, y, case_name)
-        y -= 0.45 * inch
+    quote = ""
+    quote_match = re.search(r'["\u201c]([^"\u201d]{1,220})["\u201d]', rest)
+    if quote_match:
+        quote = quote_match.group(1).strip()
+        before = rest[:quote_match.start()].strip()
+        after = rest[quote_match.end():].strip()
+        rest = " ".join(part for part in (before, after) if part)
 
-    # Gold rule
-    rule_w = 1.4 * inch
-    c.setStrokeColor(D.ACCENT)
-    c.setLineWidth(0.8)
-    c.line(cx - rule_w / 2, y, cx + rule_w / 2, y)
+    rest = re.sub(r'^\s*[-\u2013\u2014:]+\s*', '', rest).strip()
+    if quote and rest:
+        parts = re.split(r'\s+[-\u2013\u2014]\s+', rest, maxsplit=1)
+        note = parts[-1].strip()
+    else:
+        note = rest
 
-    # Metadata below band — on cream
-    y = band_y - 0.55 * inch
+    return {
+        "timestamp": timestamp,
+        "speaker": speaker,
+        "quote": quote,
+        "note": note,
+    }
 
-    left_col = D.TEXT_LEFT + 0.2 * inch
-    right_col = D.PAGE_W / 2 + 0.15 * inch
 
-    left_items = [
-        ("Inmate", title_data.get("INMATE_NAME")),
-        ("Date/Time", title_data.get("CALL_DATETIME")),
-        ("Housing Unit", title_data.get("FACILITY")),
-        ("Duration", title_data.get("FILE_DURATION")),
-    ]
-    right_items = [
-        ("Outside Party", title_data.get("OUTSIDE_NUMBER_FMT")),
-        ("Call Outcome", title_data.get("CALL_OUTCOME")),
-        ("Original File", title_data.get("FILE_NAME")),
-        ("Notes", title_data.get("NOTES")),
-    ]
+def _parse_review_cues(body: str) -> List[dict]:
+    cues: List[dict] = []
+    for line in body.splitlines():
+        cue = _parse_review_cue_line(line)
+        if cue:
+            cues.append(cue)
+    cues.sort(key=lambda cue: _timestamp_sort_key(cue.get("timestamp", "")))
+    return cues
 
-    row_h = 0.42 * inch
-    for col_x, items in [(left_col, left_items), (right_col, right_items)]:
-        row_y = y
-        for label, value in items:
-            v = _safe_text(value)
-            if not v:
-                continue
-            c.setFillColor(D.MUTED)
-            c.setFont("Helvetica", 8)
-            c.drawString(col_x, row_y, label.upper())
-            c.setFillColor(D.DARK)
-            c.setFont("Helvetica", 10.5)
-            c.drawString(col_x, row_y - 14, v)
-            row_y -= row_h
 
-    # Firm name at bottom if present
-    firm = _safe_text(title_data.get("FIRM_OR_ORGANIZATION_NAME"))
-    if firm:
-        c.setFillColor(D.MUTED)
-        c.setFont("Helvetica-Oblique", 9)
-        c.drawCentredString(cx, 0.65 * inch, firm)
+def _line_cite_for_timestamp(timestamp: str, line_entries: Optional[List[dict]]) -> str:
+    """Return a transcript page:line cite for the line nearest a cue timestamp."""
+    if not timestamp or not line_entries:
+        return ""
+
+    target = timestamp_to_seconds(timestamp)
+    best: Optional[dict] = None
+    best_distance = float("inf")
+
+    for entry in line_entries:
+        try:
+            start = float(entry.get("start", 0) or 0)
+            end = float(entry.get("end", start) or start)
+        except (TypeError, ValueError):
+            continue
+
+        if start <= target <= max(end, start):
+            best = entry
+            break
+
+        distance = min(abs(target - start), abs(target - end))
+        if distance < best_distance:
+            best = entry
+            best_distance = distance
+
+    if not best:
+        return ""
+
+    page = best.get("page")
+    line = best.get("line")
+    if not page or not line:
+        return ""
+    return f"{int(page)}:{int(line)}"
 
 
 def _parse_summary_sections(summary: str) -> dict:
-    """Parse structured Gemini output into sections. Falls back to raw if unrecognized."""
+    """Parse structured Gemini output into renderable sections.
+
+    New summaries use NOTES as the primary section. The parser also accepts older
+    REVIEW CUES / KEY FINDINGS output so previously generated summaries still render.
+    """
     sections = {"raw": summary}
     text = summary.strip()
 
-    # Try to extract RELEVANCE
     rel_match = re.search(r"RELEVANCE:\s*(HIGH|MEDIUM|LOW)", text, re.IGNORECASE)
     if rel_match:
         sections["relevance"] = rel_match.group(1).upper()
 
-    # Section header patterns
-    headers = [
+    header_patterns = [
+        ("review_cues", r"NOTES:?"),
+        ("review_cues", r"REVIEW\s+CUES:?"),
+        ("review_cues", r"NOTABLE\s+MOMENTS:?"),
+        ("review_cues", r"KEY\s+MOMENTS:?"),
+        ("review_cues", r"PULL\s+QUOTES:?"),
         ("key_findings", r"KEY\s+FINDINGS:?"),
+        ("speakers", r"IDENTITY\s+OF\s+OUTSIDE\s+PARTY:?"),
         ("speakers", r"SPEAKERS?\s*(?:&|AND)\s*RELATIONSHIP:?"),
+        ("speakers", r"SPEAKER\s+NOTES:?"),
+        ("call_summary", r"BRIEF\s+SUMMARY:?"),
         ("call_summary", r"CALL\s+SUMMARY:?"),
+        ("call_summary", r"SUMMARY:?"),
     ]
 
-    # Find positions of each section header
     positions = []
-    for key, pattern in headers:
-        m = re.search(pattern, text, re.IGNORECASE)
-        if m:
-            positions.append((m.start(), m.end(), key))
+    for key, pattern in header_patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            if any(not (match.end() <= start or match.start() >= end) for start, end, _ in positions):
+                continue
+            positions.append((match.start(), match.end(), key))
+            break
     positions.sort()
 
-    # Extract body text between headers
+    seen_keys = set()
     for i, (start, end, key) in enumerate(positions):
+        if key in seen_keys and key not in {"review_cues"}:
+            continue
         next_start = positions[i + 1][0] if i + 1 < len(positions) else len(text)
         body = text[end:next_start].strip()
-        sections[key] = body
+        if key == "review_cues" and sections.get("review_cues"):
+            sections["review_cues"] += "\n" + body
+        else:
+            sections[key] = body
+        seen_keys.add(key)
 
-    # Only consider it "structured" if we found at least relevance + one section
-    if "relevance" in sections and len(sections) > 2:
-        sections["structured"] = True
-    else:
-        sections["structured"] = False
+    cue_body = sections.get("review_cues") or sections.get("key_findings") or ""
+    if cue_body:
+        sections["review_cue_items"] = _parse_review_cues(cue_body)
+
+    sections["structured"] = bool(
+        sections.get("relevance")
+        and (
+            sections.get("review_cue_items")
+            or sections.get("call_summary")
+            or sections.get("speakers")
+        )
+    )
 
     return sections
-
-
-def _wrap_text_for_width(text: str, font: str, size: float, max_width: float) -> List[str]:
-    """Word-wrap text to fit within max_width pixels using the given font metrics."""
-    if not text:
-        return [""]
-    words = text.split()
-    lines, current = [], []
-    current_width = 0.0
-    space_width = _approx_char_width(font, size)
-
-    for word in words:
-
-        word_w = stringWidth(word, font, size)
-        gap = space_width if current else 0
-        if current_width + gap + word_w <= max_width:
-            current.append(word)
-            current_width += gap + word_w
-        else:
-            if current:
-                lines.append(" ".join(current))
-            current = [word]
-            current_width = word_w
-    if current:
-        lines.append(" ".join(current))
-    return lines or [""]
-
-
-def _approx_char_width(font: str, size: float) -> float:
-    from reportlab.pdfbase.pdfmetrics import stringWidth
-    return stringWidth(" ", font, size)
-
-
-def _draw_text_with_timestamps(
-    c: canvas.Canvas, x: float, y: float,
-    text: str, font: str, size: float,
-    title_data: dict, max_width: float,
-) -> float:
-    """Draw text with blue timestamp hyperlinks. Returns new y position."""
-    audio_fn = _safe_text(title_data.get("AUDIO_FILENAME")) or _safe_text(title_data.get("FILE_NAME"))
-    lines = _wrap_text_for_width(text, font, size, max_width)
-    y_floor = PDF_MARGIN_BOTTOM + 0.4 * inch
-
-    for line in lines:
-        if y < y_floor:
-            break
-        current_x = x
-        last_idx = 0
-        c.setFont(font, size)
-
-        for match in TIMESTAMP_RE.finditer(line):
-            ts_str = match.group(1)
-            prefix = line[last_idx:match.start()]
-            if prefix:
-                c.setFillColor(colors.black)
-                c.drawString(current_x, y, prefix)
-                current_x += c.stringWidth(prefix, font, size)
-
-            # Blue timestamp link
-            c.setFillColor(colors.Color(0.02, 0.39, 0.76))
-            c.drawString(current_x, y, ts_str)
-            x1 = current_x
-            current_x += c.stringWidth(ts_str, font, size)
-            if audio_fn:
-                url = f"../viewer/index.html?call={audio_fn}&t={ts_str[1:-1]}"
-                c.linkURL(url, (x1, y - 2, current_x, y + size), relative=1)
-            last_idx = match.end()
-
-        remainder = line[last_idx:]
-        if remainder:
-            c.setFillColor(colors.black)
-            c.drawString(current_x, y, remainder)
-
-        y -= SUMMARY_LINE_HEIGHT
-
-    return y
-
-
-def _draw_summary_page(c: canvas.Canvas, summary: str, title_data: dict) -> None:
-    """Draw Estate-styled AI analysis page."""
-    # Estate background + header bar
-    D.draw_estate_page_bg(c)
-    y = D.draw_header_bar(c, "AI Analysis", _safe_text(title_data.get("CASE_NAME")))
-
-    left = D.TEXT_LEFT
-    right = D.TEXT_RIGHT
-    text_width = D.TEXT_WIDTH
-    y_floor = PDF_MARGIN_BOTTOM + 0.4 * inch
-    truncated = False
-
-    def _draw_wrapped(text: str, font: str, size: float, indent: float = 0,
-                      line_height: float = SUMMARY_LINE_HEIGHT, color=None,
-                      emdash_bullet: bool = False):
-        nonlocal y, truncated
-        if color is None:
-            color = D.BODY
-        max_w = text_width - indent
-        if emdash_bullet:
-            max_w -= 16
-        lines = _wrap_text_for_width(text, font, size, max_w)
-        for i, line in enumerate(lines):
-            if y < y_floor:
-                truncated = True
-                break
-            c.setFont(font, size)
-            x = left + indent
-            if emdash_bullet and i == 0:
-                c.setFillColor(D.ACCENT)
-                c.drawString(x + 6, y, "\u2014")
-                c.setFillColor(color)
-                x += 22
-            elif emdash_bullet:
-                x += 22
-            else:
-                c.setFillColor(color)
-            c.drawString(x, y, line)
-            y -= line_height
-
-    # ── Metadata line ──
-    meta_parts = []
-    for key in ("FILE_NAME", "FILE_DURATION", "CALL_DATETIME", "INMATE_NAME"):
-        v = _safe_text(title_data.get(key))
-        if v:
-            meta_parts.append(v)
-    if meta_parts:
-        c.setFont(SUMMARY_FONT, SUMMARY_META_SIZE)
-        c.setFillColor(D.MUTED)
-        c.drawString(left, y, " \u00b7 ".join(meta_parts))
-        y -= 22
-    else:
-        y -= 8
-
-    sections = _parse_summary_sections(summary)
-
-    if sections.get("structured"):
-        # ── Relevance badge ──
-        relevance = sections.get("relevance", "")
-        if relevance in D.RELEVANCE_COLORS:
-            badge_color = D.RELEVANCE_COLORS[relevance]
-            badge_h = 26
-            c.setFillColor(badge_color)
-            c.roundRect(left, y - badge_h + 4, text_width, badge_h, 4, fill=1, stroke=0)
-            c.setFillColor(colors.white)
-            c.setFont(SUMMARY_FONT_BOLD, 12)
-            c.drawString(left + 14, y - badge_h + 11, f"RELEVANCE: {relevance}")
-            desc = D.RELEVANCE_DESC.get(relevance, "")
-            if desc:
-                c.setFont(SUMMARY_FONT, 9)
-                c.setFillColor(colors.Color(1.0, 0.78, 0.78) if relevance == "HIGH"
-                               else colors.Color(1.0, 0.88, 0.72) if relevance == "MEDIUM"
-                               else colors.Color(0.80, 1.0, 0.85))
-                c.drawRightString(right - 14, y - badge_h + 12, desc)
-            y -= badge_h + 16
-
-        # ── Key Findings ──
-        findings = sections.get("key_findings", "")
-        if findings and y > y_floor:
-            y = D.draw_section_heading(c, y, "Key Findings")
-            for bl in findings.split("\n"):
-                if y < y_floor:
-                    break
-                bl = re.sub(r'^[-\u2022*]\s*', '', bl.strip())
-                if bl:
-                    _draw_wrapped(bl, SUMMARY_FONT, SUMMARY_BODY_SIZE, indent=0, emdash_bullet=True)
-                    y -= 3
-            y -= SUMMARY_SECTION_GAP
-
-        # ── Speakers & Relationship ──
-        speakers = sections.get("speakers", "")
-        if speakers and y > y_floor:
-            y = D.draw_section_heading(c, y, "Speakers & Relationship")
-            speaker_text = speakers.replace("\n", " ").strip()
-            box_lines = _wrap_text_for_width(speaker_text, SUMMARY_FONT, SUMMARY_BODY_SIZE, text_width - 28)
-            box_h = len(box_lines) * SUMMARY_LINE_HEIGHT + 16
-            if y - box_h > y_floor:
-                c.setFillColor(D.WARM_BOX)
-                c.roundRect(left, y - box_h + 6, text_width, box_h, 4, fill=1, stroke=0)
-                c.setStrokeColor(D.RULE)
-                c.setLineWidth(0.3)
-                c.roundRect(left, y - box_h + 6, text_width, box_h, 4, fill=0, stroke=1)
-                for line in box_lines:
-                    c.setFillColor(D.BODY)
-                    c.setFont(SUMMARY_FONT, SUMMARY_BODY_SIZE)
-                    c.drawString(left + 14, y - 4, line)
-                    y -= SUMMARY_LINE_HEIGHT
-                y -= 10 + SUMMARY_SECTION_GAP
-
-        # ── Call Summary ──
-        call_summary = sections.get("call_summary", "")
-        if call_summary and y > y_floor:
-            y = D.draw_section_heading(c, y, "Call Summary")
-            _draw_wrapped(call_summary.replace("\n", " "), SUMMARY_FONT, SUMMARY_BODY_SIZE + 0.5,
-                          indent=0, line_height=SUMMARY_LINE_HEIGHT + 1)
-
-    else:
-        # ── Fallback: raw summary ──
-        rel_match = re.search(r"RELEVANCE:\s*(HIGH|MEDIUM|LOW)", summary, re.IGNORECASE)
-        if rel_match:
-            relevance = rel_match.group(1).upper()
-            if relevance in D.RELEVANCE_COLORS:
-                badge_color = D.RELEVANCE_COLORS[relevance]
-                badge_h = 26
-                c.setFillColor(badge_color)
-                c.roundRect(left, y - badge_h + 4, text_width, badge_h, 4, fill=1, stroke=0)
-                c.setFillColor(colors.white)
-                c.setFont(SUMMARY_FONT_BOLD, 12)
-                c.drawString(left + 14, y - badge_h + 11, f"RELEVANCE: {relevance}")
-                y -= badge_h + 16
-            body = summary[rel_match.end():].strip()
-        else:
-            body = summary.strip()
-
-        if body:
-            y = D.draw_section_heading(c, y, "Analysis")
-            for para in re.split(r'\n{2,}', body):
-                para = para.strip()
-                if not para:
-                    continue
-                for pl in para.split("\n"):
-                    pl = pl.strip()
-                    if not pl:
-                        continue
-                    if re.match(r'^[-\u2022*]\s', pl):
-                        pl = re.sub(r'^[-\u2022*]\s*', '', pl)
-                        _draw_wrapped(pl, SUMMARY_FONT, SUMMARY_BODY_SIZE, indent=0, emdash_bullet=True)
-                        y -= 2
-                    else:
-                        _draw_wrapped(pl, SUMMARY_FONT, SUMMARY_BODY_SIZE)
-                y -= 6
-
-    # Truncation notice
-    if truncated:
-        notice_y = PDF_MARGIN_BOTTOM + 0.15 * inch
-        c.setFillColor(D.MUTED)
-        c.setFont(SUMMARY_FONT_OBLIQUE, 8)
-        c.drawCentredString(PDF_PAGE_WIDTH / 2, notice_y,
-                            "Analysis truncated \u2014 see full summary in call-index.xlsx or the viewer")
-
-    D.draw_page_number(c, 2)
 
 
 def _draw_transcript_page(
@@ -646,6 +469,111 @@ def compute_line_entries(
     return line_entries
 
 
+def _render_cover_pages(
+    title_data: dict,
+    summary: Optional[str],
+    line_entries: Optional[List[dict]] = None,
+) -> bytes:
+    """Render title page (+ optional AI analysis page) as PDF via WeasyPrint.
+
+    Uses an HTML/CSS template for polished, design-quality output, then
+    returns raw PDF bytes ready to be merged with the transcript pages.
+    """
+    from jinja2 import Template
+    from weasyprint import HTML
+
+    template_path = Path(__file__).parent / "pdf_cover_template.html"
+    template = Template(template_path.read_text())
+
+    case_name = _safe_text(title_data.get("CASE_NAME"))
+    file_name = _safe_text(title_data.get("FILE_NAME"))
+    call_datetime = _safe_text(title_data.get("CALL_DATETIME"))
+    display_datetime = _format_display_datetime(call_datetime)
+    file_duration = _safe_text(title_data.get("FILE_DURATION"))
+    inmate_name = _safe_text(title_data.get("INMATE_NAME"))
+    outside_number = _safe_text(title_data.get("OUTSIDE_NUMBER_FMT"))
+
+    title_meta = [
+        ("Defendant", inmate_name),
+        ("Outside Number", outside_number),
+        ("Case", case_name),
+    ]
+    title_meta = [{"label": label, "value": value} for label, value in title_meta if value]
+
+    ctx: dict = {
+        "case_name": case_name,
+        "file_name": file_name,
+        "display_datetime": display_datetime or call_datetime,
+        "file_duration": file_duration,
+        "inmate_name": inmate_name,
+        "outside_number": outside_number,
+        "title_meta": title_meta,
+        "firm_name": _safe_text(title_data.get("FIRM_OR_ORGANIZATION_NAME")),
+        "has_summary": bool(summary),
+    }
+
+    # ── Summary page context ──
+    if summary:
+        ctx["summary_meta_file"] = _shorten_middle(file_name)
+        meta_details = [display_datetime or call_datetime, file_duration]
+        ctx["summary_meta_details"] = " \u00b7 ".join(p for p in meta_details if p)
+
+        sections = _parse_summary_sections(summary)
+        ctx["is_structured"] = sections.get("structured", False)
+
+        if sections.get("structured"):
+            rel = sections.get("relevance", "")
+            ctx["relevance"] = rel
+            ctx["relevance_desc"] = D.RELEVANCE_DESC.get(rel, "")
+            ctx["review_cues"] = sections.get("review_cue_items", [])
+            for cue in ctx["review_cues"]:
+                cue["line_cite"] = _line_cite_for_timestamp(cue.get("timestamp", ""), line_entries)
+            ctx["cue_count"] = len(ctx["review_cues"])
+
+            spk = sections.get("speakers", "")
+            ctx["speakers"] = spk.replace("\n", " ").strip() if spk else ""
+
+            cs = sections.get("call_summary", "")
+            ctx["call_summary"] = cs.replace("\n", " ").strip() if cs else ""
+        else:
+            rel_match = re.search(r"RELEVANCE:\s*(HIGH|MEDIUM|LOW)", summary, re.IGNORECASE)
+            if rel_match:
+                rel = rel_match.group(1).upper()
+                ctx["relevance"] = rel
+                ctx["relevance_desc"] = D.RELEVANCE_DESC.get(rel, "")
+                body = summary[rel_match.end():].strip()
+            else:
+                body = summary.strip()
+
+            ctx["raw_body"] = body
+            raw_blocks: list = []
+            for para in re.split(r'\n{2,}', body):
+                para = para.strip()
+                if not para:
+                    continue
+                bullets: list = []
+                texts: list = []
+                for line in (l.strip() for l in para.split("\n") if l.strip()):
+                    if re.match(r'^[-\u2022*]\s', line):
+                        if texts:
+                            raw_blocks.append({"type": "text", "text": " ".join(texts)})
+                            texts = []
+                        bullets.append(re.sub(r'^[-\u2022*]\s*', '', line))
+                    else:
+                        if bullets:
+                            raw_blocks.append({"type": "bullet", "items": bullets})
+                            bullets = []
+                        texts.append(line)
+                if bullets:
+                    raw_blocks.append({"type": "bullet", "items": bullets})
+                if texts:
+                    raw_blocks.append({"type": "text", "text": " ".join(texts)})
+            ctx["raw_blocks"] = raw_blocks
+
+    html_str = template.render(**ctx)
+    return HTML(string=html_str, base_url=str(template_path.parent)).write_pdf()
+
+
 def create_pdf(
     title_data: dict,
     turns: List[TranscriptTurn],
@@ -655,24 +583,20 @@ def create_pdf(
 ) -> bytes:
     """
     Create a PDF with:
-      Page 1: Title page
-      Page 2: AI summary (if provided)
-      Pages 3+: Transcript
+      Page 1: Title page        (WeasyPrint — HTML/CSS)
+      Page 2: AI summary        (WeasyPrint — HTML/CSS, if provided)
+      Pages 3+: Transcript      (ReportLab  — precise monospace layout)
     """
-    output = io.BytesIO()
-    c = canvas.Canvas(output, pagesize=letter, pageCompression=1)
+    from pypdf import PdfReader, PdfWriter
 
-    # Page 1: Title
-    _draw_title_page(c, title_data)
-    c.showPage()
-
-    # Page 2: Summary
-    if summary:
-        _draw_summary_page(c, summary, title_data)
-        c.showPage()
-
-    # Transcript pages
     line_entries = compute_line_entries(turns, audio_duration, lines_per_page)
+
+    # ── Cover pages via WeasyPrint ──
+    cover_pdf = _render_cover_pages(title_data, summary, line_entries=line_entries)
+
+    # ── Transcript pages via ReportLab ──
+    transcript_buf = io.BytesIO()
+    c = canvas.Canvas(transcript_buf, pagesize=letter, pageCompression=1)
     pages: Dict[int, List[dict]] = defaultdict(list)
     for entry in line_entries:
         pages[int(entry.get("page", 1) or 1)].append(entry)
@@ -685,5 +609,16 @@ def create_pdf(
         c.showPage()
 
     c.save()
-    output.seek(0)
-    return output.read()
+    transcript_buf.seek(0)
+
+    # ── Merge with pypdf ──
+    writer = PdfWriter()
+    for page in PdfReader(io.BytesIO(cover_pdf)).pages:
+        writer.add_page(page)
+    for page in PdfReader(transcript_buf).pages:
+        writer.add_page(page)
+
+    final = io.BytesIO()
+    writer.write(final)
+    final.seek(0)
+    return final.read()

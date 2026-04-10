@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+@page {
+    size: letter;
+    margin: 0;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+:root {
+    --ink: #111315;
+    --ink-soft: #25282b;
+    --body: #3e4449;
+    --muted: #717980;
+    --quiet: #9ba3aa;
+    --rule: #d9dee2;
+    --rule-strong: #b7c0c6;
+    --paper: #ffffff;
+    --wash: #f4f7f6;
+    --wash-strong: #e6eeee;
+    --teal: #00746b;
+    --teal-soft: #dcefed;
+    --green: #1f7a48;
+    --green-soft: #e0f1e7;
+    --amber: #a97813;
+    --amber-soft: #f4ead5;
+    --red: #a83242;
+    --red-soft: #f3dfe3;
+}
+
+body {
+    margin: 0;
+    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    letter-spacing: 0;
+}
+
+.page {
+    position: relative;
+    width: 8.5in;
+    height: 11in;
+    overflow: hidden;
+    page-break-after: always;
+    background: var(--paper);
+}
+
+.page:last-child {
+    page-break-after: auto;
+}
+
+.label,
+.eyebrow,
+.meta-label,
+.footer-label,
+.page-num,
+.cite-label {
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.cover {
+    background:
+        linear-gradient(90deg, var(--ink) 0, var(--ink) 0.18in, transparent 0.18in),
+        linear-gradient(180deg, #ffffff 0, #ffffff 70%, #f7f9f9 100%);
+}
+
+.cover::after {
+    content: "";
+    position: absolute;
+    right: -0.05in;
+    top: 0.7in;
+    width: 2.05in;
+    height: 8.7in;
+    background: linear-gradient(145deg, transparent 0 45%, rgba(0,116,107,0.09) 45% 51%, transparent 51%);
+}
+
+.cover-spine {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0.18in;
+    background: var(--ink);
+}
+
+.cover-header {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 0.55in;
+    height: 0.43in;
+    border-bottom: 1px solid var(--rule);
+}
+
+.cover-doc-type {
+    position: absolute;
+    left: 0;
+    bottom: 0.16in;
+    color: var(--teal);
+    font-size: 8.2pt;
+    font-weight: 800;
+}
+
+.cover-confidential {
+    position: absolute;
+    right: 0;
+    bottom: 0.16in;
+    color: var(--muted);
+    font-size: 8pt;
+}
+
+.cover-main {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 1.35in;
+}
+
+.file-label {
+    color: var(--muted);
+    font-size: 8pt;
+    font-weight: 700;
+    margin-bottom: 0.08in;
+}
+
+.file-name {
+    margin: 0;
+    color: var(--ink);
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 23pt;
+    font-weight: 800;
+    line-height: 1.12;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+.cover-rule {
+    width: 1.36in;
+    height: 0.045in;
+    margin-top: 0.25in;
+    background: var(--teal);
+}
+
+.call-primary {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 3.02in;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--rule-strong);
+    padding: 0.26in 0 0.25in;
+}
+
+.call-date {
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 24pt;
+    font-weight: normal;
+    line-height: 1.15;
+    margin: 0;
+    max-width: 5.35in;
+}
+
+.duration-box {
+    position: absolute;
+    top: 0.22in;
+    right: 0;
+    width: 1.35in;
+    border-left: 1px solid var(--rule);
+    padding-left: 0.2in;
+}
+
+.duration-box .meta-label {
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 800;
+    margin-bottom: 0.07in;
+}
+
+.duration-value {
+    color: var(--teal);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 22pt;
+    line-height: 1;
+}
+
+.title-meta {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 4.48in;
+    border-top: 1px solid var(--rule-strong);
+    border-left: 1px solid var(--rule);
+}
+
+.title-meta table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.title-meta td {
+    min-height: 0.82in;
+    padding: 0.17in 0.18in 0.15in;
+    border-right: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+}
+
+.title-meta .meta-count-1 td { width: 100%; }
+.title-meta .meta-count-2 td { width: 50%; }
+.title-meta .meta-count-3 td { width: 33.33%; }
+
+.meta-label {
+    color: var(--muted);
+    font-size: 7pt;
+    font-weight: 800;
+    margin-bottom: 0.08in;
+}
+
+.meta-value {
+    color: var(--ink-soft);
+    font-size: 12pt;
+    font-weight: 700;
+    line-height: 1.32;
+}
+
+.cover-note {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    bottom: 1.18in;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.14in 0 0.14in 0.24in;
+    color: var(--body);
+    font-size: 9.2pt;
+    line-height: 1.48;
+}
+
+.cover-note::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.19in;
+    width: 0.09in;
+    height: 0.09in;
+    background: var(--teal);
+}
+
+.footer {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    bottom: 0.43in;
+    border-top: 1px solid var(--ink);
+    padding-top: 0.12in;
+    color: var(--muted);
+    font-size: 7.8pt;
+    z-index: 1;
+}
+
+.footer-label {
+    color: var(--ink);
+    font-weight: 800;
+}
+
+.page-num {
+    position: absolute;
+    right: 0;
+    top: 0.12in;
+    color: var(--quiet);
+    font-size: 8pt;
+}
+
+.summary {
+    background:
+        linear-gradient(90deg, var(--ink) 0, var(--ink) 0.18in, transparent 0.18in),
+        linear-gradient(180deg, #ffffff 0, #ffffff 73%, #f7f9f9 100%);
+}
+
+.summary::after {
+    content: "";
+    position: absolute;
+    right: -0.05in;
+    top: 0.7in;
+    width: 2.05in;
+    height: 8.7in;
+    background: linear-gradient(145deg, transparent 0 45%, rgba(0,116,107,0.07) 45% 51%, transparent 51%);
+    z-index: 0;
+}
+
+.summary-header {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 0.55in;
+    height: 0.78in;
+    border-bottom: 1px solid var(--ink);
+    z-index: 1;
+}
+
+.summary-header-left {
+    position: absolute;
+    left: 0;
+    bottom: 0.15in;
+}
+
+.summary-header-right {
+    position: absolute;
+    right: 0;
+    bottom: 0.13in;
+    width: 3.35in;
+    color: var(--muted);
+    font-size: 7.8pt;
+    line-height: 1.42;
+    text-align: right;
+}
+
+.summary-meta-file {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.summary-meta-details {
+    white-space: nowrap;
+}
+
+.eyebrow {
+    color: var(--teal);
+    font-size: 8pt;
+    font-weight: 800;
+    margin-bottom: 0.04in;
+}
+
+.summary-title {
+    margin: 0;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 26pt;
+    font-weight: normal;
+    line-height: 1;
+}
+
+.assessment {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 1.55in;
+    height: 0.74in;
+    border: 1px solid var(--rule-strong);
+    background: var(--wash);
+    z-index: 1;
+}
+
+.relevance-pill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 1.58in;
+    color: #fff;
+    padding: 0.14in 0.16in;
+}
+
+.rel-high .relevance-pill { background: var(--red); }
+.rel-medium .relevance-pill { background: var(--amber); }
+.rel-low .relevance-pill { background: var(--green); }
+
+.relevance-pill .label {
+    font-size: 7pt;
+    font-weight: 800;
+    margin-bottom: 0.06in;
+}
+
+.relevance-value {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 19pt;
+    line-height: 1;
+}
+
+.assessment-copy {
+    position: absolute;
+    left: 1.58in;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    padding: 0.21in 0.24in 0;
+    color: var(--body);
+    font-size: 9.3pt;
+    line-height: 1.48;
+}
+
+.assessment-copy strong {
+    display: block;
+    color: var(--ink);
+    font-size: 11.4pt;
+    line-height: 1.28;
+    overflow-wrap: break-word;
+}
+
+.summary-body {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    top: 2.58in;
+    bottom: 0.82in;
+    z-index: 1;
+}
+
+.section-heading {
+    position: relative;
+    margin: 0 0 0.12in;
+    color: var(--teal);
+    font-size: 8.2pt;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.section-heading::after {
+    content: "";
+    position: absolute;
+    left: 1.08in;
+    right: 0;
+    top: 0.06in;
+    border-top: 1px solid var(--rule);
+}
+
+.notes-legend {
+    margin: -0.02in 0 0.07in;
+    color: var(--muted);
+    font-size: 7pt;
+    line-height: 1.2;
+}
+
+.notes-legend span {
+    display: inline;
+    margin-right: 0.16in;
+}
+
+.legend-label {
+    color: var(--muted);
+    font-weight: 800;
+}
+
+.cue-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0.23in;
+}
+
+.cue-table tr {
+    page-break-inside: avoid;
+}
+
+.cue-table td {
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    padding: 0.105in 0;
+}
+
+.cue-time {
+    width: 1.02in;
+    color: var(--teal);
+    font-size: 10pt;
+    font-weight: 800;
+}
+
+.cue-timestamp,
+.cue-line-cite {
+    color: var(--teal);
+    font-size: 9.7pt;
+    font-weight: 800;
+    line-height: 1.12;
+}
+
+.cue-line-cite {
+    margin-top: 0.055in;
+    color: var(--muted);
+    font-size: 8pt;
+    font-weight: 700;
+}
+
+.no-notes {
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.22in 0 0.22in 0.18in;
+    margin-bottom: 0.27in;
+    position: relative;
+}
+
+.no-notes::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.26in;
+    width: 0.07in;
+    height: 0.07in;
+    background: var(--teal);
+}
+
+.no-notes-title {
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13pt;
+    line-height: 1.25;
+    margin-bottom: 0.04in;
+}
+
+.no-notes-text {
+    color: var(--body);
+    font-size: 8.8pt;
+    line-height: 1.42;
+}
+
+.cue-text {
+    padding-left: 0.13in;
+}
+
+.cue-speaker {
+    color: var(--muted);
+    font-size: 7.6pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.03in;
+}
+
+.cue-quote {
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 10.4pt;
+    line-height: 1.32;
+    margin-bottom: 0.035in;
+}
+
+.cue-note {
+    color: var(--body);
+    font-size: 8.75pt;
+    line-height: 1.38;
+}
+
+.summary-bottom {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.summary-bottom td {
+    width: 50%;
+    vertical-align: top;
+    padding-top: 0.03in;
+}
+
+.summary-bottom td:first-child {
+    padding-right: 0.24in;
+}
+
+.summary-bottom td:last-child {
+    padding-left: 0.24in;
+    border-left: 1px solid var(--rule);
+}
+
+.mini-heading {
+    color: var(--teal);
+    font-size: 7.8pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.08in;
+}
+
+.mini-text {
+    color: var(--body);
+    font-size: 9.1pt;
+    line-height: 1.48;
+}
+
+.raw-analysis p,
+.raw-analysis li {
+    color: var(--body);
+    font-size: 9pt;
+    line-height: 1.48;
+}
+
+.raw-analysis ul {
+    margin: 0 0 0.12in 0.18in;
+    padding: 0;
+}
+
+.raw-analysis p {
+    margin: 0 0 0.1in;
+}
+</style>
+</head>
+<body>
+
+<div class="page cover">
+    <div class="cover-spine"></div>
+
+    <div class="cover-header">
+        <div class="cover-doc-type">Jail Call Transcript</div>
+        <div class="cover-confidential">Confidential</div>
+    </div>
+
+    <div class="cover-main">
+        <div class="file-label label">Source File</div>
+        <h1 class="file-name">{{ file_name or "Audio file unavailable" }}</h1>
+        <div class="cover-rule"></div>
+    </div>
+
+    <div class="call-primary">
+        <p class="call-date">{{ display_datetime or "Call date unavailable" }}</p>
+        {% if file_duration %}
+        <div class="duration-box">
+            <div class="meta-label">Duration</div>
+            <div class="duration-value">{{ file_duration }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if title_meta %}
+    <div class="title-meta">
+        <table class="meta-count-{{ title_meta|length }}">
+            <tr>
+                {% for item in title_meta %}
+                <td>
+                    <div class="meta-label">{{ item.label }}</div>
+                    <div class="meta-value">{{ item.value }}</div>
+                </td>
+                {% endfor %}
+            </tr>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="cover-note">
+        Review this transcript against the source recording before quotation, filing, or use in court.
+    </div>
+
+    <div class="footer">
+        <span class="page-num">01</span>
+    </div>
+</div>
+
+{% if has_summary %}
+<div class="page summary">
+    <div class="summary-header">
+        <div class="summary-header-left">
+            <h2 class="summary-title">Summary</h2>
+        </div>
+        {% if summary_meta_file or summary_meta_details %}
+        <div class="summary-header-right">
+            {% if summary_meta_file %}<div class="summary-meta-file">{{ summary_meta_file }}</div>{% endif %}
+            {% if summary_meta_details %}<div class="summary-meta-details">{{ summary_meta_details }}</div>{% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if relevance %}
+    <div class="assessment rel-{{ relevance|lower }}">
+        <div class="relevance-pill">
+            <div class="label">Relevance</div>
+            <div class="relevance-value">{{ relevance|title }}</div>
+        </div>
+        <div class="assessment-copy">
+            <strong>{{ relevance_desc or "Review priority assigned from call content." }}</strong>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="summary-body">
+        {% if is_structured %}
+        <div class="section-heading">
+            Notes
+        </div>
+        {% if review_cues %}
+        <div class="notes-legend">
+            <span><span class="legend-label">[MM:SS]</span> is the audio timestamp.</span>
+            <span><span class="legend-label">Page:Line</span> is the transcript cite.</span>
+        </div>
+        <table class="cue-table">
+            {% for cue in review_cues %}
+            <tr>
+                <td class="cue-time">
+                    <div class="cue-timestamp">{{ cue.timestamp }}</div>
+                    {% if cue.line_cite %}
+                    <div class="cue-line-cite">{{ cue.line_cite }}</div>
+                    {% endif %}
+                </td>
+                <td class="cue-text">
+                    {% if cue.speaker %}
+                    <div class="cue-speaker">{{ cue.speaker }}</div>
+                    {% endif %}
+                    {% if cue.quote %}
+                    <div class="cue-quote">&ldquo;{{ cue.quote }}&rdquo;</div>
+                    {% endif %}
+                    {% if cue.note %}
+                    <div class="cue-note">{{ cue.note }}</div>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <div class="no-notes">
+            <div class="no-notes-title">No relevant information found.</div>
+            <div class="no-notes-text">No transcript moments were identified as needing attorney attention.</div>
+        </div>
+        {% endif %}
+
+        {% if speakers or call_summary %}
+        <table class="summary-bottom">
+            <tr>
+                {% if speakers %}
+                <td>
+                    <div class="mini-heading">Identity of Outside Party</div>
+                    <div class="mini-text">{{ speakers }}</div>
+                </td>
+                {% endif %}
+                {% if call_summary %}
+                <td>
+                    <div class="mini-heading">Brief Summary</div>
+                    <div class="mini-text">{{ call_summary }}</div>
+                </td>
+                {% endif %}
+            </tr>
+        </table>
+        {% endif %}
+
+        {% elif raw_body %}
+        <div class="section-heading">Analysis</div>
+        <div class="raw-analysis">
+            {% for block in raw_blocks %}
+            {% if block.type == 'bullet' %}
+            <ul>
+                {% for item in block.items %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>{{ block.text }}</p>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="section-heading">Notes</div>
+        <div class="mini-text">No structured notes were provided for this call.</div>
+        {% endif %}
+    </div>
+
+    <div class="footer">
+        <span class="page-num">02</span>
+    </div>
+</div>
+{% endif %}
+
+</body>
+</html>

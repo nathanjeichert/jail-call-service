@@ -20,7 +20,8 @@ SYSTEM_AUDIO_DETECTION_PROMPT = (
     "AUTOMATED MESSAGE DETECTION:\n"
     "In addition to your summary above, identify all automated telecom system messages "
     "in this transcript. These are pre-recorded IVR prompts from the jail phone system, "
-    "not human speech.\n\n"
+    "not human speech. Do not include these automated messages in the NOTES or BRIEF SUMMARY; "
+    "identify them only in the final SYSTEM_AUDIO JSON line.\n\n"
     "Key rule: Automated messages are played into BOTH sides of the call simultaneously, "
     "so they appear on both the INMATE and OUTSIDE PARTY channels at the same (or very "
     "close) timestamps with semantically identical content. Due to ASR processing each "
@@ -76,6 +77,12 @@ def parse_system_audio_response(response_text: str) -> Tuple[str, list]:
         return response_text.strip(), []
 
     summary_text = "\n".join(lines[:marker_line_idx]).strip()
+    summary_text = re.sub(
+        r"\n*\s*AUTOMATED MESSAGE DETECTION:\s*$",
+        "",
+        summary_text,
+        flags=re.IGNORECASE,
+    ).strip()
     marker_raw = lines[marker_line_idx].strip()
 
     # Extract JSON from the line
@@ -117,6 +124,80 @@ def parse_system_audio_response(response_text: str) -> Tuple[str, list]:
 
     logger.info("Parsed %d system audio markers from Gemini response", len(valid))
     return summary_text, valid
+
+
+def _timestamp_to_seconds(timestamp: Optional[str]) -> float:
+    if not timestamp:
+        return 0.0
+    match = re.search(r"(?:(\d+):)?(\d{1,2}):(\d{2})", timestamp)
+    if not match:
+        return 0.0
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2))
+    seconds = int(match.group(3))
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def _normalized_tokens(text: str) -> set[str]:
+    stop_words = {
+        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+        "in", "is", "it", "of", "on", "or", "that", "the", "this", "to",
+        "was", "with", "you", "your",
+    }
+    return {
+        token for token in re.findall(r"[a-z0-9]+", text.lower())
+        if len(token) > 2 and token not in stop_words
+    }
+
+
+def remove_system_audio_notes(
+    summary_text: str,
+    markers: list,
+    turns: List[TranscriptTurn],
+) -> str:
+    """Remove NOTES bullets that summarize automated telecom messages."""
+    if not summary_text or not markers:
+        return summary_text
+
+    marker_data = []
+    for marker in markers:
+        try:
+            turn = turns[int(marker["turn"])]
+        except (IndexError, KeyError, TypeError, ValueError):
+            turn = None
+
+        marker_text = str(marker.get("text", ""))
+        normalized = re.sub(r"[^a-z0-9]+", " ", marker_text.lower()).strip()
+        marker_data.append({
+            "seconds": _timestamp_to_seconds(getattr(turn, "timestamp", "")),
+            "normalized": normalized,
+            "tokens": _normalized_tokens(marker_text),
+        })
+
+    def is_system_note(line: str) -> bool:
+        if not re.match(r"^\s*[-\u2022*]\s*\[", line):
+            return False
+
+        line_seconds = _timestamp_to_seconds(line)
+        line_normalized = re.sub(r"[^a-z0-9]+", " ", line.lower()).strip()
+        line_tokens = _normalized_tokens(line)
+
+        for marker in marker_data:
+            marker_normalized = marker["normalized"]
+            if marker_normalized and (
+                marker_normalized in line_normalized
+                or (len(line_normalized) > 24 and line_normalized in marker_normalized)
+            ):
+                return True
+
+            close_in_time = abs(line_seconds - marker["seconds"]) <= 3
+            if close_in_time and len(line_tokens & marker["tokens"]) >= 2:
+                return True
+
+        return False
+
+    kept_lines = [line for line in summary_text.splitlines() if not is_system_note(line)]
+    return "\n".join(kept_lines).strip()
 
 
 def _normalize_token(t: str) -> str:

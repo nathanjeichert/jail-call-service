@@ -205,8 +205,8 @@ export default function JobsPage() {
       auto_message_mode: autoMessageMode || undefined,
     };
 
-    if (!body.case_name || (!body.input_folder && (!body.file_paths || body.file_paths.length === 0))) {
-      setError('Case name and input path(s) are required.');
+    if (!body.input_folder && (!body.file_paths || body.file_paths.length === 0)) {
+      setError('Input path(s) are required.');
       setSubmitting(false);
       return;
     }
@@ -396,7 +396,7 @@ export default function JobsPage() {
         <form ref={formRef} onSubmit={handleCreate} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Case Name</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Case Name <span className="text-slate-400 font-normal">(optional)</span></label>
               <input
                 ref={caseNameRef}
                 type="text"
@@ -599,7 +599,7 @@ export default function JobsPage() {
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3">
-                        <span className="font-semibold text-slate-900">{job.case_name}</span>
+                        <span className="font-semibold text-slate-900">{job.case_name || 'Jail Calls'}</span>
                         <StatusBadge stage={job.stage} />
                       </div>
                       <div className="mt-1 text-xs text-slate-400 font-mono truncate">

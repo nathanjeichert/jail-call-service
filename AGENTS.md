@@ -27,9 +27,16 @@ This project was originally a branch within the TranscribeAlpha monorepo but has
 2. **Resiliency:** SQLite is used with SQLAlchemy models (`db_models.py`) to checkpoint job progression (`job_store.py`) to survive crashes without wasting API credits.
 3. **Database Concurrency:** SQLite is configured with WAL mode and a 30-second busy timeout to handle concurrent writes from parallel pipeline stages (conversion threads, async transcription/summarization).
 4. **Transcription Format:** Both engines produce the same `List[TranscriptTurn]` output. **Channel 1** = Inmate (Defendant), **Channel 2** = Outside Party.
-5. **Export Deep Linking:** When generating PDFs and Excel spreadsheets, the app creates `../viewer/index.html?call=?t=[xx:xx]` links directly pointing to specific timestamps within the self-contained static HTML viewer.
+5. **Export Deep Linking:** When generating PDFs and Excel spreadsheets, the app creates `../viewer/index.html?call=[file]&t=[xx:xx]` links directly pointing to specific timestamps within the self-contained static HTML viewer.
+6. **PDF Architecture:** `backend/transcript_formatting.py` builds PDFs as a hybrid document:
+   - Title and Gemini summary pages are rendered from `backend/pdf_cover_template.html` with WeasyPrint / HTML / CSS.
+   - Transcript body pages remain ReportLab-generated legal transcript pages with Courier text, line numbers, and page numbers.
+   - The summary page parses Gemini's structured sections (`RELEVANCE`, `NOTES`, `IDENTITY OF OUTSIDE PARTY`, `BRIEF SUMMARY`). `NOTES: NONE` renders as a polished "No relevant information found" panel.
+   - Notes display audio timestamps plus transcript page:line cites, with a single legend explaining `[MM:SS]` and `Page:Line`.
 
 If editing the `template.html` for the viewer, note that template parameters (like `{{CALLS_JSON}}`) are pre-populated by Python string manipulation, hence why TypeScript/Javascript linting will report errors inside the HTML syntax. Ignore these syntactical lint warnings during development.
+
+If editing `backend/pdf_cover_template.html`, visually verify rendered PDF pages with Poppler (`pdftoppm`) before considering the work done. Do not commit one-off PDF mockup artifacts, local preview PDFs, or scratch scripts used only to inspect layout.
 
 ## Transcription Engine Architecture
 
@@ -67,6 +74,14 @@ backend/summarization/
 
 **Gemma (local):** Runs Gemma 4 E2B (4-bit quantized) via mlx-lm for Metal-accelerated inference. Lazy-loads the model on first call with a warm-up pass to trigger Metal JIT compilation. Concurrency capped at 1 to stay within 8GB RAM. The engine instance is created once per pipeline run and reused across all calls to avoid repeated model loading.
 
+**Default Gemini summary shape:** The production prompt in `backend/config.py` asks for:
+- `RELEVANCE: HIGH / MEDIUM / LOW`
+- `NOTES:` timestamped attorney-relevant moments only, or exactly `NOTES: NONE` when there is nothing an attorney would plausibly need to know.
+- `IDENTITY OF OUTSIDE PARTY:` only when the call itself supports an identity or relationship inference.
+- `BRIEF SUMMARY:` one to two sentences.
+
+Do not make Gemini add notes merely to orient the reader to routine personal conversation. Notes should be reserved for content that may matter to case review, charges/evidence, confinement, allegedly criminal conduct, or another substantive attorney-review reason.
+
 ## System Audio Filtering
 
 Automated telecom messages (IVR prompts, time warnings, provider sign-offs) are detected and filtered via `backend/system_audio.py`. The approach piggybacks on the Gemini summarization call — the prompt is extended to ask Gemini to also identify automated turns by index, returned as a `SYSTEM_AUDIO: [...]` JSON line appended to the summary response.
@@ -77,6 +92,8 @@ Automated telecom messages (IVR prompts, time warnings, provider sign-offs) are 
 - `"label"`: System audio turns are relabeled with speaker `"AUTOMATED MESSAGE"`. Consecutive automated turns are deduplicated (both channels carry the same audio) and merged into single turns.
 
 For partial turns (real speech + system text in the same turn, e.g. "...they're playing us— You have 1 minute remaining."), the system text substring is split out — either stripped (exclude) or broken into a separate AUTOMATED MESSAGE turn (label).
+
+When system-audio detection is enabled, `backend/pipeline.py` also removes any Gemini `NOTES` bullets that match identified automated telecom messages before generating PDFs. This keeps call-setup prompts and time warnings out of the summary product while still preserving them as `AUTOMATED MESSAGE` transcript turns in `"label"` mode.
 
 **Important:** System audio filtering only runs when Gemini summarization is active (`skip_summary=False`). Test runs with dummy summaries get no filtering.
 

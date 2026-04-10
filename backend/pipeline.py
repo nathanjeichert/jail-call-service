@@ -161,6 +161,7 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
     from .system_audio import (
         SYSTEM_AUDIO_DETECTION_PROMPT,
         parse_system_audio_response,
+        remove_system_audio_notes,
         apply_system_audio_filter,
     )
 
@@ -195,6 +196,7 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
         if auto_message_mode in ("exclude", "label"):
             summary_text, markers = parse_system_audio_response(raw_text)
             if markers:
+                summary_text = remove_system_audio_notes(summary_text, markers, call.turns)
                 call.turns = apply_system_audio_filter(call.turns, markers, auto_message_mode)
                 job_store.update_call(job_id, call.index, turns=call.turns)
                 logger.info(
@@ -684,6 +686,7 @@ async def _stage_package(job: Job, output_dir: str) -> str:
 
     def make_zip() -> str:
         safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in job.case_name).strip()
+        safe_name = safe_name or "Jail Calls"
         zip_path = os.path.join(job_store._job_dir(job.id), f"{safe_name}.zip")
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for root, dirs, files in os.walk(output_dir):
@@ -694,5 +697,3 @@ async def _stage_package(job: Job, output_dir: str) -> str:
         return zip_path
 
     return await loop.run_in_executor(None, make_zip)
-
-

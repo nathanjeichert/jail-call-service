@@ -326,6 +326,7 @@ export default function JobDetailPage() {
 
   const isRunning = !['created', 'done', 'error', 'paused'].includes(job.stage);
   const pct = job.total_calls > 0 ? Math.round((job.done_calls / job.total_calls) * 100) : 0;
+  const jobTitle = job.case_name || 'Jail Calls';
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -334,7 +335,7 @@ export default function JobDetailPage() {
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <Link href="/" className="hover:text-slate-900 transition-colors">Jobs</Link>
           <span>/</span>
-          <span className="text-slate-900 font-medium">{job.case_name}</span>
+          <span className="text-slate-900 font-medium">{jobTitle}</span>
         </div>
         {['created', 'done', 'error', 'paused'].includes(job.stage) && (
           <button
@@ -350,7 +351,7 @@ export default function JobDetailPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">{job.case_name}</h1>
+            <h1 className="text-xl font-bold text-slate-900">{jobTitle}</h1>
             <p className="text-sm text-slate-400 font-mono mt-1">{job.input_folder}</p>
             {job.summary_prompt?.includes('CASE CONTEXT:\n') && (
               <div className="mt-3 text-sm text-slate-600 bg-slate-50 rounded-lg px-4 py-3 border border-slate-200">

@@ -68,7 +68,7 @@ app.add_middleware(
 # ── Request/Response models ──
 
 class CreateJobRequest(BaseModel):
-    case_name: str
+    case_name: Optional[str] = ""
     input_folder: Optional[str] = ""
     summary_prompt: Optional[str] = None
     defendant_name: Optional[str] = None
@@ -218,7 +218,7 @@ def create_job(req: CreateJobRequest):
         full_prompt = cfg.DEFAULT_SUMMARY_PROMPT
 
     job = job_store.create_job(
-        case_name=req.case_name,
+        case_name=(req.case_name or "").strip(),
         input_folder=req.input_folder or "",
         summary_prompt=full_prompt,
         defendant_name=req.defendant_name,
