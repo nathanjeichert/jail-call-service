@@ -5,7 +5,7 @@ Base protocol and shared utilities for transcription engines.
 import re
 from typing import Dict, List, Optional, Protocol
 
-from ..models import TranscriptTurn, WordTimestamp
+from ..models import TranscriptTurn
 
 
 # ── Shared utilities ──

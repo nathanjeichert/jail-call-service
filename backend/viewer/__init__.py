@@ -9,10 +9,6 @@ since the rendered file ships as viewer.html alongside the audio/ directory.
 import html as html_mod
 import json
 import os
-import logging
-from typing import List, Optional
-
-logger = logging.getLogger(__name__)
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template.html")
 

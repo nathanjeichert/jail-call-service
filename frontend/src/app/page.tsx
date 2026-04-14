@@ -115,9 +115,10 @@ export default function JobsPage() {
   const [fileCount, setFileCount] = useState<number | null>(null);
 
   const AUDIO_EXTS = ['.wav', '.mp3', '.m4a'];
+  const isAudioPath = (val: string) => AUDIO_EXTS.some(ext => val.toLowerCase().endsWith(ext));
   const countAudioPaths = (val: string) => {
     const paths = val.split(/[\n,]+/).map(p => p.trim()).filter(Boolean);
-    return paths.filter(p => AUDIO_EXTS.some(ext => p.toLowerCase().endsWith(ext))).length;
+    return paths.filter(isAudioPath).length;
   };
 
   const [selectedEngine, setSelectedEngine] = useState('');
@@ -186,7 +187,7 @@ export default function JobsPage() {
     let inputFolder = '';
     let filePaths: string[] = [];
 
-    if (parsedPaths.length === 1 && !parsedPaths[0].toLowerCase().endsWith('.wav')) {
+    if (parsedPaths.length === 1 && !isAudioPath(parsedPaths[0])) {
       inputFolder = parsedPaths[0];
     } else {
       filePaths = parsedPaths;
@@ -362,10 +363,12 @@ export default function JobsPage() {
   };
 
   const warnings: string[] = [];
+  const activeTranscriptionEngine = selectedEngine || config?.default_transcription_engine || 'assemblyai';
+  const activeSummarizationEngine = selectedSumEngine || config?.default_summarization_engine || 'gemini';
   if (config) {
     if (!config.ffmpeg_found) warnings.push('ffmpeg not found. Set FFMPEG_PATH in .env or install ffmpeg to PATH.');
-    if (!config.assemblyai_configured) warnings.push('ASSEMBLYAI_API_KEY not set in .env. Transcription will fail.');
-    if (!config.gemini_configured && (selectedSumEngine || config.default_summarization_engine) === 'gemini') warnings.push('GEMINI_API_KEY not set in .env. Gemini summaries will fail (use Gemma or Skip Summary for testing).');
+    if (!config.assemblyai_configured && activeTranscriptionEngine === 'assemblyai') warnings.push('ASSEMBLYAI_API_KEY not set in .env. AssemblyAI transcription will fail (use Parakeet for local transcription).');
+    if (!config.gemini_configured && activeSummarizationEngine === 'gemini') warnings.push('GEMINI_API_KEY not set in .env. Gemini summaries will fail (use Gemma or Skip Summary for testing).');
   }
 
   return (
@@ -450,7 +453,8 @@ export default function JobsPage() {
                 ))}
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                {autoMessageMode === 'exclude' ? 'IVR prompts, time warnings, and provider messages will be removed from transcripts' :
+                {activeSummarizationEngine !== 'gemini' ? 'Automated-message filtering currently runs only with Gemini summaries. With Gemma selected, system audio will be kept as-is.' :
+                 autoMessageMode === 'exclude' ? 'IVR prompts, time warnings, and provider messages will be removed from transcripts' :
                  autoMessageMode === 'label' ? 'Automated messages will appear as "AUTOMATED MESSAGE:" speaker in transcripts' :
                  'Telecom system audio (IVR prompts, time warnings) will be included as-is'}
               </p>

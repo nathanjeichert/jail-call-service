@@ -1,6 +1,6 @@
 import re
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from enum import Enum
 
 
@@ -101,7 +101,7 @@ class Job(BaseModel):
     input_folder: str
     summary_prompt: str
     stage: JobStage = JobStage.CREATED
-    calls: List[CallResult] = []
+    calls: List[CallResult] = Field(default_factory=list)
     created_at: str
     started_at: Optional[str] = None
     completed_at: Optional[str] = None

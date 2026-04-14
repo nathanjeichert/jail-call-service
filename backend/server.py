@@ -28,13 +28,20 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from . import job_store, pipeline
 from .models import Job, CallStatus
 from . import config as cfg
+from .job_settings import (
+    compose_summary_prompt,
+    extract_case_context,
+    normalize_auto_message_mode,
+    normalize_optional_name,
+    resolve_default_engine,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -122,13 +129,30 @@ def _job_summary(job: Job) -> dict:
     }
 
 
+_TRANSCRIPT_READY_STATUSES = {
+    CallStatus.SUMMARIZING.value,
+    CallStatus.GENERATING_PDF.value,
+    CallStatus.DONE.value,
+}
+
+
+def _call_has_transcript(call) -> bool:
+    if call.turns is not None:
+        return len(call.turns) > 0
+    return (
+        call.status in _TRANSCRIPT_READY_STATUSES
+        or bool(call.summary)
+        or bool(call.pdf_path)
+    )
+
+
 def _call_summary(call) -> dict:
     return {
         "index": call.index,
         "filename": call.filename,
         "status": call.status,
         "duration_seconds": call.duration_seconds,
-        "has_transcript": call.turns is not None and len(call.turns) > 0,
+        "has_transcript": _call_has_transcript(call),
         "has_summary": bool(call.summary),
         "repaired": call.repaired,
         "error": call.error,
@@ -144,10 +168,23 @@ def _call_summary(call) -> dict:
 
 AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a"}
 XML_EXTENSIONS = {".xml"}
+UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 class ScanFolderRequest(BaseModel):
     path: str
+
+
+async def _write_upload_file(upload: UploadFile, dest_path: str) -> None:
+    try:
+        with open(dest_path, "wb") as fp:
+            while True:
+                chunk = await upload.read(UPLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                fp.write(chunk)
+    finally:
+        await upload.close()
 
 
 @app.post("/api/scan/folder")
@@ -176,11 +213,9 @@ async def upload_audio(files: list[UploadFile] = File(...)):
         ext = os.path.splitext(f.filename or "")[1].lower()
         if ext not in AUDIO_EXTENSIONS:
             raise HTTPException(status_code=400, detail=f"Unsupported audio format: {f.filename}")
-        safe_name = f.filename or f"audio_{len(saved_paths)}{ext}"
+        safe_name = os.path.basename(f.filename or "") or f"audio_{len(saved_paths)}{ext}"
         dest_path = os.path.join(dest_dir, safe_name)
-        content = await f.read()
-        with open(dest_path, "wb") as fp:
-            fp.write(content)
+        await _write_upload_file(f, dest_path)
         saved_paths.append(os.path.abspath(dest_path))
 
     return {"paths": saved_paths}
@@ -197,11 +232,9 @@ async def upload_xml(file: UploadFile = File(...)):
     dest_dir = os.path.join(cfg.UPLOADS_DIR, batch_id)
     os.makedirs(dest_dir, exist_ok=True)
 
-    safe_name = file.filename or "metadata.xml"
+    safe_name = os.path.basename(file.filename or "") or "metadata.xml"
     dest_path = os.path.join(dest_dir, safe_name)
-    content = await file.read()
-    with open(dest_path, "wb") as fp:
-        fp.write(content)
+    await _write_upload_file(file, dest_path)
 
     return {"path": os.path.abspath(dest_path)}
 
@@ -209,13 +242,8 @@ async def upload_xml(file: UploadFile = File(...)):
 def create_job(req: CreateJobRequest):
     if not req.file_paths and not os.path.isdir(req.input_folder or ""):
         raise HTTPException(status_code=400, detail=f"Input folder not found: {req.input_folder}")
-    # Build the full prompt: always start with the default, then append any
-    # case-specific context the user provided (rather than letting it replace).
-    case_context = (req.summary_prompt or "").strip()
-    if case_context:
-        full_prompt = cfg.DEFAULT_SUMMARY_PROMPT + "\n\nCASE CONTEXT:\n" + case_context
-    else:
-        full_prompt = cfg.DEFAULT_SUMMARY_PROMPT
+    file_paths = [path.strip() for path in (req.file_paths or []) if path and path.strip()]
+    full_prompt = compose_summary_prompt(req.summary_prompt)
 
     job = job_store.create_job(
         case_name=(req.case_name or "").strip(),
@@ -223,11 +251,11 @@ def create_job(req: CreateJobRequest):
         summary_prompt=full_prompt,
         defendant_name=req.defendant_name,
         skip_summary=req.skip_summary,
-        file_paths=req.file_paths,
+        file_paths=file_paths or None,
         xml_metadata_path=req.xml_metadata_path,
-        transcription_engine=req.transcription_engine,
-        summarization_engine=req.summarization_engine,
-        auto_message_mode=req.auto_message_mode,
+        transcription_engine=normalize_optional_name(req.transcription_engine),
+        summarization_engine=normalize_optional_name(req.summarization_engine),
+        auto_message_mode=normalize_auto_message_mode(req.auto_message_mode),
     )
     return _job_summary(job)
 
@@ -268,17 +296,12 @@ def get_job(job_id: str):
 def get_job_settings(job_id: str):
     """Return the original creation settings for re-running a job."""
     job = _job_or_404(job_id)
-    # Extract case context from the full prompt (strip the default prefix)
-    case_context = ""
-    marker = "\n\nCASE CONTEXT:\n"
-    if job.summary_prompt and marker in job.summary_prompt:
-        case_context = job.summary_prompt.split(marker, 1)[1]
     return {
         "case_name": job.case_name,
         "defendant_name": job.defendant_name or "",
         "input_folder": job.input_folder or "",
         "file_paths": job.file_paths or [],
-        "summary_prompt": case_context,
+        "summary_prompt": extract_case_context(job.summary_prompt),
         "xml_metadata_path": job.xml_metadata_path or "",
         "skip_summary": job.skip_summary,
         "transcription_engine": job.transcription_engine or "",
@@ -472,9 +495,13 @@ def get_config():
         "ffmpeg_path": FFMPEG_PATH or "",
         "default_summary_prompt": cfg.DEFAULT_SUMMARY_PROMPT,
         "gemini_model": cfg.GEMINI_MODEL,
-        "default_transcription_engine": cfg.DEFAULT_TRANSCRIPTION_ENGINE,
+        "default_transcription_engine": resolve_default_engine(
+            cfg.DEFAULT_TRANSCRIPTION_ENGINE, TRANSCRIPTION_ENGINES
+        ),
         "available_transcription_engines": TRANSCRIPTION_ENGINES,
-        "default_summarization_engine": cfg.DEFAULT_SUMMARIZATION_ENGINE,
+        "default_summarization_engine": resolve_default_engine(
+            cfg.DEFAULT_SUMMARIZATION_ENGINE, SUMMARIZATION_ENGINES
+        ),
         "available_summarization_engines": SUMMARIZATION_ENGINES,
     }
 

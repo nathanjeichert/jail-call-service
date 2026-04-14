@@ -76,6 +76,8 @@ class GeminiEngine:
                 text = response.candidates[0].content.parts[0].text
             except Exception:
                 text = None
+        if not text or not str(text).strip():
+            raise RuntimeError("Gemini returned an empty summary response")
 
         usage = getattr(response, "usage_metadata", None)
         input_tokens = getattr(usage, "prompt_token_count", None) or 0
@@ -89,7 +91,7 @@ class GeminiEngine:
         )
 
         return {
-            "text": (text or "").strip(),
+            "text": str(text).strip(),
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "thinking_tokens": thinking_tokens,

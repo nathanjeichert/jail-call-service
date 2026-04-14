@@ -11,21 +11,19 @@ SSE progress is broadcast via a thread-safe queue per job.
 """
 
 import asyncio
-import json
 import logging
 import os
 import queue
-import re
-import shutil
 import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from .models import Job, JobStage, CallResult, CallStatus, call_stem
 from .icm_parser import find_icm_report, parse_icm_report
 from . import job_store, config as cfg
+from .job_settings import resolve_runtime_selection, validate_runtime_selection
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +33,7 @@ _event_queues: Dict[str, queue.Queue] = {}
 _queue_lock = threading.Lock()
 
 _SENTINEL = object()
-
-# Engines that run local models competing for GPU/unified memory
-_LOCAL_TRANSCRIPTION_ENGINES = frozenset({"parakeet"})
-_LOCAL_SUMMARIZATION_ENGINES = frozenset({"gemma"})
+_QUEUE_POLL_TIMEOUT_SEC = 1.0
 
 
 def get_event_queue(job_id: str) -> queue.Queue:
@@ -50,7 +45,8 @@ def get_event_queue(job_id: str) -> queue.Queue:
 
 def cleanup_event_queue(job_id: str) -> None:
     """Remove event queue for a completed job to prevent memory leaks."""
-    _event_queues.pop(job_id, None)
+    with _queue_lock:
+        _event_queues.pop(job_id, None)
 
 
 def _emit(job_id: str, event: dict) -> None:
@@ -125,19 +121,9 @@ async def _convert_one(job_id, call, audio_dir, executor):
         return None
 
 
-async def _transcribe_one(job_id, call, defendant_name, transcription_engine=None):
+async def _transcribe_one(job_id, call, defendant_name, engine):
     """Transcribe a single call using the configured transcription engine."""
-    from .transcription import get_engine
-
     job_store.update_call(job_id, call.index, status=CallStatus.TRANSCRIBING)
-
-    engine_name = transcription_engine or cfg.DEFAULT_TRANSCRIPTION_ENGINE
-    engine = get_engine(
-        engine_name,
-        api_key=cfg.ASSEMBLYAI_API_KEY,
-        speech_model=cfg.ASSEMBLYAI_MODEL,
-        polling_interval=cfg.ASSEMBLYAI_POLLING_INTERVAL,
-    )
 
     channel_labels = {
         1: call.inmate_name or defendant_name or "INMATE",
@@ -170,6 +156,8 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
         token_kwargs = {}
         await asyncio.sleep(0.1)
     else:
+        if engine is None:
+            raise RuntimeError("Summarization engine not initialized")
         effective_prompt = summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT
         if auto_message_mode in ("exclude", "label"):
             effective_prompt += "\n\n" + SYSTEM_AUDIO_DETECTION_PROMPT
@@ -269,9 +257,10 @@ async def run_job(job_id: str) -> None:
     except Exception as e:
         logger.exception("Pipeline failed for job %s", job_id)
         job = job_store.get_job(job_id)
-        job.stage = JobStage.ERROR
-        job.error = str(e)
-        job_store.update_job(job)
+        if job:
+            job.stage = JobStage.ERROR
+            job.error = str(e)
+            job_store.update_job(job)
         _emit(job_id, {"type": "error", "message": str(e)})
     finally:
         cleanup_event_queue(job_id)
@@ -343,7 +332,7 @@ async def _run_pipeline(job: Job) -> None:
         job.calls.extend(calls_to_add)
 
     job.stage = JobStage.CONVERTING
-    job.started_at = datetime.now(timezone.utc).isoformat()
+    job.started_at = job.started_at or datetime.now(timezone.utc).isoformat()
     job_store.update_job(job)
 
     # Reload to get DB-synced copies
@@ -369,43 +358,49 @@ async def _run_pipeline(job: Job) -> None:
 
     # ── Worker counts ──
     n_convert = max(1, (os.cpu_count() or 2) - 1)
-    transcription_engine_name = (job.transcription_engine or cfg.DEFAULT_TRANSCRIPTION_ENGINE).lower()
-    if transcription_engine_name == "parakeet":
-        n_transcribe = min(cfg.MAX_PARAKEET_CONCURRENT, max(1, total_calls))
-    else:
-        n_transcribe = min(cfg.MAX_TRANSCRIPTION_CONCURRENT, max(1, total_calls))
-    summarization_engine_name = (job.summarization_engine or cfg.DEFAULT_SUMMARIZATION_ENGINE).lower()
-    if summarization_engine_name == "gemma":
-        n_summarize = min(cfg.MAX_GEMMA_CONCURRENT, max(1, total_calls))
-    else:
-        n_summarize = min(cfg.MAX_SUMMARIZATION_CONCURRENT, max(1, total_calls))
+    runtime_selection = resolve_runtime_selection(
+        job.transcription_engine,
+        job.summarization_engine,
+        skip_summary=job.skip_summary,
+        auto_message_mode=job.auto_message_mode,
+    )
+    validate_runtime_selection(runtime_selection)
+    if job.auto_message_mode and runtime_selection.effective_auto_message_mode is None:
+        logger.info(
+            "Job %s requested auto_message_mode=%s, but system-audio filtering is only active with Gemini summaries",
+            job_id,
+            job.auto_message_mode,
+        )
+        _emit(
+            job_id,
+            {
+                "type": "warning",
+                "message": (
+                    "Automated-message filtering is only active with Gemini summaries. "
+                    "System audio will be kept as-is for this job."
+                ),
+            },
+        )
+
+    n_transcribe = runtime_selection.transcription_workers(total_calls)
+    n_summarize = runtime_selection.summarization_workers(total_calls)
     n_pdf = min(4, max(1, total_calls))
 
-    all_local = (
-        transcription_engine_name in _LOCAL_TRANSCRIPTION_ENGINES
-        and summarization_engine_name in _LOCAL_SUMMARIZATION_ENGINES
-    )
-
-    # Fail-fast on missing API keys for the selected cloud engines, before
-    # spending compute on conversion. Local engines don't need keys.
-    if transcription_engine_name not in _LOCAL_TRANSCRIPTION_ENGINES and not cfg.ASSEMBLYAI_API_KEY:
-        raise RuntimeError(
-            f"ASSEMBLYAI_API_KEY is required for transcription engine "
-            f"'{transcription_engine_name}' but is not set in .env"
-        )
-    if (
-        not job.skip_summary
-        and summarization_engine_name not in _LOCAL_SUMMARIZATION_ENGINES
-        and not cfg.GEMINI_API_KEY
-    ):
-        raise RuntimeError(
-            f"GEMINI_API_KEY is required for summarization engine "
-            f"'{summarization_engine_name}' but is not set in .env"
-        )
-
-    # Create summarization engine once (reused across all calls — critical for local model loading)
+    # Create engine instances once per pipeline run. This avoids repeated
+    # initialization and keeps local/cloud capability decisions centralized.
+    from .transcription import get_engine as get_transcription_engine
     from .summarization import get_engine as get_summarization_engine
-    summarization_engine = get_summarization_engine(summarization_engine_name) if not job.skip_summary else None
+    transcription_engine = get_transcription_engine(
+        runtime_selection.transcription_engine,
+        api_key=cfg.ASSEMBLYAI_API_KEY,
+        speech_model=cfg.ASSEMBLYAI_MODEL,
+        polling_interval=cfg.ASSEMBLYAI_POLLING_INTERVAL,
+    )
+    summarization_engine = (
+        get_summarization_engine(runtime_selection.summarization_engine)
+        if not job.skip_summary
+        else None
+    )
 
     # Seed convert_q with sentinels (one per worker)
     for _ in range(n_convert):
@@ -425,15 +420,26 @@ async def _run_pipeline(job: Job) -> None:
     def _is_paused() -> bool:
         return job_store.get_job_stage(job_id) == JobStage.PAUSED.value
 
+    async def _get_next_item(work_q: asyncio.Queue):
+        while True:
+            if _is_paused():
+                return None
+            try:
+                item = await asyncio.wait_for(work_q.get(), timeout=_QUEUE_POLL_TIMEOUT_SEC)
+            except asyncio.TimeoutError:
+                continue
+            if item is not _SENTINEL and _is_paused():
+                await work_q.put(item)
+                return None
+            return item
+
     # ── Worker loops ──
 
     async def convert_loop(executor):
         while True:
-            item = await convert_q.get()
-            if item is _SENTINEL:
+            item = await _get_next_item(convert_q)
+            if item is None or item is _SENTINEL:
                 return
-            if _is_paused():
-                continue
             _advance_stage(JobStage.CONVERTING)
             try:
                 result = await _convert_one(job_id, item, audio_dir, executor)
@@ -444,6 +450,8 @@ async def _run_pipeline(job: Job) -> None:
                         "status": result.status, "stage": "converting",
                         "completed": progress["converting"], "total": total_calls,
                     })
+                    if _is_paused():
+                        return
                     await transcribe_q.put(result)
                 else:
                     _emit(job_id, {
@@ -451,6 +459,8 @@ async def _run_pipeline(job: Job) -> None:
                         "status": item.status, "stage": "converting",
                         "completed": progress["converting"], "total": total_calls,
                     })
+                    if _is_paused():
+                        return
             except Exception as e:
                 logger.error("Convert error for %s: %s", item.filename, e)
                 job_store.update_call(job_id, item.index, status=CallStatus.ERROR, error=str(e))
@@ -460,23 +470,25 @@ async def _run_pipeline(job: Job) -> None:
                     "status": "error", "stage": "converting",
                     "completed": progress["converting"], "total": total_calls,
                 })
+                if _is_paused():
+                    return
 
     async def transcribe_loop():
         while True:
-            item = await transcribe_q.get()
-            if item is _SENTINEL:
+            item = await _get_next_item(transcribe_q)
+            if item is None or item is _SENTINEL:
                 return
-            if _is_paused():
-                continue
             _advance_stage(JobStage.TRANSCRIBING)
             try:
-                result = await _transcribe_one(job_id, item, job.defendant_name, job.transcription_engine)
+                result = await _transcribe_one(job_id, item, job.defendant_name, transcription_engine)
                 progress["transcribing"] += 1
                 _emit(job_id, {
                     "type": "call_update", "index": result.index,
                     "status": result.status, "stage": "transcribing",
                     "completed": progress["transcribing"], "total": total_calls,
                 })
+                if _is_paused():
+                    return
                 await summarize_q.put(result)
             except Exception as e:
                 logger.error("Transcription error for %s: %s", item.filename, e)
@@ -490,23 +502,32 @@ async def _run_pipeline(job: Job) -> None:
                     "status": "error", "stage": "transcribing",
                     "completed": progress["transcribing"], "total": total_calls,
                 })
+                if _is_paused():
+                    return
 
     async def summarize_loop():
         while True:
-            item = await summarize_q.get()
-            if item is _SENTINEL:
+            item = await _get_next_item(summarize_q)
+            if item is None or item is _SENTINEL:
                 return
-            if _is_paused():
-                continue
             _advance_stage(JobStage.SUMMARIZING)
             try:
-                result = await _summarize_one(job_id, item, job.summary_prompt, job.skip_summary, summarization_engine, job.auto_message_mode)
+                result = await _summarize_one(
+                    job_id,
+                    item,
+                    job.summary_prompt,
+                    job.skip_summary,
+                    summarization_engine,
+                    runtime_selection.effective_auto_message_mode,
+                )
                 progress["summarizing"] += 1
                 _emit(job_id, {
                     "type": "call_update", "index": result.index,
                     "status": result.status, "stage": "summarizing",
                     "completed": progress["summarizing"], "total": total_calls,
                 })
+                if _is_paused():
+                    return
                 await pdf_q.put(result)
             except Exception as e:
                 logger.error("Summarization error for %s: %s", item.filename, e)
@@ -526,15 +547,15 @@ async def _run_pipeline(job: Job) -> None:
                     "status": item.status, "stage": "summarizing",
                     "completed": progress["summarizing"], "total": total_calls,
                 })
+                if _is_paused():
+                    return
                 await pdf_q.put(item)
 
     async def pdf_loop(executor):
         while True:
-            item = await pdf_q.get()
-            if item is _SENTINEL:
+            item = await _get_next_item(pdf_q)
+            if item is None or item is _SENTINEL:
                 return
-            if _is_paused():
-                continue
             _advance_stage(JobStage.GENERATING)
             try:
                 result = await _generate_pdf_one(
@@ -547,6 +568,8 @@ async def _run_pipeline(job: Job) -> None:
                     "status": result.status, "stage": "generating_pdf",
                     "completed": progress["generating_pdf"], "total": total_calls,
                 })
+                if _is_paused():
+                    return
             except Exception as e:
                 logger.error("PDF error for %s: %s", item.filename, e)
                 job_store.update_call(job_id, item.index, error=f"PDF failed: {e}")
@@ -556,6 +579,8 @@ async def _run_pipeline(job: Job) -> None:
                     "status": "error", "stage": "generating_pdf",
                     "completed": progress["generating_pdf"], "total": total_calls,
                 })
+                if _is_paused():
+                    return
 
     # ── Stage group coordinator ──
 
@@ -574,7 +599,7 @@ async def _run_pipeline(job: Job) -> None:
     pdf_executor = ThreadPoolExecutor(max_workers=n_pdf)
 
     try:
-        if all_local:
+        if runtime_selection.all_local:
             # Two-phase mode: avoid loading both local models simultaneously on 8 GB.
             # Phase 1: Convert + Transcribe (Parakeet memory freed when phase ends)
             logger.info("All-local mode: running two-phase pipeline for job %s", job_id)

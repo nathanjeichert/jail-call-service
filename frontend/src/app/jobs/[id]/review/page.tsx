@@ -59,15 +59,30 @@ export default function ReviewPage() {
   const [packaging, setPackaging] = useState(false);
   const [fetchError, setFetchError] = useState('');
 
+  const loadJobInfo = async (): Promise<JobInfo | null> => {
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}`);
+      if (!res.ok) {
+        if (res.status === 404) router.push('/');
+        else setFetchError(`Failed to load job: ${res.statusText}`);
+        return null;
+      }
+      const data = await res.json();
+      setJob(data);
+      setFetchError('');
+      return data;
+    } catch (e) {
+      setFetchError(`Failed to load job: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  };
+
   useEffect(() => {
-    fetch(`${API}/jobs/${jobId}`)
-      .then(r => r.json())
-      .then(data => {
-        setJob(data);
-        const firstDone = (data.calls || []).find((c: CallSummary) => c.has_transcript);
-        if (firstDone) loadCall(firstDone.index, data.id);
-      })
-      .catch(() => router.push('/'));
+    loadJobInfo().then(data => {
+      if (!data) return;
+      const firstDone = (data.calls || []).find((c: CallSummary) => c.has_transcript);
+      if (firstDone) loadCall(firstDone.index, data.id);
+    });
   }, [jobId]);
 
   const loadCall = async (index: number, jid?: string) => {
@@ -89,6 +104,7 @@ export default function ReviewPage() {
         setSummary(sumData.summary || '');
         setEditedSummary(sumData.summary || '');
       }
+      setFetchError('');
     } catch (e) { setFetchError(`Failed to load call: ${e instanceof Error ? e.message : String(e)}`); }
     setLoadingTranscript(false);
   };

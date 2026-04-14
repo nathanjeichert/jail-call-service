@@ -119,6 +119,8 @@ class GemmaEngine:
 
         input_tokens = response.prompt_tokens if response else 0
         output_tokens = response.generation_tokens if response else 0
+        if not text.strip():
+            raise RuntimeError("Gemma returned an empty summary response")
 
         logger.info(
             "Gemma tokens — input: %d, output: %d",
