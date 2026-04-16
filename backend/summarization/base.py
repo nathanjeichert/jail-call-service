@@ -58,3 +58,18 @@ class SummarizationEngine(Protocol):
             Dict with keys: text, input_tokens, output_tokens, thinking_tokens.
         """
         ...
+
+    async def generate(self, prompt_text: str) -> Dict:
+        """Run a single-turn prompt that is not a transcript summary.
+
+        Used by features that need the same model for bespoke one-shot calls
+        (case-report synthesis, system-audio detection when folded into the
+        summary prompt), so cloud and local engines stay interchangeable.
+
+        Args:
+            prompt_text: Fully-assembled user prompt.
+
+        Returns:
+            Dict with keys: text, input_tokens, output_tokens, thinking_tokens.
+        """
+        ...

@@ -1,9 +1,11 @@
 """
 System audio detection and filtering for jail call transcripts.
 
-Uses Gemini's SYSTEM_AUDIO markers to identify and handle automated
-telecom messages (IVR prompts, time warnings, provider sign-offs)
-that appear in multichannel jail call transcripts.
+Appends a SYSTEM_AUDIO detection instruction to the summary prompt and parses
+the JSON line the engine returns, then either strips or relabels the detected
+automated telecom turns (IVR prompts, time warnings, provider sign-offs).
+Engine-agnostic: both Gemini (cloud) and Gemma (local) emit the same tail
+format, so filtering works regardless of which engine is selected.
 """
 
 import json
@@ -55,7 +57,7 @@ SYSTEM_AUDIO_DETECTION_PROMPT = (
 
 def parse_system_audio_response(response_text: str) -> Tuple[str, list]:
     """
-    Parse Gemini's response to split the summary from system audio markers.
+    Parse the engine response to split the summary from system audio markers.
 
     Returns:
         (summary_text, system_audio_markers) where markers is a list of
@@ -122,7 +124,7 @@ def parse_system_audio_response(response_text: str) -> Tuple[str, list]:
             except (ValueError, TypeError):
                 continue
 
-    logger.info("Parsed %d system audio markers from Gemini response", len(valid))
+    logger.info("Parsed %d system audio markers from engine response", len(valid))
     return summary_text, valid
 
 
@@ -322,7 +324,7 @@ def apply_system_audio_filter(
 
     Args:
         turns: Original transcript turns
-        markers: List of {"turn": int, "text": str} from Gemini
+        markers: List of {"turn": int, "text": str} from the engine
         mode: "exclude" (remove) or "label" (mark as AUTOMATED MESSAGE)
 
     Returns:

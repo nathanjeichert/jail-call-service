@@ -452,15 +452,37 @@ def _repackage_async(job_id: str):
 
 async def _do_repackage(job_id: str):
     from .pipeline import _stage_generate_indexes, _stage_package
+    from .job_settings import resolve_runtime_selection
+    from .summarization import get_engine as get_summarization_engine
+
     job = job_store.get_job(job_id)
     if not job:
         return
     output_dir = job_store.get_job_output_dir(job_id)
     audio_dir = os.path.join(output_dir, "audio")
 
+    # Re-create the same summarization engine the job used originally so
+    # case-report synthesis stays consistent across the original run and any
+    # later re-package. Engine is None when the job ran with skip_summary.
+    runtime_selection = resolve_runtime_selection(
+        job.transcription_engine,
+        job.summarization_engine,
+        skip_summary=job.skip_summary,
+        auto_message_mode=job.auto_message_mode,
+    )
+    engine = (
+        get_summarization_engine(runtime_selection.summarization_engine)
+        if not job.skip_summary
+        else None
+    )
+
     try:
-        await _stage_generate_indexes(job, output_dir, audio_dir)
-        zip_path = await _stage_package(job, output_dir)
+        try:
+            await _stage_generate_indexes(job, output_dir, audio_dir, engine)
+            zip_path = await _stage_package(job, output_dir)
+        finally:
+            if engine and hasattr(engine, "unload"):
+                engine.unload()
         job.zip_path = zip_path
         job_store.update_job(job)
         pipeline._emit(job_id, {"type": "packaged", "zip_path": zip_path})

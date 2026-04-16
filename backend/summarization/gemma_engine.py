@@ -57,7 +57,7 @@ class GemmaEngine:
     def __init__(
         self,
         model_name: str = "unsloth/gemma-4-E2B-it-UD-MLX-4bit",
-        max_tokens: int = 2048,
+        max_tokens: int = 10240,
     ):
         if not GEMMA_AVAILABLE:
             raise RuntimeError("mlx-lm not installed. Run: pip install mlx-lm")
@@ -111,25 +111,31 @@ class GemmaEngine:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._summarize_sync, turns, prompt, metadata)
 
+    async def generate(self, prompt_text: str) -> Dict:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._generate_sync, prompt_text)
+
     def _summarize_sync(
         self,
         turns: List[TranscriptTurn],
         prompt: str,
         metadata: Optional[dict] = None,
     ) -> Dict:
+        transcript_text = build_transcript_text(turns)
+        full_prompt = build_full_prompt(prompt, transcript_text, metadata)
+        return self._generate_sync(full_prompt)
+
+    def _generate_sync(self, user_prompt: str) -> Dict:
         from mlx_lm import stream_generate
 
         self._ensure_loaded()
-
-        transcript_text = build_transcript_text(turns)
-        full_prompt = build_full_prompt(prompt, transcript_text, metadata)
 
         messages = [
             {
                 "role": "system",
                 "content": "You are a legal analyst reviewing jail call transcripts. Follow the user's instructions precisely and produce structured analysis.",
             },
-            {"role": "user", "content": full_prompt},
+            {"role": "user", "content": user_prompt},
         ]
 
         prompt_text = self._tokenizer.apply_chat_template(
@@ -148,7 +154,7 @@ class GemmaEngine:
         input_tokens = response.prompt_tokens if response else 0
         output_tokens = response.generation_tokens if response else 0
         if not text.strip():
-            raise RuntimeError("Gemma returned an empty summary response")
+            raise RuntimeError("Gemma returned an empty response")
 
         final_text = _strip_thinking(text)
         if not final_text:

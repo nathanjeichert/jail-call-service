@@ -11,7 +11,6 @@ CASE_CONTEXT_MARKER = "\n\nCASE CONTEXT:\n"
 AUTO_MESSAGE_MODES = frozenset({"exclude", "label"})
 LOCAL_TRANSCRIPTION_ENGINES = frozenset({"parakeet"})
 LOCAL_SUMMARIZATION_ENGINES = frozenset({"gemma"})
-SYSTEM_AUDIO_SUMMARIZATION_ENGINES = frozenset({"gemini"})
 
 
 def normalize_optional_name(value: Optional[str]) -> Optional[str]:
@@ -73,9 +72,10 @@ class RuntimeSelection:
 
     @property
     def effective_auto_message_mode(self) -> Optional[str]:
+        # System-audio filtering piggybacks on the summary prompt, so it's
+        # active whenever summarization runs — both cloud (Gemini) and local
+        # (Gemma) engines carry the SYSTEM_AUDIO: tail.
         if self.skip_summary:
-            return None
-        if self.summarization_engine not in SYSTEM_AUDIO_SUMMARIZATION_ENGINES:
             return None
         return self.auto_message_mode
 

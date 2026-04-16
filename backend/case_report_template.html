@@ -1200,8 +1200,8 @@ section.chapter {
         <strong>No top findings to surface.</strong>
         {% if synthesis_state == "no_input" %}
         Every call in this delivery was rated LOW relevance by the per-call analysis &mdash; no high or medium calls were available to synthesize. The frequent-caller statistics and the full call index remain the best entry points for review.
-        {% elif synthesis_state == "gemini_unavailable" %}
-        The synthesis step could not reach the AI service. The high-relevance and medium-relevance call cards in the following sections still contain the per-call AI analysis.
+        {% elif synthesis_state == "synth_unavailable" %}
+        The synthesis step could not reach the AI engine. The high-relevance and medium-relevance call cards in the following sections still contain the per-call AI analysis.
         {% elif synthesis_state == "parse_failed" %}
         The synthesis step ran but its output could not be parsed into structured findings. The high-relevance call cards on the following pages still contain the per-call AI notes.
         {% else %}

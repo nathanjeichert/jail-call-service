@@ -41,7 +41,9 @@ class GeminiEngine:
     ) -> Dict:
         transcript_text = build_transcript_text(turns)
         full_prompt = build_full_prompt(prompt, transcript_text, metadata)
+        return await self.generate(full_prompt)
 
+    async def generate(self, prompt_text: str) -> Dict:
         @retry(
             wait=wait_random_exponential(min=2, max=60),
             stop=stop_after_attempt(6),
@@ -52,7 +54,7 @@ class GeminiEngine:
                 None,
                 lambda: self._client.models.generate_content(
                     model=self._model,
-                    contents=full_prompt,
+                    contents=prompt_text,
                     config=genai_types.GenerateContentConfig(
                         temperature=0.3,
                         max_output_tokens=8192,
@@ -77,7 +79,7 @@ class GeminiEngine:
             except Exception:
                 text = None
         if not text or not str(text).strip():
-            raise RuntimeError("Gemini returned an empty summary response")
+            raise RuntimeError("Gemini returned an empty response")
 
         usage = getattr(response, "usage_metadata", None)
         input_tokens = getattr(usage, "prompt_token_count", None) or 0

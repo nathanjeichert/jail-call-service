@@ -358,22 +358,6 @@ async def _run_pipeline(job: Job) -> None:
         auto_message_mode=job.auto_message_mode,
     )
     validate_runtime_selection(runtime_selection)
-    if job.auto_message_mode and runtime_selection.effective_auto_message_mode is None:
-        logger.info(
-            "Job %s requested auto_message_mode=%s, but system-audio filtering is only active with Gemini summaries",
-            job_id,
-            job.auto_message_mode,
-        )
-        _emit(
-            job_id,
-            {
-                "type": "warning",
-                "message": (
-                    "Automated-message filtering is only active with Gemini summaries. "
-                    "System audio will be kept as-is for this job."
-                ),
-            },
-        )
 
     n_transcribe = runtime_selection.transcription_workers(total_calls)
     n_summarize = runtime_selection.summarization_workers(total_calls)
@@ -644,18 +628,24 @@ async def _run_pipeline(job: Job) -> None:
     finally:
         convert_executor.shutdown(wait=False)
         pdf_executor.shutdown(wait=False)
-        # Unload local summarization model to free memory
-        if summarization_engine and hasattr(summarization_engine, "unload"):
-            summarization_engine.unload()
 
     # ── Check for pause before finishing ──
     if _is_paused():
+        # If we bail here with the local model still resident, release it so
+        # memory isn't held indefinitely while the job sits paused.
+        if summarization_engine and hasattr(summarization_engine, "unload"):
+            summarization_engine.unload()
         return
 
     # ── Post-pipeline: indexes + packaging ──
+    # Keep the summarization engine loaded — case-report synthesis reuses it.
     _emit(job_id, {"type": "stage", "stage": "generating_indexes"})
     job = job_store.get_job(job_id)
-    await _stage_generate_indexes(job, output_dir, audio_dir)
+    try:
+        await _stage_generate_indexes(job, output_dir, audio_dir, summarization_engine)
+    finally:
+        if summarization_engine and hasattr(summarization_engine, "unload"):
+            summarization_engine.unload()
 
     if _is_paused():
         return
@@ -682,7 +672,12 @@ async def _run_pipeline(job: Job) -> None:
 
 # ── Batch stages (kept for repackaging and index generation) ──
 
-async def _stage_generate_indexes(job: Job, output_dir: str, audio_dir: str) -> None:
+async def _stage_generate_indexes(
+    job: Job,
+    output_dir: str,
+    audio_dir: str,
+    summarization_engine=None,
+) -> None:
     from .excel_report import generate_excel
     from .search_html import generate_search_html
     from .viewer import render_viewer
@@ -720,7 +715,11 @@ async def _stage_generate_indexes(job: Job, output_dir: str, audio_dir: str) -> 
 
     def write_case_report():
         from .case_report import generate_case_report_pdf
-        report_bytes = generate_case_report_pdf(job=job, done_calls=done_calls)
+        report_bytes = generate_case_report_pdf(
+            job=job,
+            done_calls=done_calls,
+            engine=summarization_engine,
+        )
         with open(os.path.join(output_dir, "case-report.pdf"), 'wb') as f:
             f.write(report_bytes)
 

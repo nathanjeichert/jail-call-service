@@ -2,8 +2,9 @@
 Case Report PDF generation.
 
 Aggregates per-call summaries into a standalone case-level report:
-  - Top findings synthesized by Gemini from high/medium relevance call notes
-  - Outside-party identity inference (in the same Gemini call)
+  - Top findings synthesized by the active summarization engine (Gemini or Gemma)
+    from high/medium relevance call notes
+  - Outside-party identity inference (in the same synthesis call)
   - High & medium relevance call cards with hotlinks to viewer + transcript PDFs
   - Frequent caller statistics (with AI-inferred identities)
   - At-a-glance metrics, daily call timeline, relevance distribution
@@ -12,6 +13,7 @@ Renders via WeasyPrint, sharing all design tokens with pdf_cover_template.html
 and guide_template.html.
 """
 
+import asyncio
 import concurrent.futures
 import logging
 import re
@@ -22,9 +24,9 @@ from urllib.parse import quote
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from . import config as cfg
 from . import pdf_utils as U
 from .models import CallResult, Job, call_stem
+from .summarization.base import SummarizationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +34,17 @@ logger = logging.getLogger(__name__)
 # many calls we use only HIGH, otherwise we top up from MEDIUM.
 TARGET_FINDINGS_INPUT_COUNT = 10
 
-# Range Gemini is asked to surface
+# Range the synthesis engine is asked to surface
 MIN_TOP_FINDINGS = 5
 MAX_TOP_FINDINGS = 8
 
-# Cap on per-number identity descriptions sent to Gemini (to keep prompt size sane)
+# Cap on per-number identity descriptions sent to the engine (keeps prompt size sane)
 MAX_IDENTITY_DESCS_PER_NUMBER = 6
 
-# Hard cap on how long the case-report Gemini call is allowed to take per
+# Hard cap on how long the case-report synthesis call is allowed to take per
 # attempt. Tenacity then retries up to 3 times with exponential backoff, so
 # the worst-case wall time is bounded.
-GEMINI_SYNTHESIS_TIMEOUT_SEC = 120
+SYNTHESIS_TIMEOUT_SEC = 120
 
 
 CASE_REPORT_SYNTHESIS_PROMPT = """You are synthesizing analysis of multiple jail phone call transcripts for a legal team.
@@ -283,37 +285,22 @@ def _build_case_context(case_name: str,
     return "\n".join(lines) or "(no case context provided)"
 
 
-# ────────────────────────── Gemini call ──────────────────────────
+# ────────────────────────── synthesis call ──────────────────────────
 
-def _call_gemini_synth(prompt_text: str) -> Optional[str]:
-    try:
-        from google import genai
-        from google.genai import types as genai_types
-    except ImportError:
-        logger.warning("google-genai not available; skipping case report synthesis")
-        return None
+def _call_synth(engine: Optional[SummarizationEngine], prompt_text: str) -> Optional[str]:
+    """Run the case-report synthesis prompt through the active engine.
 
-    if not cfg.GEMINI_API_KEY:
-        logger.warning("GEMINI_API_KEY not set; skipping case report synthesis")
+    Bounds the wall time per attempt via a thread-executor timeout and retries
+    a few times with exponential backoff — same envelope we used when this
+    always went through Gemini, now routed generically.
+    """
+    if engine is None:
+        logger.warning("Case report synthesis skipped: no summarization engine configured")
         return None
 
     def _do_request():
-        client = genai.Client(api_key=cfg.GEMINI_API_KEY)
-        return client.models.generate_content(
-            model=cfg.GEMINI_MODEL,
-            contents=prompt_text,
-            config=genai_types.GenerateContentConfig(
-                temperature=0.3,
-                max_output_tokens=8192,
-                thinking_config=genai_types.ThinkingConfig(thinking_level="low"),
-                safety_settings=[
-                    genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
-                    genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
-                    genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
-                    genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
-                ],
-            ),
-        )
+        # engine.generate is async; drive it on a fresh loop inside the worker.
+        return asyncio.run(engine.generate(prompt_text))
 
     @retry(
         wait=wait_random_exponential(min=2, max=30),
@@ -323,37 +310,29 @@ def _call_gemini_synth(prompt_text: str) -> Optional[str]:
     def _call_with_timeout():
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
             future = ex.submit(_do_request)
-            return future.result(timeout=GEMINI_SYNTHESIS_TIMEOUT_SEC)
+            return future.result(timeout=SYNTHESIS_TIMEOUT_SEC)
 
     try:
-        response = _call_with_timeout()
+        result = _call_with_timeout()
     except concurrent.futures.TimeoutError:
         logger.error(
-            "Gemini case report synthesis timed out after %ds (per attempt)",
-            GEMINI_SYNTHESIS_TIMEOUT_SEC,
+            "Case report synthesis timed out after %ds (per attempt)",
+            SYNTHESIS_TIMEOUT_SEC,
         )
         return None
     except Exception as e:
-        logger.error("Gemini case report synthesis call failed after retries: %s", e)
+        logger.error("Case report synthesis call failed after retries: %s", e)
         return None
 
-    text = getattr(response, "text", None)
-    if not text and getattr(response, "candidates", None):
-        try:
-            text = response.candidates[0].content.parts[0].text
-        except Exception:
-            text = None
-
-    usage = getattr(response, "usage_metadata", None)
-    in_tok = getattr(usage, "prompt_token_count", 0) or 0
-    out_tok = getattr(usage, "candidates_token_count", 0) or 0
-    think_tok = getattr(usage, "thoughts_token_count", 0) or 0
     logger.info(
         "Case report synthesis tokens — in:%d out:%d thinking:%d",
-        in_tok, out_tok, think_tok,
+        result.get("input_tokens", 0),
+        result.get("output_tokens", 0),
+        result.get("thinking_tokens", 0),
     )
 
-    return (text or "").strip() or None
+    text = (result.get("text") or "").strip()
+    return text or None
 
 
 # ────────────────────────── output parsers ──────────────────────────
@@ -709,6 +688,7 @@ def _build_call_card(entry: Dict[str, Any]) -> Dict[str, Any]:
 def generate_case_report_pdf(
     job: Job,
     done_calls: List[CallResult],
+    engine: SummarizationEngine,
     gen_date: Optional[str] = None,
 ) -> bytes:
     """Build the case report PDF for a completed job."""
@@ -752,10 +732,10 @@ def generate_case_report_pdf(
             max_findings=MAX_TOP_FINDINGS,
         )
 
-        gemini_text = _call_gemini_synth(prompt_text)
-        if gemini_text:
+        synth_text = _call_synth(engine, prompt_text)
+        if synth_text:
             calls_by_id = {entry["call"].index: entry for entry in synthesis_inputs}
-            for f in _parse_findings(gemini_text):
+            for f in _parse_findings(synth_text):
                 try:
                     call_id = int((f.get("CALL_ID") or "").strip())
                 except ValueError:
@@ -775,13 +755,13 @@ def generate_case_report_pdf(
                     "viewer_link": _viewer_link(call, ts_clean or None),
                     "pdf_link": _transcript_pdf_link(call),
                 })
-            identity_map = _parse_identities(gemini_text)
+            identity_map = _parse_identities(synth_text)
             if findings or identity_map:
                 synthesis_state = "ok"
             else:
                 synthesis_state = "parse_failed"
         else:
-            synthesis_state = "gemini_unavailable"
+            synthesis_state = "synth_unavailable"
 
     callers = _build_caller_stats(done_calls, parsed_by_index, identity_map)
     top_callers = callers[:10]

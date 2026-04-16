@@ -23,7 +23,7 @@ This project was originally a branch within the TranscribeAlpha monorepo but has
   - A responsive local HTML viewer dashboard (`viewer.html`) using WaveSurfer.js.
   - A dossier-style HTML search landing page (`search.html`) with a sortable, filterable table and per-row expanding detail panels.
   - A user guide PDF (`guide.pdf`) explaining how to use the delivery package.
-  - A case-level report PDF (`case-report.pdf`) with at-a-glance metrics, timeline, Gemini-synthesized top findings, outside-party identity inference, and high/medium relevance call cards.
+  - A case-level report PDF (`case-report.pdf`) with at-a-glance metrics, timeline, AI-synthesized top findings, outside-party identity inference, and high/medium relevance call cards.
 
 ## Critical Technical Details
 1. **Parallelization:** Conversion runs on a `ThreadPoolExecutor` sized to CPU count; AssemblyAI and Gemini calls are driven by asyncio worker pools capped by `MAX_TRANSCRIPTION_CONCURRENT` (default **50**) and `MAX_SUMMARIZATION_CONCURRENT` (default **50**). These defaults are tuned to keep burst traffic safely under AssemblyAI's pay-as-you-go "100 new streams/minute" rate and Gemini Flash Tier 1's 300 RPM with headroom for retries; bump them via `.env` only if you've verified your account tier. When both transcription and summarization use local engines (Parakeet + Gemma), the pipeline serializes the stages to avoid competing for GPU/unified memory.
@@ -32,7 +32,7 @@ This project was originally a branch within the TranscribeAlpha monorepo but has
    - `_run_pipeline` validates required API keys for the selected cloud engines at job start and raises immediately if they're missing, so a bad `.env` fails *before* the conversion stage spends compute.
    - AssemblyAI's polling loop is bounded by `ASSEMBLYAI_TRANSCRIPTION_TIMEOUT_SEC` (default **900s / 15min**). A stuck transcript raises `TimeoutError`, lands in the Errors sheet, and does not stall the batch.
    - Gemini summarization failures are not silent: the call still finishes with a `"Summary unavailable for this call."` fallback, but the `error` field is set so the call appears in the Excel Errors sheet as a partial failure.
-   - The case-report Gemini call is wrapped in tenacity retry (3 attempts, exponential backoff) plus a 120-second per-attempt timeout via `concurrent.futures`.
+   - The case-report synthesis call (routed through whichever summarization engine the job is using) is wrapped in tenacity retry (3 attempts, exponential backoff) plus a 120-second per-attempt timeout via `concurrent.futures`.
    - The final completion log breaks out clean / partial / errored call counts.
 3. **Database Concurrency:** SQLite is configured with WAL mode and a 30-second busy timeout to handle concurrent writes from parallel pipeline stages (conversion threads, async transcription/summarization).
 4. **Transcription Format:** Both engines produce the same `List[TranscriptTurn]` output. **Channel 1** = Inmate (Defendant), **Channel 2** = Outside Party.
@@ -104,9 +104,9 @@ Automated telecom messages (IVR prompts, time warnings, provider sign-offs) are 
 
 For partial turns (real speech + system text in the same turn, e.g. "...they're playing us— You have 1 minute remaining."), the system text substring is split out — either stripped (exclude) or broken into a separate AUTOMATED MESSAGE turn (label).
 
-When system-audio detection is enabled, `backend/pipeline.py` also removes any Gemini `NOTES` bullets that match identified automated telecom messages before generating PDFs. This keeps call-setup prompts and time warnings out of the summary product while still preserving them as `AUTOMATED MESSAGE` transcript turns in `"label"` mode.
+When system-audio detection is enabled, `backend/pipeline.py` also removes any `NOTES` bullets that match identified automated telecom messages before generating PDFs. This keeps call-setup prompts and time warnings out of the summary product while still preserving them as `AUTOMATED MESSAGE` transcript turns in `"label"` mode.
 
-**Important:** System audio filtering only runs when Gemini summarization is active (`skip_summary=False`). Test runs with dummy summaries get no filtering.
+**Important:** System audio filtering only runs when summarization is active (`skip_summary=False`). Both the Gemini (cloud) and Gemma (local) summarization engines receive the `SYSTEM_AUDIO` detection tail, so filtering works regardless of which engine is selected. Test runs with dummy summaries get no filtering.
 
 ## Case Report Architecture
 
@@ -116,7 +116,7 @@ Pipeline:
 1. Parse every call's summary once through `_parse_summary_sections` and reuse the result everywhere downstream.
 2. Bucket calls by `RELEVANCE` (HIGH / MEDIUM / LOW / UNKNOWN).
 3. Select a synthesis input set — HIGH calls first, topping up from MEDIUM if there are fewer than `TARGET_FINDINGS_INPUT_COUNT` (10) HIGH calls.
-4. Issue **one** extra Gemini call that performs BOTH "top findings" synthesis AND per-outside-number "identity inference" in a single prompt, using a block-delimited output format (`FINDING_START…FINDING_END`, `IDENTITY_START…IDENTITY_END`). This call is wrapped in a 3-attempt tenacity retry and a 120-second per-attempt `concurrent.futures` timeout.
+4. Issue **one** extra synthesis call, routed through the same summarization engine the per-call summaries used (Gemini cloud or Gemma local — fully interchangeable). This call performs BOTH "top findings" synthesis AND per-outside-number "identity inference" in a single prompt, using a block-delimited output format (`FINDING_START…FINDING_END`, `IDENTITY_START…IDENTITY_END`), and is wrapped in a 3-attempt tenacity retry and a 120-second per-attempt `concurrent.futures` timeout.
 5. Render a multi-section PDF: at-a-glance metrics, activity timeline, relevance distribution, top findings, high-relevance call cards, medium-relevance compact rows, and frequent-caller stats (including AI-inferred identities).
 
 **Graceful degradation:** The template reads a `synthesis_state` variable (`ok` / `no_input` / `gemini_unavailable` / `parse_failed`) and renders a differentiated empty-state panel in the Top Findings section for each case, so a failed synthesis still produces a usable report.
