@@ -409,11 +409,11 @@ def _render_cover_pages(
                         bullets.append(re.sub(r'^[-\u2022*]\s*', '', line))
                     else:
                         if bullets:
-                            raw_blocks.append({"type": "bullet", "items": bullets})
+                            raw_blocks.append({"type": "bullet", "bullets": bullets})
                             bullets = []
                         texts.append(line)
                 if bullets:
-                    raw_blocks.append({"type": "bullet", "items": bullets})
+                    raw_blocks.append({"type": "bullet", "bullets": bullets})
                 if texts:
                     raw_blocks.append({"type": "text", "text": " ".join(texts)})
             ctx["raw_blocks"] = raw_blocks

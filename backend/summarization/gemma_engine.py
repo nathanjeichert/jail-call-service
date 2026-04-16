@@ -8,12 +8,22 @@ Gemma 4 E2B model (4-bit quantized, ~3.6 GB RAM).
 import asyncio
 import gc
 import logging
+import re
 from typing import Dict, List, Optional
 
 from ..models import TranscriptTurn
 from .base import build_transcript_text, build_full_prompt
 
 logger = logging.getLogger(__name__)
+
+# Gemma 4 (unsloth MLX build) emits a reasoning channel before the final
+# answer:  <|channel>thought ...reasoning... <channel|>FINAL_ANSWER
+# We only want the final answer in the summary output; the thought trace
+# is noisy and breaks downstream structured-section parsing. `_CLOSE_MARKER`
+# matches the transition to the final channel. `_OPEN_MARKER` catches a
+# stray opener in case the close marker was stripped upstream.
+_CLOSE_MARKER = re.compile(r"<\s*channel\s*\|\s*>", re.IGNORECASE)
+_OPEN_MARKER = re.compile(r"<\s*\|\s*channel\s*>\s*thought\b", re.IGNORECASE)
 
 GEMMA_AVAILABLE = False
 try:
@@ -23,13 +33,31 @@ except ImportError:
     pass
 
 
+def _strip_thinking(text: str) -> str:
+    """Remove Gemma's chain-of-thought prelude, keeping only the final answer.
+
+    Raises RuntimeError when max_tokens ran out mid-thinking (no final channel
+    produced) so the pipeline can record this as a partial failure instead of
+    saving the raw reasoning as the summary.
+    """
+    close = list(_CLOSE_MARKER.finditer(text))
+    if close:
+        return text[close[-1].end():].lstrip()
+    if _OPEN_MARKER.search(text):
+        raise RuntimeError(
+            "Gemma produced only chain-of-thought; max_tokens exhausted before "
+            "the final answer was emitted."
+        )
+    return text.strip()
+
+
 class GemmaEngine:
     """Local summarization via Gemma 4 E2B on Apple Silicon (MLX)."""
 
     def __init__(
         self,
         model_name: str = "unsloth/gemma-4-E2B-it-UD-MLX-4bit",
-        max_tokens: int = 1024,
+        max_tokens: int = 2048,
     ):
         if not GEMMA_AVAILABLE:
             raise RuntimeError("mlx-lm not installed. Run: pip install mlx-lm")
@@ -122,14 +150,20 @@ class GemmaEngine:
         if not text.strip():
             raise RuntimeError("Gemma returned an empty summary response")
 
+        final_text = _strip_thinking(text)
+        if not final_text:
+            raise RuntimeError("Gemma final-channel output was empty after stripping thinking trace")
+
+        thinking_portion = text[: len(text) - len(final_text)]
+        thinking_tokens = len(self._tokenizer.encode(thinking_portion)) if thinking_portion else 0
         logger.info(
-            "Gemma tokens — input: %d, output: %d",
-            input_tokens, output_tokens,
+            "Gemma tokens — input: %d, output: %d (thinking: %d)",
+            input_tokens, output_tokens, thinking_tokens,
         )
 
         return {
-            "text": text.strip(),
+            "text": final_text,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
-            "thinking_tokens": 0,
+            "thinking_tokens": thinking_tokens,
         }

@@ -796,7 +796,7 @@ body {
             {% for block in raw_blocks %}
             {% if block.type == 'bullet' %}
             <ul>
-                {% for item in block.items %}
+                {% for item in block.bullets %}
                 <li>{{ item }}</li>
                 {% endfor %}
             </ul>
