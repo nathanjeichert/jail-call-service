@@ -17,11 +17,11 @@ import re
 from typing import List, Optional
 
 from .models import call_stem
+from . import pdf_utils as U
+from .pdf_utils import parse_summary_sections, timestamp_to_seconds
 from .transcript_formatting import (
-    _parse_summary_sections,
     _line_cite_for_timestamp,
     compute_line_entries,
-    timestamp_to_seconds,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,14 +32,7 @@ def _call_stem(index: int, filename: str) -> str:
 
 
 def _format_duration(seconds: Optional[float]) -> str:
-    if seconds is None:
-        return ""
-    secs = int(seconds)
-    h, rem = divmod(secs, 3600)
-    m, s = divmod(rem, 60)
-    if h:
-        return f"{h}:{m:02d}:{s:02d}"
-    return f"{m}:{s:02d}"
+    return U.format_duration(seconds)
 
 
 def _turn_start_seconds(turn) -> float:
@@ -70,7 +63,7 @@ def _build_call_datum(call) -> dict:
     # (skip_summary=True jobs) so we don't surface noise like "FOR foo.wav**".
     summary_text = call.summary or ""
     is_dummy = summary_text.startswith("**DUMMY SUMMARY")
-    sections = _parse_summary_sections(summary_text) if (summary_text and not is_dummy) else {}
+    sections = parse_summary_sections(summary_text) if (summary_text and not is_dummy) else {}
     relevance = sections.get("relevance", "")
     brief_summary = (sections.get("call_summary") or "").replace("\n", " ").strip()
     identity = (sections.get("speakers") or "").replace("\n", " ").strip()

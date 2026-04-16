@@ -22,7 +22,7 @@ from typing import Dict, List, Optional
 
 from .models import Job, JobStage, CallResult, CallStatus, call_stem
 from .icm_parser import find_icm_report, parse_icm_report
-from . import job_store, config as cfg
+from . import job_store, config as cfg, pdf_utils as U
 from .job_settings import resolve_runtime_selection, validate_runtime_selection
 
 logger = logging.getLogger(__name__)
@@ -77,14 +77,7 @@ def _call_stem(index: int, filename: str) -> str:
 
 
 def _format_duration(seconds: Optional[float]) -> str:
-    if not seconds:
-        return ""
-    secs = int(seconds)
-    h, rem = divmod(secs, 3600)
-    m, s = divmod(rem, 60)
-    if h:
-        return f"{h}:{m:02d}:{s:02d}"
-    return f"{m}:{s:02d}"
+    return U.format_duration(seconds)
 
 
 # ── Per-call worker functions ──
@@ -731,8 +724,13 @@ async def _stage_generate_indexes(job: Job, output_dir: str, audio_dir: str) -> 
         with open(os.path.join(output_dir, "case-report.pdf"), 'wb') as f:
             f.write(report_bytes)
 
+    # Run non-PDF index outputs in parallel, then the two WeasyPrint PDFs
+    # sequentially (WeasyPrint is not fully thread-safe across concurrent
+    # renders). This keeps the overall wall time close to the longest single
+    # output rather than the sum of all five.
     index_failures: List[str] = []
-    for fn in [write_excel, write_search, write_viewer, write_guide, write_case_report]:
+
+    async def _run(fn):
         try:
             await loop.run_in_executor(None, fn)
         except Exception as e:
@@ -742,6 +740,17 @@ async def _stage_generate_indexes(job: Job, output_dir: str, audio_dir: str) -> 
                 "type": "warning",
                 "message": f"{fn.__name__} failed: {e}",
             })
+
+    # Phase 1: non-PDF outputs (safe to parallelise)
+    await asyncio.gather(
+        _run(write_excel),
+        _run(write_search),
+        _run(write_viewer),
+    )
+    # Phase 2: WeasyPrint PDFs (run sequentially to avoid thread-safety issues)
+    await _run(write_guide)
+    await _run(write_case_report)
+
     if index_failures:
         logger.warning(
             "Index generation completed with %d failure(s): %s",

@@ -11,6 +11,8 @@ import os
 from typing import List, Optional
 from urllib.parse import quote
 
+from . import pdf_utils as U
+
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -47,14 +49,7 @@ CELL_BORDER = Border(top=THIN, bottom=THIN, left=THIN, right=THIN)
 
 
 def _format_duration(seconds: Optional[float]) -> str:
-    if not seconds:
-        return ""
-    secs = int(seconds)
-    h, rem = divmod(secs, 3600)
-    m, s = divmod(rem, 60)
-    if h:
-        return f"{h}:{m:02d}:{s:02d}"
-    return f"{m}:{s:02d}"
+    return U.format_duration(seconds)
 
 
 def _transcript_text(turns) -> str:

@@ -12,23 +12,20 @@ Ported and trimmed from main/backend/transcript_formatting.py.
 import io
 import re
 from collections import defaultdict
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import stringWidth
-from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-pdfmetrics.registerFont(TTFont("CourierNew", "/System/Library/Fonts/Supplemental/Courier New.ttf"))
-pdfmetrics.registerFont(TTFont("CourierNew-Bold", "/System/Library/Fonts/Supplemental/Courier New Bold.ttf"))
-
-from . import design as D
+from . import pdf_utils as U
 from .models import TranscriptTurn, WordTimestamp
+
+# Register monospace fonts (platform-aware; safe to call multiple times)
+U.register_fonts()
 
 # Text layout constants
 SPEAKER_PREFIX_SPACES = 10
@@ -59,8 +56,6 @@ MAX_LINE_CHARS = int((_TRANSCRIPT_RULE_WIDTH - 12) / _COURIER_CHAR_W)
 PDF_TEXT_BLOCK_WIDTH = MAX_LINE_CHARS * _COURIER_CHAR_W
 PDF_TEXT_X = PDF_RULE_LEFT_INNER + ((_TRANSCRIPT_RULE_WIDTH - PDF_TEXT_BLOCK_WIDTH) / 2.0)
 
-TIMESTAMP_RE = re.compile(r"(\[(?:\d{1,2}:)?\d{2}:\d{2}\])")
-
 # Maximum review cues that fit on the summary page 1 alongside the relevance
 # pill, Identity of Outside Party, and Brief Summary blocks. For HIGH-relevance
 # calls with more cues than this, the excess spills onto a continuation page
@@ -71,60 +66,9 @@ SUMMARY_PAGE1_CUE_CAP = 7
 # cap which keeps total cues under ~18, well below this limit.
 SUMMARY_PAGE2_CUE_CAP = 14
 
-
-def _safe_text(value: Optional[str]) -> str:
-    return str(value or "").strip()
-
-
-def _shorten_middle(value: Optional[str], max_chars: int = 44) -> str:
-    text = _safe_text(value)
-    if len(text) <= max_chars:
-        return text
-    if max_chars <= 8:
-        return text[:max_chars]
-
-    keep = max_chars - 3
-    head = (keep + 1) // 2
-    tail = keep // 2
-    return f"{text[:head]}...{text[-tail:]}"
-
-
-def _format_display_datetime(value: Optional[str]) -> str:
-    """Make XML-style call datetimes readable without inventing timezone data."""
-    text = _safe_text(value)
-    if not text:
-        return ""
-    for fmt, size in (("%Y-%m-%d %H:%M", 16), ("%Y-%m-%dT%H:%M:%S", 19), ("%Y-%m-%d", 10)):
-        try:
-            dt = datetime.strptime(text[:size], fmt)
-            if fmt == "%Y-%m-%d":
-                return f"{dt.strftime('%b.')} {dt.day}, {dt.year}"
-            time_text = dt.strftime("%I:%M %p").lstrip("0")
-            return f"{dt.strftime('%b.')} {dt.day}, {dt.year} at {time_text}"
-        except ValueError:
-            continue
-    return text
-
-
-def _timestamp_sort_key(timestamp: str) -> float:
-    return timestamp_to_seconds(timestamp)
-
-
-def timestamp_to_seconds(timestamp: Optional[str]) -> float:
-    if not timestamp:
-        return 0.0
-    ts = timestamp.strip('[]').strip()
-    parts = ts.split(':')
-    try:
-        if len(parts) == 3:
-            h, m, s = map(float, parts)
-            return h * 3600 + m * 60 + s
-        if len(parts) == 2:
-            m, s = map(float, parts)
-            return m * 60 + s
-        return float(ts)
-    except ValueError:
-        return 0.0
+# Re-export public symbols that other modules depend on
+timestamp_to_seconds = U.timestamp_to_seconds
+parse_summary_sections = U.parse_summary_sections
 
 
 def wrap_text(text: str, max_width: int) -> List[str]:
@@ -161,62 +105,6 @@ def _draw_transcript_rules(c: canvas.Canvas) -> None:
     c.line(PDF_RULE_RIGHT, rule_bottom, PDF_RULE_RIGHT, rule_top)
 
 
-def _parse_review_cue_line(line: str) -> Optional[dict]:
-    """Parse a Gemini cue bullet into timestamp/speaker/quote/note fields."""
-    clean = line.strip()
-    if not clean:
-        return None
-    clean = re.sub(r'^[-\u2022*]\s*', '', clean)
-    clean = re.sub(r'^\d+[.)]\s*', '', clean)
-    if re.fullmatch(r'(?i)(none|n/?a|no\s+notes?|no\s+relevant\s+(?:information|moments?)(?:\s+found)?\.?)', clean):
-        return None
-
-    ts_match = TIMESTAMP_RE.search(clean)
-    if not ts_match:
-        return None
-
-    timestamp = ts_match.group(1)
-    rest = clean[ts_match.end():].strip(" :-\u2013\u2014")
-
-    speaker = ""
-    speaker_match = re.match(r'\[?([A-Z][A-Z0-9 /&.\'-]{1,34})\]?\s*:\s+', rest)
-    if speaker_match:
-        speaker = speaker_match.group(1).strip()
-        rest = rest[speaker_match.end():].strip()
-
-    quote = ""
-    quote_match = re.search(r'["\u201c]([^"\u201d]{1,220})["\u201d]', rest)
-    if quote_match:
-        quote = quote_match.group(1).strip()
-        before = rest[:quote_match.start()].strip()
-        after = rest[quote_match.end():].strip()
-        rest = " ".join(part for part in (before, after) if part)
-
-    rest = re.sub(r'^\s*[-\u2013\u2014:]+\s*', '', rest).strip()
-    if quote and rest:
-        parts = re.split(r'\s+[-\u2013\u2014]\s+', rest, maxsplit=1)
-        note = parts[-1].strip()
-    else:
-        note = rest
-
-    return {
-        "timestamp": timestamp,
-        "speaker": speaker,
-        "quote": quote,
-        "note": note,
-    }
-
-
-def _parse_review_cues(body: str) -> List[dict]:
-    cues: List[dict] = []
-    for line in body.splitlines():
-        cue = _parse_review_cue_line(line)
-        if cue:
-            cues.append(cue)
-    cues.sort(key=lambda cue: _timestamp_sort_key(cue.get("timestamp", "")))
-    return cues
-
-
 def _line_cite_for_timestamp(timestamp: str, line_entries: Optional[List[dict]]) -> str:
     """Return a transcript page:line cite for the line nearest a cue timestamp."""
     if not timestamp or not line_entries:
@@ -250,71 +138,6 @@ def _line_cite_for_timestamp(timestamp: str, line_entries: Optional[List[dict]])
     if not page or not line:
         return ""
     return f"{int(page)}:{int(line)}"
-
-
-def _parse_summary_sections(summary: str) -> dict:
-    """Parse structured Gemini output into renderable sections.
-
-    New summaries use NOTES as the primary section. The parser also accepts older
-    REVIEW CUES / KEY FINDINGS output so previously generated summaries still render.
-    """
-    sections = {"raw": summary}
-    text = summary.strip()
-
-    rel_match = re.search(r"RELEVANCE:\s*(HIGH|MEDIUM|LOW)", text, re.IGNORECASE)
-    if rel_match:
-        sections["relevance"] = rel_match.group(1).upper()
-
-    header_patterns = [
-        ("review_cues", r"NOTES:?"),
-        ("review_cues", r"REVIEW\s+CUES:?"),
-        ("review_cues", r"NOTABLE\s+MOMENTS:?"),
-        ("review_cues", r"KEY\s+MOMENTS:?"),
-        ("review_cues", r"PULL\s+QUOTES:?"),
-        ("key_findings", r"KEY\s+FINDINGS:?"),
-        ("speakers", r"IDENTITY\s+OF\s+OUTSIDE\s+PARTY:?"),
-        ("speakers", r"SPEAKERS?\s*(?:&|AND)\s*RELATIONSHIP:?"),
-        ("speakers", r"SPEAKER\s+NOTES:?"),
-        ("call_summary", r"BRIEF\s+SUMMARY:?"),
-        ("call_summary", r"CALL\s+SUMMARY:?"),
-        ("call_summary", r"SUMMARY:?"),
-    ]
-
-    positions = []
-    for key, pattern in header_patterns:
-        for match in re.finditer(pattern, text, re.IGNORECASE):
-            if any(not (match.end() <= start or match.start() >= end) for start, end, _ in positions):
-                continue
-            positions.append((match.start(), match.end(), key))
-            break
-    positions.sort()
-
-    seen_keys = set()
-    for i, (start, end, key) in enumerate(positions):
-        if key in seen_keys and key not in {"review_cues"}:
-            continue
-        next_start = positions[i + 1][0] if i + 1 < len(positions) else len(text)
-        body = text[end:next_start].strip()
-        if key == "review_cues" and sections.get("review_cues"):
-            sections["review_cues"] += "\n" + body
-        else:
-            sections[key] = body
-        seen_keys.add(key)
-
-    cue_body = sections.get("review_cues") or sections.get("key_findings") or ""
-    if cue_body:
-        sections["review_cue_items"] = _parse_review_cues(cue_body)
-
-    sections["structured"] = bool(
-        sections.get("relevance")
-        and (
-            sections.get("review_cue_items")
-            or sections.get("call_summary")
-            or sections.get("speakers")
-        )
-    )
-
-    return sections
 
 
 def _draw_transcript_page(
@@ -489,19 +312,18 @@ def _render_cover_pages(
     Uses an HTML/CSS template for polished, design-quality output, then
     returns raw PDF bytes ready to be merged with the transcript pages.
     """
-    from jinja2 import Template
     from weasyprint import HTML
 
-    template_path = Path(__file__).parent / "pdf_cover_template.html"
-    template = Template(template_path.read_text())
+    template = U.get_jinja_env().get_template("pdf_cover_template.html")
+    base_url = str(Path(__file__).parent)
 
-    case_name = _safe_text(title_data.get("CASE_NAME"))
-    file_name = _safe_text(title_data.get("FILE_NAME"))
-    call_datetime = _safe_text(title_data.get("CALL_DATETIME"))
-    display_datetime = _format_display_datetime(call_datetime)
-    file_duration = _safe_text(title_data.get("FILE_DURATION"))
-    inmate_name = _safe_text(title_data.get("INMATE_NAME"))
-    outside_number = _safe_text(title_data.get("OUTSIDE_NUMBER_FMT"))
+    case_name = U.safe_text(title_data.get("CASE_NAME"))
+    file_name = U.safe_text(title_data.get("FILE_NAME"))
+    call_datetime = U.safe_text(title_data.get("CALL_DATETIME"))
+    display_datetime = U.format_display_datetime(call_datetime)
+    file_duration = U.safe_text(title_data.get("FILE_DURATION"))
+    inmate_name = U.safe_text(title_data.get("INMATE_NAME"))
+    outside_number = U.safe_text(title_data.get("OUTSIDE_NUMBER_FMT"))
 
     title_meta = [
         ("Defendant", inmate_name),
@@ -518,23 +340,23 @@ def _render_cover_pages(
         "inmate_name": inmate_name,
         "outside_number": outside_number,
         "title_meta": title_meta,
-        "firm_name": _safe_text(title_data.get("FIRM_OR_ORGANIZATION_NAME")),
+        "firm_name": U.safe_text(title_data.get("FIRM_OR_ORGANIZATION_NAME")),
         "has_summary": bool(summary),
     }
 
     # ── Summary page context ──
     if summary:
-        ctx["summary_meta_file"] = _shorten_middle(file_name)
+        ctx["summary_meta_file"] = U.shorten_middle(file_name)
         meta_details = [display_datetime or call_datetime, file_duration]
         ctx["summary_meta_details"] = " \u00b7 ".join(p for p in meta_details if p)
 
-        sections = _parse_summary_sections(summary)
+        sections = U.parse_summary_sections(summary)
         ctx["is_structured"] = sections.get("structured", False)
 
         if sections.get("structured"):
             rel = sections.get("relevance", "")
             ctx["relevance"] = rel
-            ctx["relevance_desc"] = D.RELEVANCE_DESC.get(rel, "")
+            ctx["relevance_desc"] = U.RELEVANCE_DESC.get(rel, "")
             ctx["review_cues"] = sections.get("review_cue_items", [])
             for cue in ctx["review_cues"]:
                 cue["line_cite"] = _line_cite_for_timestamp(cue.get("timestamp", ""), line_entries)
@@ -566,7 +388,7 @@ def _render_cover_pages(
             if rel_match:
                 rel = rel_match.group(1).upper()
                 ctx["relevance"] = rel
-                ctx["relevance_desc"] = D.RELEVANCE_DESC.get(rel, "")
+                ctx["relevance_desc"] = U.RELEVANCE_DESC.get(rel, "")
                 body = summary[rel_match.end():].strip()
             else:
                 body = summary.strip()
@@ -597,7 +419,7 @@ def _render_cover_pages(
             ctx["raw_blocks"] = raw_blocks
 
     html_str = template.render(**ctx)
-    return HTML(string=html_str, base_url=str(template_path.parent)).write_pdf()
+    return HTML(string=html_str, base_url=base_url).write_pdf()
 
 
 def create_pdf(
