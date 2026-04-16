@@ -19,23 +19,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from . import pdf_utils as U
+
 logger = logging.getLogger(__name__)
 
 ASSETS_DIR = Path(__file__).parent / "guide_assets"
-TEMPLATE_PATH = Path(__file__).parent / "guide_template.html"
 
 SCREENSHOT_FILES = {
     "viewer": "viewer_screenshot.png",
     "search": "search_screenshot.png",
     "excel":  "excel_screenshot.png",
 }
-
-
-def _shorten_case_name(name: str, max_chars: int = 38) -> str:
-    name = (name or "").strip()
-    if len(name) <= max_chars:
-        return name
-    return name[: max_chars - 1].rstrip() + "\u2026"
 
 
 def _shot_url(key: str) -> Optional[str]:
@@ -51,7 +45,6 @@ def _shot_url(key: str) -> Optional[str]:
 def generate_guide_pdf(case_name: str,
                        call_count: int,
                        gen_date: Optional[str] = None) -> bytes:
-    from jinja2 import Template
     from weasyprint import HTML
 
     if not gen_date:
@@ -62,7 +55,7 @@ def generate_guide_pdf(case_name: str,
 
     ctx = {
         "case_name": case_name,
-        "case_name_short": _shorten_case_name(case_name),
+        "case_name_short": U.shorten(case_name, 38),
         "gen_date": gen_date,
         "call_count": call_count,
         "call_count_display": call_count_display,
@@ -71,7 +64,7 @@ def generate_guide_pdf(case_name: str,
         "excel_shot_url":  _shot_url("excel"),
     }
 
-    template = Template(TEMPLATE_PATH.read_text())
+    template = U.get_jinja_env().get_template("guide_template.html")
     html_str = template.render(**ctx)
 
-    return HTML(string=html_str, base_url=str(TEMPLATE_PATH.parent)).write_pdf()
+    return HTML(string=html_str, base_url=str(Path(__file__).parent)).write_pdf()

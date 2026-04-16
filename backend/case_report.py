@@ -17,19 +17,16 @@ import logging
 import re
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
 from . import config as cfg
+from . import pdf_utils as U
 from .models import CallResult, Job, call_stem
-from .transcript_formatting import _parse_summary_sections
 
 logger = logging.getLogger(__name__)
-
-TEMPLATE_PATH = Path(__file__).parent / "case_report_template.html"
 
 # Floor for the findings synthesis input set; if HIGH alone has at least this
 # many calls we use only HIGH, otherwise we top up from MEDIUM.
@@ -152,54 +149,13 @@ def _transcript_pdf_link(call: CallResult) -> str:
 
 
 def _format_duration(seconds: Optional[float]) -> str:
-    if not seconds:
-        return "—"
-    secs = int(seconds)
-    h, rem = divmod(secs, 3600)
-    m, s = divmod(rem, 60)
-    if h:
-        return f"{h}:{m:02d}:{s:02d}"
-    return f"{m}:{s:02d}"
-
-
-def _format_duration_long(seconds: float) -> str:
-    secs = int(seconds)
-    if secs < 60:
-        return f"{secs} sec"
-    h, rem = divmod(secs, 3600)
-    m, _ = divmod(rem, 60)
-    if h and m:
-        return f"{h} h {m} min"
-    if h:
-        return f"{h} h"
-    return f"{m} min"
+    return U.format_duration(seconds, empty="—")
 
 
 def _format_call_datetime_short(call: CallResult) -> str:
-    if not call.call_datetime_str:
-        if call.call_date:
-            return call.call_date
-        return "—"
-    raw = call.call_datetime_str.strip()
-    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
-        try:
-            dt = datetime.strptime(raw[:len(fmt) + 4], fmt)
-            time_text = dt.strftime("%I:%M %p").lstrip("0")
-            return f"{dt.strftime('%b')} {dt.day}, {dt.year} · {time_text}"
-        except ValueError:
-            continue
-    return raw
-
-
-def _format_date_short(d: date) -> str:
-    return d.strftime("%b %-d, %Y")
-
-
-def _shorten(text: str, max_chars: int) -> str:
-    text = (text or "").strip()
-    if len(text) <= max_chars:
-        return text
-    return text[: max_chars - 1].rstrip() + "\u2026"
+    return U.format_call_datetime_short(
+        call.call_datetime_str, fallback_date=call.call_date,
+    )
 
 
 def _parse_call_date(call: CallResult) -> Optional[date]:
@@ -627,8 +583,8 @@ def _build_timeline(done_calls: List[CallResult]) -> Optional[Dict[str, Any]]:
         ),
         "tick_count": len(buckets),
         "span_days": span_days,
-        "start_label": _format_date_short(start),
-        "end_label": _format_date_short(end),
+        "start_label": U.format_date_short(start),
+        "end_label": U.format_date_short(end),
         "mid_label": mid_label,
         "show_mid_label": len(buckets) >= 5,
     }
@@ -695,14 +651,14 @@ def _build_at_a_glance(
         "rel_counts": rel_counts,
         "rel_percents": rel_percents,
         "total_duration_sec": total_dur,
-        "total_duration_display": _format_duration_long(total_dur),
+        "total_duration_display": U.format_duration_long(total_dur),
         "avg_duration_display": _format_duration(avg_dur),
         "date_range": date_range,
         "unique_callers": unique_numbers,
         "total_notes": total_notes,
         "calls_with_notes": calls_with_notes,
         "most_active_day_display": (
-            _format_date_short(most_active_day) if most_active_day else "—"
+            U.format_date_short(most_active_day) if most_active_day else "—"
         ),
         "most_active_day_count": most_active_count,
         "longest_call_display": _format_duration(longest_dur) if longest_call else "—",
@@ -756,7 +712,6 @@ def generate_case_report_pdf(
     gen_date: Optional[str] = None,
 ) -> bytes:
     """Build the case report PDF for a completed job."""
-    from jinja2 import Template
     from weasyprint import HTML
 
     if not gen_date:
@@ -769,7 +724,7 @@ def generate_case_report_pdf(
     parsed_by_index: Dict[int, dict] = {}
     for call in done_calls:
         if call.summary:
-            parsed_by_index[call.index] = _parse_summary_sections(call.summary)
+            parsed_by_index[call.index] = U.parse_summary_sections(call.summary)
         else:
             parsed_by_index[call.index] = {}
 
@@ -815,7 +770,7 @@ def generate_case_report_pdf(
                     "headline": f.get("HEADLINE", "").strip(),
                     "detail": f.get("DETAIL", "").strip(),
                     "timestamp": ts_clean,
-                    "call_filename": _shorten(call.filename, 56),
+                    "call_filename": U.shorten(call.filename, 56),
                     "call_date": _format_call_datetime_short(call),
                     "viewer_link": _viewer_link(call, ts_clean or None),
                     "pdf_link": _transcript_pdf_link(call),
@@ -841,7 +796,7 @@ def generate_case_report_pdf(
         cue_count = len(parsed.get("review_cue_items", []) or [])
         medium_rows.append({
             "call_index": call.index + 1,
-            "filename": _shorten(call.filename, 48),
+            "filename": U.shorten(call.filename, 48),
             "datetime": _format_call_datetime_short(call),
             "duration": _format_duration(call.duration_seconds),
             "party": call.outside_number_fmt or call.outside_number or "—",
@@ -853,7 +808,7 @@ def generate_case_report_pdf(
 
     ctx = {
         "case_name": case_name,
-        "case_name_short": _shorten(case_name, 38),
+        "case_name_short": U.shorten(case_name, 38),
         "defendant_name": defendant_name,
         "gen_date": gen_date,
         "glance": glance,
@@ -873,7 +828,7 @@ def generate_case_report_pdf(
         "identity_inferred_count": sum(1 for c in callers if c.get("inferred")),
     }
 
-    template = Template(TEMPLATE_PATH.read_text())
+    template = U.get_jinja_env().get_template("case_report_template.html")
     html_str = template.render(**ctx)
     # base_url is intentionally omitted so that relative <a href> values
     # (e.g. "viewer.html?call=...", "transcripts/xxx.pdf") are written into
