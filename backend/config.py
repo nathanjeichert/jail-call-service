@@ -101,12 +101,10 @@ ASSEMBLYAI_MODEL = os.getenv("ASSEMBLYAI_MODEL", "universal-3-pro")
 
 # Transcription engine: "assemblyai" (cloud) or "parakeet" (local)
 DEFAULT_TRANSCRIPTION_ENGINE = os.getenv("DEFAULT_TRANSCRIPTION_ENGINE", "assemblyai")
-# Parakeet must run sequentially on 8 GB machines to avoid OOM
-MAX_PARAKEET_CONCURRENT = 1
+MAX_PARAKEET_CONCURRENT = int(os.getenv("MAX_PARAKEET_CONCURRENT", "2"))
 
 # Summarization engine: "gemini" (cloud) or "gemma" (local)
 DEFAULT_SUMMARIZATION_ENGINE = os.getenv("DEFAULT_SUMMARIZATION_ENGINE", "gemini")
-# Gemma must run sequentially on 8 GB machines to avoid OOM
 MAX_GEMMA_CONCURRENT = 1
 GEMMA_MODEL = os.getenv("GEMMA_MODEL", "unsloth/gemma-4-E2B-it-UD-MLX-4bit")
-GEMMA_MAX_TOKENS = int(os.getenv("GEMMA_MAX_TOKENS", "1024"))
+GEMMA_MAX_TOKENS = int(os.getenv("GEMMA_MAX_TOKENS", "10240"))

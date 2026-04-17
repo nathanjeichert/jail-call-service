@@ -24,6 +24,7 @@ from urllib.parse import quote
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
+from . import config as cfg
 from . import pdf_utils as U
 from .models import CallResult, Job, call_stem
 from .summarization.base import SummarizationEngine
