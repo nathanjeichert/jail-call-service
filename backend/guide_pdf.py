@@ -9,7 +9,7 @@ the same design language as ``pdf_cover_template.html``:
   Page 2: What's in This Package (folder tree + descriptions)
   Page 3: Using the Call Viewer
   Page 4: Using the Search Page
-  Page 5: Using the Excel Index
+  Page 5: Using the Case Report
   Page 6: Understanding AI Analysis (relevance pills + sections)
   Page 7: Important Notes (disclaimer + tips)
 """
@@ -28,7 +28,6 @@ ASSETS_DIR = Path(__file__).parent / "guide_assets"
 SCREENSHOT_FILES = {
     "viewer": "viewer_screenshot.png",
     "search": "search_screenshot.png",
-    "excel":  "excel_screenshot.png",
 }
 
 
@@ -61,7 +60,6 @@ def generate_guide_pdf(case_name: str,
         "call_count_display": call_count_display,
         "viewer_shot_url": _shot_url("viewer"),
         "search_shot_url": _shot_url("search"),
-        "excel_shot_url":  _shot_url("excel"),
     }
 
     template = U.get_jinja_env().get_template("guide_template.html")

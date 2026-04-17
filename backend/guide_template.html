@@ -780,7 +780,7 @@ body {
                 </td>
                 <td>
                     <div class="meta-label">Contents</div>
-                    <div class="meta-value">Audio &middot; Transcripts &middot; Analysis &middot; Index</div>
+                    <div class="meta-value">Audio &middot; Transcripts &middot; Search &middot; Analysis</div>
                 </td>
             </tr>
         </table>
@@ -820,8 +820,8 @@ body {
             <div class="tree-card-label">Delivery Layout</div>
 <pre class="tree"><span class="folder">{{ case_name_short }}/</span>
 <span class="branch">&#9500;&#9472;&#9472;</span> <span class="file">viewer.html</span>                  <span class="note"># interactive call viewer</span>
-<span class="branch">&#9500;&#9472;&#9472;</span> <span class="file">search.html</span>                  <span class="note"># full&#8209;text search across every transcript</span>
-<span class="branch">&#9500;&#9472;&#9472;</span> <span class="file">call-index.xlsx</span>              <span class="note"># spreadsheet index of every call</span>
+<span class="branch">&#9500;&#9472;&#9472;</span> <span class="file">search.html</span>                  <span class="note"># searchable call index across every transcript</span>
+<span class="branch">&#9500;&#9472;&#9472;</span> <span class="file">case-report.pdf</span>              <span class="note"># case-level findings and caller stats</span>
 <span class="branch">&#9500;&#9472;&#9472;</span> <span class="folder">transcripts/</span>                 <span class="note"># PDF transcripts with AI summary pages</span>
 <span class="branch">&#9500;&#9472;&#9472;</span> <span class="folder">transcripts-no-summary/</span>      <span class="note"># clean PDFs (no AI summary)</span>
 <span class="branch">&#9500;&#9472;&#9472;</span> <span class="folder">audio/</span>                       <span class="note"># MP3 versions of every call</span>
@@ -837,11 +837,11 @@ body {
             </tr>
             <tr>
                 <td class="contents-name">search.html</td>
-                <td class="contents-desc">Full-text search across every transcript. Find names, phrases, or topics and jump directly to the matching call.</td>
+                <td class="contents-desc">Searchable call index across every transcript. Filter, sort, expand a row for details, and jump directly to the matching call.</td>
             </tr>
             <tr>
-                <td class="contents-name">call-index.xlsx</td>
-                <td class="contents-desc">Spreadsheet listing every call with date, duration, phone number, AI relevance rating, summary, and full transcript text.</td>
+                <td class="contents-name">case-report.pdf</td>
+                <td class="contents-desc">Case-level dossier with at-a-glance metrics, synthesized top findings, high-relevance call cards, and frequent-caller statistics.</td>
             </tr>
             <tr>
                 <td class="contents-name">transcripts/</td>
@@ -949,7 +949,7 @@ body {
 
     <div class="inner-body">
         <p class="lede">
-            The search page sweeps every transcript at once &mdash; useful for finding a name, phrase, or topic without opening calls one by one.
+            The search page is both the searchable call index and the fastest way to sweep every transcript at once without opening calls one by one.
         </p>
 
         <table class="section-heading"><tr><td class="h-text">Interface</td><td class="h-rule"></td></tr></table>
@@ -971,23 +971,23 @@ body {
         <table class="steps">
             <tr>
                 <td class="step-num">01</td>
-                <td class="step-text">Type a name, phrase, or keyword and press <span class="kbd">Enter</span> to search across every transcript.</td>
+                <td class="step-text">Type a name, phrase, or keyword to search across every transcript, or leave the query blank and work directly from the full call table.</td>
             </tr>
             <tr>
                 <td class="step-num">02</td>
-                <td class="step-text">Use the <strong>date</strong> and <strong>phone number</strong> filters to narrow results to specific calls.</td>
+                <td class="step-text">Use the built-in filters and sortable columns to narrow the list by date, phone number, relevance, or other call metadata.</td>
             </tr>
             <tr>
                 <td class="step-num">03</td>
-                <td class="step-text">Matching text is highlighted in context so you can quickly see what surrounds each hit.</td>
+                <td class="step-text">Expand any row to review its AI notes, summary, and transcript excerpt in place before deciding whether to open the full call.</td>
             </tr>
             <tr>
                 <td class="step-num">04</td>
-                <td class="step-text">Double-click any result to open that call in the viewer, positioned at the matching line.</td>
+                <td class="step-text">Use the viewer and transcript buttons in each row to jump into <span class="mono">viewer.html</span> or the corresponding transcript PDF.</td>
             </tr>
             <tr>
                 <td class="step-num">05</td>
-                <td class="step-text">Results are paginated &mdash; use the controls at the bottom to browse through all matches.</td>
+                <td class="step-text">Clear the query or filters at any time to return to the full searchable index of every processed call.</td>
             </tr>
         </table>
     </div>
@@ -999,64 +999,71 @@ body {
 </div>
 
 
-<!-- ═══════════════════════ 05 · Excel ═══════════════════════ -->
+<!-- ═══════════════════════ 05 · Case Report ═══════════════════════ -->
 <div class="page inner">
     <div class="inner-header">
         <div class="inner-eyebrow">Section Four</div>
-        <h2 class="inner-title">Using the Excel Index</h2>
+        <h2 class="inner-title">Using the Case Report</h2>
         <div class="inner-meta">
             <strong>{{ case_name_short }}</strong><br>
-            <span class="mono">call-index.xlsx</span>
+            <span class="mono">case-report.pdf</span>
         </div>
     </div>
 
     <div class="inner-body">
         <p class="lede">
-            The Excel index is the master spreadsheet of every call. Each row is one call; columns include date, duration, phone number, AI relevance, summary, and the full transcript text &mdash; ideal for triage and bulk filtering.
+            The case report is the fastest way to orient yourself at the file level. It condenses the delivery into a dossier-style overview before you drill into individual calls.
         </p>
 
-        <table class="section-heading"><tr><td class="h-text">Interface</td><td class="h-rule"></td></tr></table>
+        <table class="section-heading"><tr><td class="h-text">What It Covers</td><td class="h-rule"></td></tr></table>
 
-        <div class="shot">
-            {% if excel_shot_url %}
-            <img class="shot-img" src="{{ excel_shot_url }}" alt="Excel index screenshot">
-            {% else %}
-            <div class="shot-placeholder">
-                Interface preview
-                <strong>Excel Index Screenshot</strong>
-            </div>
-            {% endif %}
-            <div class="shot-caption">The call index spreadsheet with header filters and clickable file links.</div>
-        </div>
+        <table class="sections-list">
+            <tr>
+                <td class="key">Top Findings</td>
+                <td class="desc">Cross-call findings synthesized from the highest-priority conversations, written as a neutral overview for rapid case orientation.</td>
+            </tr>
+            <tr>
+                <td class="key">High-Relevance Calls</td>
+                <td class="desc">One card per HIGH call with direct links into the viewer and transcript PDF, plus timestamped notes to review first.</td>
+            </tr>
+            <tr>
+                <td class="key">Medium Calls</td>
+                <td class="desc">Compact rows for MEDIUM calls so you can decide quickly which ones need a closer look.</td>
+            </tr>
+            <tr>
+                <td class="key">Frequent Callers</td>
+                <td class="desc">Outside-number statistics, duration totals, and any AI-supported identity inference that emerged across the batch.</td>
+            </tr>
+        </table>
 
-        <table class="section-heading"><tr><td class="h-text">Steps</td><td class="h-rule"></td></tr></table>
+        <table class="section-heading"><tr><td class="h-text">Workflow</td><td class="h-rule"></td></tr></table>
 
         <table class="steps">
             <tr>
                 <td class="step-num">01</td>
-                <td class="step-text">Open <strong>call-index.xlsx</strong> in Excel or Google Sheets. Each row represents a single call.</td>
+                <td class="step-text">Start with <strong>Top Findings</strong> for the quickest cross-call orientation before moving into the underlying conversations.</td>
             </tr>
             <tr>
                 <td class="step-num">02</td>
-                <td class="step-text">Use the header dropdowns to sort or filter &mdash; start with <strong>Relevance&nbsp;=&nbsp;HIGH</strong> to surface the calls that matter most.</td>
+                <td class="step-text">Work through the <strong>High Relevance Calls</strong> section next; each filename and timestamp opens the exact source material.</td>
             </tr>
             <tr>
                 <td class="step-num">03</td>
-                <td class="step-text">Click a filename in the <strong>File</strong> column to open that call directly in the viewer.</td>
+                <td class="step-text">Use the <strong>Medium Relevance Calls</strong> section to decide which borderline calls merit a second pass.</td>
             </tr>
             <tr>
                 <td class="step-num">04</td>
-                <td class="step-text">The <strong>Summary</strong> column gives a brief AI-generated overview of each call&rsquo;s content.</td>
+                <td class="step-text">Check the <strong>Frequent Callers</strong> table when you need a phone-number-level view of who appears repeatedly across the file.</td>
             </tr>
             <tr>
                 <td class="step-num">05</td>
-                <td class="step-text">The <strong>Full Transcript</strong> column has the complete text &mdash; useful for searching within Excel using <span class="kbd">Ctrl</span>&thinsp;+&thinsp;<span class="kbd">F</span>.</td>
+                <td class="step-text">Use <span class="mono">search.html</span> alongside the report when you want to sweep names, phrases, or low-relevance calls that are not expanded in the PDF.</td>
             </tr>
         </table>
     </div>
 
     <div class="footer">
-        <span class="footer-doc">User Guide</span><span class="footer-divider">&middot;</span><span class="footer-section">Using the Excel Index</span>
+        <span class="footer-doc">User Guide</span><span class="footer-divider">&middot;</span><span class="footer-section">Using the Case Report</span>
         <span class="page-num">05</span>
     </div>
 </div>
@@ -1165,7 +1172,7 @@ body {
         <table class="steps">
             <tr>
                 <td class="step-num">01</td>
-                <td class="step-text">Start with the Excel index sorted by the <strong>Relevance</strong> column to prioritize the calls most likely to matter.</td>
+                <td class="step-text">Start with <strong>case-report.pdf</strong> for the cross-call overview, then move into <strong>search.html</strong> or the viewer for line-level review.</td>
             </tr>
             <tr>
                 <td class="step-num">02</td>

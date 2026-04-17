@@ -2,7 +2,7 @@
 Self-contained search + browse HTML page generator.
 
 This is the client-facing "home page" for a delivery package. It serves
-as a spreadsheet-like sortable/filterable table of every call and as a
+as a sortable/filterable table of every call and as a
 full-text search engine that surfaces relevant transcript excerpts. From
 any row, clients can jump to the call in the viewer (with audio deep-link
 to a specific timestamp) or open the formatted transcript PDF.
@@ -138,7 +138,7 @@ def generate_search_html(calls, case_name: str = "") -> str:
                  .replace("</", "<\\/")
                  .replace("\u2028", "\\u2028")
                  .replace("\u2029", "\\u2029"))
-    title = f"{case_name} — Call Index" if case_name else "Call Index"
+    title = f"{case_name} — Searchable Call Index" if case_name else "Searchable Call Index"
 
     return _TEMPLATE.replace("__TITLE__", _escape(title)) \
                     .replace("__CASE_NAME__", _escape(case_name or "Jail Call Review")) \
@@ -937,7 +937,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
 </head>
 <body>
   <header class="hdr">
-    <div class="hdr-eyebrow">Call Index &middot; Review Dossier</div>
+    <div class="hdr-eyebrow">Searchable Call Index &middot; Review Dossier</div>
     <div class="hdr-main">
       <div class="hdr-left">
         <h1 class="hdr-title">__CASE_NAME__</h1>

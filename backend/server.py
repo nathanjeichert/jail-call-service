@@ -451,7 +451,7 @@ def _repackage_async(job_id: str):
 
 
 async def _do_repackage(job_id: str):
-    from .pipeline import _stage_generate_indexes, _stage_package
+    from .pipeline import _stage_generate_delivery_assets, _stage_package
     from .job_settings import resolve_runtime_selection
     from .summarization import get_engine as get_summarization_engine
 
@@ -478,7 +478,7 @@ async def _do_repackage(job_id: str):
 
     try:
         try:
-            await _stage_generate_indexes(job, output_dir, audio_dir, engine)
+            await _stage_generate_delivery_assets(job, output_dir, audio_dir, engine)
             zip_path = await _stage_package(job, output_dir)
         finally:
             if engine and hasattr(engine, "unload"):

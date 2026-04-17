@@ -6,7 +6,7 @@ through four concurrent worker pools connected by asyncio.Queues:
 
   [Convert workers] → q → [Transcribe workers] → q → [Summarize workers] → q → [PDF workers]
 
-After all calls complete, runs batch index generation and ZIP packaging.
+After all calls complete, runs batch delivery-asset generation and ZIP packaging.
 SSE progress is broadcast via a thread-safe queue per job.
 """
 
@@ -637,12 +637,12 @@ async def _run_pipeline(job: Job) -> None:
             summarization_engine.unload()
         return
 
-    # ── Post-pipeline: indexes + packaging ──
+    # ── Post-pipeline: delivery assets + packaging ──
     # Keep the summarization engine loaded — case-report synthesis reuses it.
     _emit(job_id, {"type": "stage", "stage": "generating_indexes"})
     job = job_store.get_job(job_id)
     try:
-        await _stage_generate_indexes(job, output_dir, audio_dir, summarization_engine)
+        await _stage_generate_delivery_assets(job, output_dir, audio_dir, summarization_engine)
     finally:
         if summarization_engine and hasattr(summarization_engine, "unload"):
             summarization_engine.unload()
@@ -670,32 +670,19 @@ async def _run_pipeline(job: Job) -> None:
     )
 
 
-# ── Batch stages (kept for repackaging and index generation) ──
+# ── Batch stages (kept for repackaging and delivery-asset generation) ──
 
-async def _stage_generate_indexes(
+async def _stage_generate_delivery_assets(
     job: Job,
     output_dir: str,
     audio_dir: str,
     summarization_engine=None,
 ) -> None:
-    from .excel_report import generate_excel
     from .search_html import generate_search_html
     from .viewer import render_viewer
 
     loop = asyncio.get_event_loop()
     done_calls = [c for c in job.calls if c.status == CallStatus.DONE]
-    # Errors sheet includes both hard failures (status == ERROR) and partial
-    # failures (call completed but a stage recorded an error — e.g. a
-    # summarization failure that still produced a fallback transcript PDF).
-    error_calls = [
-        c for c in job.calls
-        if c.status == CallStatus.ERROR or (c.error and c.status == CallStatus.DONE)
-    ]
-
-    def write_excel():
-        data = generate_excel(done_calls, error_calls=error_calls or None)
-        with open(os.path.join(output_dir, "call-index.xlsx"), 'wb') as f:
-            f.write(data)
 
     def write_search():
         html = generate_search_html(done_calls, case_name=job.case_name)
@@ -723,18 +710,18 @@ async def _stage_generate_indexes(
         with open(os.path.join(output_dir, "case-report.pdf"), 'wb') as f:
             f.write(report_bytes)
 
-    # Run non-PDF index outputs in parallel, then the two WeasyPrint PDFs
+    # Run the HTML outputs in parallel, then the two WeasyPrint PDFs
     # sequentially (WeasyPrint is not fully thread-safe across concurrent
     # renders). This keeps the overall wall time close to the longest single
-    # output rather than the sum of all five.
-    index_failures: List[str] = []
+    # output rather than the sum of all four.
+    asset_failures: List[str] = []
 
     async def _run(fn):
         try:
             await loop.run_in_executor(None, fn)
         except Exception as e:
-            logger.error("Index generation failed (%s): %s", fn.__name__, e)
-            index_failures.append(fn.__name__)
+            logger.error("Delivery asset generation failed (%s): %s", fn.__name__, e)
+            asset_failures.append(fn.__name__)
             _emit(job.id, {
                 "type": "warning",
                 "message": f"{fn.__name__} failed: {e}",
@@ -742,7 +729,6 @@ async def _stage_generate_indexes(
 
     # Phase 1: non-PDF outputs (safe to parallelise)
     await asyncio.gather(
-        _run(write_excel),
         _run(write_search),
         _run(write_viewer),
     )
@@ -750,10 +736,10 @@ async def _stage_generate_indexes(
     await _run(write_guide)
     await _run(write_case_report)
 
-    if index_failures:
+    if asset_failures:
         logger.warning(
-            "Index generation completed with %d failure(s): %s",
-            len(index_failures), ", ".join(index_failures),
+            "Delivery asset generation completed with %d failure(s): %s",
+            len(asset_failures), ", ".join(asset_failures),
         )
 
 

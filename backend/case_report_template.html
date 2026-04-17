@@ -1199,7 +1199,7 @@ section.chapter {
     <div class="empty-card">
         <strong>No top findings to surface.</strong>
         {% if synthesis_state == "no_input" %}
-        Every call in this delivery was rated LOW relevance by the per-call analysis &mdash; no high or medium calls were available to synthesize. The frequent-caller statistics and the full call index remain the best entry points for review.
+        Every call in this delivery was rated LOW relevance by the per-call analysis &mdash; no high or medium calls were available to synthesize. The frequent-caller statistics and <span class="mono">search.html</span> remain the best entry points for review.
         {% elif synthesis_state == "synth_unavailable" %}
         The synthesis step could not reach the AI engine. The high-relevance and medium-relevance call cards in the following sections still contain the per-call AI analysis.
         {% elif synthesis_state == "parse_failed" %}
@@ -1275,7 +1275,7 @@ section.chapter {
     {% else %}
     <div class="empty-card">
         <strong>No high-relevance calls.</strong>
-        The per-call analysis did not flag any calls as HIGH. {{ medium_count }} medium-relevance call{{ "s are" if medium_count != 1 else " is" }} listed in the following section, and {{ low_count }} low-relevance call{{ "s remain" if low_count != 1 else " remains" }} in the call index.
+        The per-call analysis did not flag any calls as HIGH. {{ medium_count }} medium-relevance call{{ "s are" if medium_count != 1 else " is" }} listed in the following section, and {{ low_count }} low-relevance call{{ "s remain" if low_count != 1 else " remains" }} available in <span class="mono">search.html</span>.
     </div>
     {% endif %}
 </section>
@@ -1373,7 +1373,7 @@ section.chapter {
 
     {% if total_caller_count > top_callers|length %}
     <p class="muted" style="font-size: 8.4pt; margin-top: 0.18in;">
-        Showing the top {{ top_callers|length }} of {{ total_caller_count }} unique outside numbers. The full list lives in <span class="mono">call-index.xlsx</span>.
+        Showing the top {{ top_callers|length }} of {{ total_caller_count }} unique outside numbers. Use <span class="mono">search.html</span> to browse the full set by outside number.
     </p>
     {% endif %}
 

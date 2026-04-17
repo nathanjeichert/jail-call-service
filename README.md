@@ -1,7 +1,7 @@
 # Jail Call Service
 
 Local-first batch processing tool for G.729 jail call recordings.
-Takes a folder of WAV files, delivers a zip with transcripts, audio, and indexes.
+Takes a folder of WAV files and delivers a zip with transcripts, audio, and offline review assets.
 
 ## Setup
 
@@ -50,9 +50,9 @@ Select the engine per-job from the UI. The local engine uses NVIDIA Parakeet TDT
 ├── transcripts/          # PDF per call (summary on page 2)
 ├── audio/                # Converted MP3 files
 ├── viewer.html           # Multi-call browser player
-├── search.html           # Full-text search
-├── call-index.xlsx       # Spreadsheet index
-└── README.txt            # Instructions for the attorney
+├── search.html           # Searchable call index
+├── case-report.pdf       # Case-level findings and caller stats
+└── guide.pdf             # Instructions for the reviewer
 ```
 
 ## Pipeline Stages
@@ -60,7 +60,7 @@ Select the engine per-job from the UI. The local engine uses NVIDIA Parakeet TDT
 1. **Convert** — repairs corrupted G.729 WAV headers, converts to MP3 (parallel)
 2. **Transcribe** — AssemblyAI multichannel or Parakeet local (inmate/outside party)
 3. **Summarize** — Gemini Flash generates summaries (parallel, rate-limited)
-4. **Generate** — PDFs, Excel, search HTML, viewer HTML
+4. **Generate** — PDFs, search HTML, viewer HTML, guide PDF, case report
 5. **Package** — Zips the deliverable folder
 
 ## Requirements
