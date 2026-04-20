@@ -22,6 +22,7 @@ from .pdf_utils import parse_summary_sections, timestamp_to_seconds
 from .transcript_formatting import (
     _line_cite_for_timestamp,
     compute_line_entries,
+    hydrate_review_cues,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,11 +73,11 @@ def _build_call_datum(call) -> dict:
     # line_entries the transcript PDF would use.
     turns = call.turns or []
     line_entries = compute_line_entries(turns, duration) if turns else []
-    cues_raw = sections.get("review_cue_items") or []
+    cues_raw = hydrate_review_cues(sections.get("review_cue_items") or [], line_entries)
     notes_cues = []
     for cue in cues_raw:
         ts = cue.get("timestamp", "") or ""
-        line_cite = _line_cite_for_timestamp(ts, line_entries) if line_entries else ""
+        line_cite = cue.get("line_cite", "") or (_line_cite_for_timestamp(ts, line_entries) if line_entries else "")
         notes_cues.append({
             "timestamp": ts,
             "timestamp_sec": timestamp_to_seconds(ts),

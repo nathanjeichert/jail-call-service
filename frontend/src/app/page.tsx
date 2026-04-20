@@ -123,7 +123,7 @@ export default function JobsPage() {
 
   const [selectedEngine, setSelectedEngine] = useState('');
   const [selectedSumEngine, setSelectedSumEngine] = useState('');
-  const [autoMessageMode, setAutoMessageMode] = useState('');
+  const [autoMessageMode, setAutoMessageMode] = useState('label');
 
   const caseNameRef = useRef<HTMLInputElement>(null);
   const defendantNameRef = useRef<HTMLInputElement>(null);
@@ -203,7 +203,7 @@ export default function JobsPage() {
       skip_summary: skipSummaryRef.current?.checked || false,
       transcription_engine: selectedEngine || undefined,
       summarization_engine: selectedSumEngine || undefined,
-      auto_message_mode: autoMessageMode || undefined,
+      auto_message_mode: autoMessageMode,
     };
 
     if (!body.input_folder && (!body.file_paths || body.file_paths.length === 0)) {
@@ -232,7 +232,7 @@ export default function JobsPage() {
         if (xmlInputRef.current) xmlInputRef.current.value = '';
         setSelectedEngine(config?.default_transcription_engine || 'assemblyai');
         setSelectedSumEngine(config?.default_summarization_engine || 'gemini');
-        setAutoMessageMode('');
+        setAutoMessageMode('label');
         await loadJobs();
       }
     } catch (e) {
@@ -273,7 +273,7 @@ export default function JobsPage() {
       if (skipSummaryRef.current) skipSummaryRef.current.checked = s.skip_summary || false;
       if (s.transcription_engine) setSelectedEngine(s.transcription_engine);
       if (s.summarization_engine) setSelectedSumEngine(s.summarization_engine);
-      setAutoMessageMode(s.auto_message_mode || '');
+      setAutoMessageMode(s.auto_message_mode || 'label');
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch {}
   };
@@ -453,8 +453,7 @@ export default function JobsPage() {
                 ))}
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                {activeSummarizationEngine !== 'gemini' ? 'Automated-message filtering currently runs only with Gemini summaries. With Gemma selected, system audio will be kept as-is.' :
-                 autoMessageMode === 'exclude' ? 'IVR prompts, time warnings, and provider messages will be removed from transcripts' :
+                {autoMessageMode === 'exclude' ? 'IVR prompts, time warnings, and provider messages will be removed from transcripts' :
                  autoMessageMode === 'label' ? 'Automated messages will appear as "AUTOMATED MESSAGE:" speaker in transcripts' :
                  'Telecom system audio (IVR prompts, time warnings) will be included as-is'}
               </p>

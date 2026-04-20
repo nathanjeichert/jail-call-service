@@ -280,18 +280,30 @@ def _parse_review_cue_line(line: str) -> Optional[dict]:
     rest = clean[ts_match.end() :].strip(" :-\u2013\u2014")
 
     speaker = ""
-    speaker_match = re.match(r"\[?([A-Z][A-Z0-9 /&.'-]{1,34})\]?\s*:\s+", rest)
+    speaker_match = re.match(
+        r"\[?([A-Z][A-Z0-9 /&.'-]{1,34})\]?(?=\s*:|\s+\[|\s+[-\u2013\u2014]|$)",
+        rest,
+    )
     if speaker_match:
         speaker = speaker_match.group(1).strip()
         rest = rest[speaker_match.end() :].strip()
+        rest = re.sub(r"^:\s*", "", rest)
+
+    line_ref = ""
+    line_ref_match = re.match(r"\[?(\d+:\d+(?:\s*[-\u2013\u2014]\s*\d+:\d+)?)\]?\s*", rest)
+    if line_ref_match:
+        line_ref = re.sub(r"\s+", "", line_ref_match.group(1))
+        line_ref = line_ref.replace("\u2013", "-").replace("\u2014", "-")
+        rest = rest[line_ref_match.end() :].strip()
 
     quote = ""
-    quote_match = re.search(r'["\u201c]([^"\u201d]{1,220})["\u201d]', rest)
-    if quote_match:
-        quote = quote_match.group(1).strip()
-        before = rest[: quote_match.start()].strip()
-        after = rest[quote_match.end() :].strip()
-        rest = " ".join(part for part in (before, after) if part)
+    if not line_ref:
+        quote_match = re.search(r'["\u201c]([^"\u201d]{1,220})["\u201d]', rest)
+        if quote_match:
+            quote = quote_match.group(1).strip()
+            before = rest[: quote_match.start()].strip()
+            after = rest[quote_match.end() :].strip()
+            rest = " ".join(part for part in (before, after) if part)
 
     rest = re.sub(r"^\s*[-\u2013\u2014:]+\s*", "", rest).strip()
     if quote and rest:
@@ -303,6 +315,7 @@ def _parse_review_cue_line(line: str) -> Optional[dict]:
     return {
         "timestamp": timestamp,
         "speaker": speaker,
+        "line_ref": line_ref,
         "quote": quote,
         "note": note,
     }

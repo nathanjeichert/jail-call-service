@@ -140,6 +140,148 @@ def _line_cite_for_timestamp(timestamp: str, line_entries: Optional[List[dict]])
     return f"{int(page)}:{int(line)}"
 
 
+_LINE_CITE_RANGE_RE = re.compile(r"^\s*(\d+):(\d+)(?:\s*[-\u2013\u2014]\s*(\d+):(\d+))?\s*$")
+_INLINE_QUOTED_TEXT_RE = re.compile(r'"([^"\n]{1,200})"')
+
+
+def _normalize_line_cite_range(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = text.replace("\u2013", "-").replace("\u2014", "-")
+    text = re.sub(r"\s+", "", text)
+    return text
+
+
+def _normalize_note_text(value: str) -> str:
+    text = str(value or "").strip()
+    if '"' not in text:
+        return text
+    return _INLINE_QUOTED_TEXT_RE.sub(lambda m: m.group(1), text)
+
+
+def _parse_line_cite_range(value: str) -> Optional[tuple]:
+    match = _LINE_CITE_RANGE_RE.match(_normalize_line_cite_range(value))
+    if not match:
+        return None
+
+    start_page = int(match.group(1))
+    start_line = int(match.group(2))
+    end_page = int(match.group(3) or start_page)
+    end_line = int(match.group(4) or start_line)
+
+    if (end_page, end_line) < (start_page, start_line):
+        return None
+    return start_page, start_line, end_page, end_line
+
+
+def _entries_for_line_cite(
+    line_cite: str,
+    line_entries: Optional[List[dict]],
+) -> List[dict]:
+    parsed = _parse_line_cite_range(line_cite)
+    if not parsed or not line_entries:
+        return []
+
+    start_page, start_line, end_page, end_line = parsed
+    selected: List[dict] = []
+    for entry in sorted(
+        line_entries,
+        key=lambda e: (int(e.get("page", 0) or 0), int(e.get("line", 0) or 0), str(e.get("id", ""))),
+    ):
+        page = int(entry.get("page", 0) or 0)
+        line = int(entry.get("line", 0) or 0)
+        key = (page, line)
+        if (start_page, start_line) <= key <= (end_page, end_line):
+            selected.append(entry)
+
+    if not selected:
+        return []
+    if (int(selected[0].get("page", 0) or 0), int(selected[0].get("line", 0) or 0)) != (start_page, start_line):
+        return []
+    if (int(selected[-1].get("page", 0) or 0), int(selected[-1].get("line", 0) or 0)) != (end_page, end_line):
+        return []
+    return selected
+
+
+def resolve_line_ref_context(
+    line_cite: str,
+    line_entries: Optional[List[dict]],
+) -> Optional[dict]:
+    selected = _entries_for_line_cite(line_cite, line_entries)
+    if not selected:
+        return None
+
+    first = selected[0]
+    start_seconds = float(first.get("start", 0) or 0)
+    total = max(int(start_seconds), 0)
+    mins, secs = divmod(total, 60)
+    timestamp = f"[{mins:02d}:{secs:02d}]"
+
+    return {
+        "timestamp": timestamp,
+        "speaker": str(first.get("speaker", "") or "").strip(),
+        "line_cite": _normalize_line_cite_range(line_cite),
+        "quote": _quote_from_line_cite(line_cite, line_entries),
+        "start": start_seconds,
+    }
+
+
+def _quote_from_line_cite(
+    line_cite: str,
+    line_entries: Optional[List[dict]],
+    *,
+    max_lines: int = 3,
+    max_chars: int = 220,
+) -> str:
+    selected = _entries_for_line_cite(line_cite, line_entries)
+    if not selected:
+        return ""
+
+    excerpt: List[dict] = []
+    for entry in selected[:max_lines]:
+        text = str(entry.get("text", "")).strip()
+        if not text:
+            continue
+        candidate = excerpt + [entry]
+        quote = " ".join(str(item.get("text", "")).strip() for item in candidate if str(item.get("text", "")).strip())
+        quote = re.sub(r"\s+", " ", quote).strip()
+        if quote and len(quote) <= max_chars:
+            excerpt = candidate
+            continue
+        break
+
+    if not excerpt:
+        return ""
+
+    quote = " ".join(str(entry.get("text", "")).strip() for entry in excerpt if str(entry.get("text", "")).strip())
+    quote = re.sub(r"\s+", " ", quote).strip()
+    return quote if quote and len(quote) <= max_chars else ""
+
+
+def hydrate_review_cues(
+    cues: Optional[List[dict]],
+    line_entries: Optional[List[dict]],
+) -> List[dict]:
+    """Enrich parsed review cues with deterministic line cites and quotes."""
+    hydrated: List[dict] = []
+    for cue in cues or []:
+        item = dict(cue)
+        item["note"] = _normalize_note_text(item.get("note", ""))
+        line_ref = _normalize_line_cite_range(item.get("line_ref", ""))
+        if line_ref and _parse_line_cite_range(line_ref):
+            item["line_ref"] = line_ref
+            item["line_cite"] = line_ref
+            quote = _quote_from_line_cite(line_ref, line_entries)
+            if quote:
+                item["quote"] = quote
+        else:
+            item["line_ref"] = ""
+            item["line_cite"] = _line_cite_for_timestamp(item.get("timestamp", ""), line_entries)
+        hydrated.append(item)
+    return hydrated
+
+
 def _draw_transcript_page(
     c: canvas.Canvas,
     page_entries: List[dict],
@@ -357,9 +499,7 @@ def _render_cover_pages(
             rel = sections.get("relevance", "")
             ctx["relevance"] = rel
             ctx["relevance_desc"] = U.RELEVANCE_DESC.get(rel, "")
-            ctx["review_cues"] = sections.get("review_cue_items", [])
-            for cue in ctx["review_cues"]:
-                cue["line_cite"] = _line_cite_for_timestamp(cue.get("timestamp", ""), line_entries)
+            ctx["review_cues"] = hydrate_review_cues(sections.get("review_cue_items", []), line_entries)
             ctx["cue_count"] = len(ctx["review_cues"])
 
             # Split review cues across two summary pages for HIGH-relevance

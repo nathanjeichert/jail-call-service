@@ -81,6 +81,7 @@ backend/summarization/
 ```
 
 **Gemini (cloud):** Calls the Gemini Flash API. Requires API key. Concurrency controlled by `MAX_SUMMARIZATION_CONCURRENT`.
+For Gemini 3 Flash, the app currently uses `thinkingLevel="low"` for the automated-message detection pass and `thinkingLevel="medium"` for both the per-call summary pass and the case-report synthesis pass.
 
 **Gemma (local):** Runs Gemma 4 E2B (4-bit quantized) via mlx-lm for Metal-accelerated inference. Lazy-loads the model on first call with a warm-up pass to trigger Metal JIT compilation. Concurrency capped at 1 to stay within 8GB RAM. The engine instance is created once per pipeline run and reused across all calls to avoid repeated model loading.
 
@@ -90,22 +91,34 @@ backend/summarization/
 - `IDENTITY OF OUTSIDE PARTY:` only when the call itself supports an identity or relationship inference.
 - `BRIEF SUMMARY:` one to two sentences.
 
+**Gemini structured-output architecture:** For Gemini jobs, the app no longer trusts model-authored quote text, timestamps, or speaker labels inside `NOTES`. Instead:
+- The model returns JSON for all three Gemini call types: automated-message detection, per-call summary, and case-report synthesis.
+- The per-call summary JSON note items contain only `line_ref` plus `reason`.
+- The app derives the rendered `[MM:SS]`, `SPEAKER`, and pull quote from the cited transcript lines at render time via `compute_line_entries` / `hydrate_review_cues`.
+- Search, transcript PDFs, and case-report call cards all hydrate note quotes from those same transcript line refs so the visible excerpt is always transcript-derived.
+
 Do not make Gemini add notes merely to orient the reader to routine personal conversation. Notes should be reserved for content that may matter to case review, charges/evidence, confinement, allegedly criminal conduct, or another substantive attorney-review reason.
 
 ## System Audio Filtering
 
-Automated telecom messages (IVR prompts, time warnings, provider sign-offs) are detected and filtered via `backend/system_audio.py`. The approach piggybacks on the Gemini summarization call — the prompt is extended to ask Gemini to also identify automated turns by index, returned as a `SYSTEM_AUDIO: [...]` JSON line appended to the summary response.
+Automated telecom messages (IVR prompts, time warnings, provider sign-offs) are detected and filtered via `backend/system_audio.py`.
+
+**Current behavior by summarization engine:**
+- **Gemini:** runs a dedicated first-pass structured-output detection call on the raw turn transcript, applies filtering, then runs the citation-bearing summary call on the already-filtered transcript.
+- **Gemma:** keeps the legacy combined summary prompt, with a trailing `SYSTEM_AUDIO: [...]` line parsed out of the summary response.
 
 **Job-level `auto_message_mode` setting (UI toggle):**
 - `None` / "Keep": No filtering, automated messages left as-is.
 - `"exclude"`: System audio turns/words are removed entirely from the transcript.
 - `"label"`: System audio turns are relabeled with speaker `"AUTOMATED MESSAGE"`. Consecutive automated turns are deduplicated (both channels carry the same audio) and merged into single turns.
 
+The UI/API default is now `"label"` rather than "Keep".
+
 For partial turns (real speech + system text in the same turn, e.g. "...they're playing us— You have 1 minute remaining."), the system text substring is split out — either stripped (exclude) or broken into a separate AUTOMATED MESSAGE turn (label).
 
 When system-audio detection is enabled, `backend/pipeline.py` also removes any `NOTES` bullets that match identified automated telecom messages before generating PDFs. This keeps call-setup prompts and time warnings out of the summary product while still preserving them as `AUTOMATED MESSAGE` transcript turns in `"label"` mode.
 
-**Important:** System audio filtering only runs when summarization is active (`skip_summary=False`). Both the Gemini (cloud) and Gemma (local) summarization engines receive the `SYSTEM_AUDIO` detection tail, so filtering works regardless of which engine is selected. Test runs with dummy summaries get no filtering.
+**Important:** System audio filtering only runs when summarization is active (`skip_summary=False`). Test runs with dummy summaries get no filtering.
 
 ## Case Report Architecture
 
@@ -115,7 +128,7 @@ Pipeline:
 1. Parse every call's summary once through `_parse_summary_sections` and reuse the result everywhere downstream.
 2. Bucket calls by `RELEVANCE` (HIGH / MEDIUM / LOW / UNKNOWN).
 3. Select a synthesis input set — HIGH calls first, topping up from MEDIUM if there are fewer than `TARGET_FINDINGS_INPUT_COUNT` (10) HIGH calls.
-4. Issue **one** extra synthesis call, routed through the same summarization engine the per-call summaries used (Gemini cloud or Gemma local — fully interchangeable). This call performs BOTH "top findings" synthesis AND per-outside-number "identity inference" in a single prompt, using a block-delimited output format (`FINDING_START…FINDING_END`, `IDENTITY_START…IDENTITY_END`), and is wrapped in a 3-attempt tenacity retry and a 120-second per-attempt `concurrent.futures` timeout.
+4. Issue **one** extra synthesis call, routed through the same summarization engine the per-call summaries used (Gemini cloud or Gemma local — fully interchangeable). This call performs BOTH "top findings" synthesis AND per-outside-number "identity inference" in a single prompt. Gemini uses structured JSON output; Gemma retains the legacy block-delimited fallback (`FINDING_START…FINDING_END`, `IDENTITY_START…IDENTITY_END`). The call is wrapped in a 3-attempt tenacity retry and a 120-second per-attempt `concurrent.futures` timeout.
 5. Render a multi-section PDF: at-a-glance metrics, activity timeline, relevance distribution, top findings, high-relevance call cards, medium-relevance compact rows, and frequent-caller stats (including AI-inferred identities).
 
 **Graceful degradation:** The template reads a `synthesis_state` variable (`ok` / `no_input` / `gemini_unavailable` / `parse_failed`) and renders a differentiated empty-state panel in the Top Findings section for each case, so a failed synthesis still produces a usable report.

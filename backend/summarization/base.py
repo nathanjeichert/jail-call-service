@@ -9,13 +9,50 @@ from ..models import TranscriptTurn
 
 # ── Shared utilities ──
 
-def build_transcript_text(turns: List[TranscriptTurn]) -> str:
-    """Convert TranscriptTurn list to plain text for the LLM.
-    Each line is prefixed with a turn index so Gemini can reference specific turns."""
+def _seconds_to_timestamp_label(seconds: float) -> str:
+    total = max(int(seconds or 0), 0)
+    mins, secs = divmod(total, 60)
+    return f"{mins:02d}:{secs:02d}"
+
+
+def build_transcript_text(turns: List[TranscriptTurn], audio_duration: float = 0.0) -> str:
+    """Convert transcript turns into cited transcript lines for the LLM.
+
+    The summarization prompt asks the model to cite transcript lines in
+    ``[Page:Line]`` format. We therefore feed it the exact same wrapped line
+    layout the transcript PDF/viewer/search surfaces use later.
+    """
+    from ..transcript_formatting import compute_line_entries
+
+    if not turns:
+        return ""
+
+    line_entries = compute_line_entries(turns, audio_duration)
     lines = []
-    for i, turn in enumerate(turns):
-        ts = turn.timestamp or "[00:00]"
-        lines.append(f"[{i}] {ts} {turn.speaker}: {turn.text}")
+    for entry in line_entries:
+        turn_index = int(entry.get("turn_index", 0) or 0)
+        page = int(entry.get("page", 0) or 0)
+        line = int(entry.get("line", 0) or 0)
+        start = float(entry.get("start", 0) or 0)
+        speaker = str(entry.get("speaker", "SPEAKER")).strip() or "SPEAKER"
+        text = str(entry.get("text", "")).strip()
+        lines.append(
+            f"[{turn_index}] [{page}:{line}] [{_seconds_to_timestamp_label(start)}] {speaker}: {text}"
+        )
+    return "\n".join(lines)
+
+
+def build_turn_transcript_text(turns: List[TranscriptTurn]) -> str:
+    """Convert transcript turns into a simple turn-indexed transcript."""
+    if not turns:
+        return ""
+
+    lines = []
+    for turn_index, turn in enumerate(turns):
+        speaker = (turn.speaker or "SPEAKER").strip() or "SPEAKER"
+        timestamp = (turn.timestamp or "[00:00]").strip() or "[00:00]"
+        text = (turn.text or "").strip()
+        lines.append(f"[{turn_index}] {timestamp} {speaker}: {text}")
     return "\n".join(lines)
 
 
@@ -63,8 +100,9 @@ class SummarizationEngine(Protocol):
         """Run a single-turn prompt that is not a transcript summary.
 
         Used by features that need the same model for bespoke one-shot calls
-        (case-report synthesis, system-audio detection when folded into the
-        summary prompt), so cloud and local engines stay interchangeable.
+        (case-report synthesis, Gemini system-audio detection, and the Gemma
+        legacy combined summary flow), so cloud and local engines stay
+        interchangeable.
 
         Args:
             prompt_text: Fully-assembled user prompt.

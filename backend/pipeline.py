@@ -133,9 +133,17 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
     """Summarize a single call's transcript using the provided engine instance."""
     from .system_audio import (
         SYSTEM_AUDIO_DETECTION_PROMPT,
+        SYSTEM_AUDIO_DETECTION_JSON_PROMPT,
         parse_system_audio_response,
         remove_system_audio_notes,
         apply_system_audio_filter,
+    )
+    from .summarization.base import build_full_prompt, build_turn_transcript_text, build_transcript_text
+    from .gemini_structured import (
+        GEMINI_SUMMARY_JSON_INSTRUCTIONS,
+        SummaryResponse,
+        SystemAudioResponse,
+        render_summary_text,
     )
 
     job_store.update_call(job_id, call.index, status=CallStatus.SUMMARIZING)
@@ -152,34 +160,92 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
         if engine is None:
             raise RuntimeError("Summarization engine not initialized")
         effective_prompt = summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT
-        if auto_message_mode in ("exclude", "label"):
-            effective_prompt += "\n\n" + SYSTEM_AUDIO_DETECTION_PROMPT
+        metadata = {"filename": call.filename, "duration_seconds": call.duration_seconds}
 
-        result = await engine.summarize(
-            call.turns,
-            prompt=effective_prompt,
-            metadata={"filename": call.filename, "duration_seconds": call.duration_seconds},
-        )
-        raw_text = result["text"]
-        token_kwargs = {
-            "input_tokens": result["input_tokens"],
-            "output_tokens": result["output_tokens"],
-            "thinking_tokens": result["thinking_tokens"],
-        }
+        if hasattr(engine, "generate_json"):
+            total_input_tokens = 0
+            total_output_tokens = 0
+            total_thinking_tokens = 0
 
-        # Parse system audio markers and apply filtering
-        if auto_message_mode in ("exclude", "label"):
-            summary_text, markers = parse_system_audio_response(raw_text)
-            if markers:
-                summary_text = remove_system_audio_notes(summary_text, markers, call.turns)
-                call.turns = apply_system_audio_filter(call.turns, markers, auto_message_mode)
-                job_store.update_call(job_id, call.index, turns=call.turns)
-                logger.info(
-                    "Applied system audio filter (%s) to %s: %d markers",
-                    auto_message_mode, call.filename, len(markers),
+            if auto_message_mode in ("exclude", "label"):
+                system_prompt = build_full_prompt(
+                    SYSTEM_AUDIO_DETECTION_JSON_PROMPT,
+                    build_turn_transcript_text(call.turns),
+                    metadata,
                 )
+                system_result = await engine.generate_json(
+                    system_prompt,
+                    SystemAudioResponse,
+                    thinking_level=cfg.GEMINI_SYSTEM_AUDIO_THINKING_LEVEL,
+                )
+                total_input_tokens += system_result["input_tokens"]
+                total_output_tokens += system_result["output_tokens"]
+                total_thinking_tokens += system_result["thinking_tokens"]
+                markers = [
+                    {"turn": item.turn, "text": item.text}
+                    for item in system_result["parsed"].system_audio
+                ]
+                if markers:
+                    call.turns = apply_system_audio_filter(call.turns, markers, auto_message_mode)
+                    job_store.update_call(job_id, call.index, turns=call.turns)
+                    logger.info(
+                        "Applied system audio filter (%s) to %s: %d markers",
+                        auto_message_mode, call.filename, len(markers),
+                    )
+
+            structured_prompt = (
+                f"{effective_prompt}\n\n{GEMINI_SUMMARY_JSON_INSTRUCTIONS}"
+            )
+            summary_result = await engine.generate_json(
+                build_full_prompt(
+                    structured_prompt,
+                    build_transcript_text(call.turns, call.duration_seconds or 0.0),
+                    metadata,
+                ),
+                SummaryResponse,
+                thinking_level=cfg.GEMINI_SUMMARY_THINKING_LEVEL,
+            )
+            from .transcript_formatting import compute_line_entries
+
+            line_entries = compute_line_entries(call.turns, call.duration_seconds or 0.0)
+            summary_text = render_summary_text(summary_result["parsed"], line_entries)
+            total_input_tokens += summary_result["input_tokens"]
+            total_output_tokens += summary_result["output_tokens"]
+            total_thinking_tokens += summary_result["thinking_tokens"]
+            token_kwargs = {
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "thinking_tokens": total_thinking_tokens,
+            }
         else:
-            summary_text = raw_text
+            if auto_message_mode in ("exclude", "label"):
+                effective_prompt += "\n\n" + SYSTEM_AUDIO_DETECTION_PROMPT
+
+            result = await engine.summarize(
+                call.turns,
+                prompt=effective_prompt,
+                metadata=metadata,
+            )
+            raw_text = result["text"]
+            token_kwargs = {
+                "input_tokens": result["input_tokens"],
+                "output_tokens": result["output_tokens"],
+                "thinking_tokens": result["thinking_tokens"],
+            }
+
+            # Parse system audio markers and apply filtering
+            if auto_message_mode in ("exclude", "label"):
+                summary_text, markers = parse_system_audio_response(raw_text)
+                if markers:
+                    summary_text = remove_system_audio_notes(summary_text, markers, call.turns)
+                    call.turns = apply_system_audio_filter(call.turns, markers, auto_message_mode)
+                    job_store.update_call(job_id, call.index, turns=call.turns)
+                    logger.info(
+                        "Applied system audio filter (%s) to %s: %d markers",
+                        auto_message_mode, call.filename, len(markers),
+                    )
+            else:
+                summary_text = raw_text
 
     job_store.update_call(job_id, call.index, summary=summary_text, status=CallStatus.GENERATING_PDF, **token_kwargs)
     call.summary = summary_text

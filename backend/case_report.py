@@ -26,8 +26,10 @@ from tenacity import retry, stop_after_attempt, wait_random_exponential
 
 from . import config as cfg
 from . import pdf_utils as U
+from .gemini_structured import CaseReportResponse
 from .models import CallResult, Job, call_stem
 from .summarization.base import SummarizationEngine
+from .transcript_formatting import compute_line_entries, hydrate_review_cues
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +129,40 @@ INPUT_CALLS
 ═══════════════════════════════════════════════════════════════════
 INPUT_NUMBERS
 ═══════════════════════════════════════════════════════════════════
+{numbers_block}
+"""
+
+CASE_REPORT_SYNTHESIS_JSON_PROMPT = """You are synthesizing analysis of multiple jail phone call transcripts for a legal team.
+
+CASE CONTEXT:
+{case_context}
+
+You have TWO tasks. Complete BOTH in a single JSON object matching the provided schema.
+
+TASK 1 — findings
+- From INPUT_CALLS below, identify between {min_findings} and {max_findings} findings that are most consequential for case strategy.
+- Write in a neutral, objective, reader-agnostic tone suitable for either defense or prosecution review.
+- Narrate in third-person neutral past-tense factual prose.
+- No recommendations or legal advice.
+- Each finding must include:
+  - call_id: integer call id from INPUT_CALLS
+  - headline: 4-9 word title
+  - timestamp: a [MM:SS] timestamp that already appears in that call's notes, or null
+  - detail: one to three sentences explaining what was said and why it matters
+- If nothing warrants attention, return an empty findings array.
+
+TASK 2 — identities
+- For each number in INPUT_NUMBERS below, synthesize the single best inferred outside-party identity from the supplied per-call descriptions.
+- inference should be short and conservative.
+- confidence must be HIGH, MEDIUM, or LOW.
+- If nothing reliable can be said, use inference = "Unknown".
+
+Return only the JSON object matching the schema.
+
+INPUT_CALLS
+{calls_block}
+
+INPUT_NUMBERS
 {numbers_block}
 """
 
@@ -334,6 +370,51 @@ def _call_synth(engine: Optional[SummarizationEngine], prompt_text: str) -> Opti
 
     text = (result.get("text") or "").strip()
     return text or None
+
+
+def _call_synth_json(engine: Optional[SummarizationEngine], prompt_text: str) -> Optional[CaseReportResponse]:
+    """Gemini structured-output version of the case-report synthesis call."""
+    if engine is None or not hasattr(engine, "generate_json"):
+        return None
+
+    def _do_request():
+        return asyncio.run(
+            engine.generate_json(
+                prompt_text,
+                CaseReportResponse,
+                thinking_level=cfg.GEMINI_CASE_REPORT_THINKING_LEVEL,
+            )
+        )
+
+    @retry(
+        wait=wait_random_exponential(min=2, max=30),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    def _call_with_timeout():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            future = ex.submit(_do_request)
+            return future.result(timeout=SYNTHESIS_TIMEOUT_SEC)
+
+    try:
+        result = _call_with_timeout()
+    except concurrent.futures.TimeoutError:
+        logger.error(
+            "Case report synthesis timed out after %ds (per attempt)",
+            SYNTHESIS_TIMEOUT_SEC,
+        )
+        return None
+    except Exception as e:
+        logger.error("Case report synthesis call failed after retries: %s", e)
+        return None
+
+    logger.info(
+        "Case report synthesis tokens — in:%d out:%d thinking:%d",
+        result.get("input_tokens", 0),
+        result.get("output_tokens", 0),
+        result.get("thinking_tokens", 0),
+    )
+    return result.get("parsed")
 
 
 # ────────────────────────── output parsers ──────────────────────────
@@ -655,7 +736,8 @@ def _build_call_card(entry: Dict[str, Any]) -> Dict[str, Any]:
     call = entry["call"]
     parsed = entry["parsed"]
 
-    cues = parsed.get("review_cue_items", []) or []
+    line_entries = compute_line_entries(call.turns or [], call.duration_seconds or 0.0) if call.turns else []
+    cues = hydrate_review_cues(parsed.get("review_cue_items", []) or [], line_entries)
     cue_view = []
     for cue in cues[:8]:
         cue_view.append({
@@ -725,44 +807,81 @@ def generate_case_report_pdf(
         case_context = _build_case_context(case_name, defendant_name, job.summary_prompt)
         calls_block = _format_calls_for_synthesis(synthesis_inputs)
         numbers_block = _format_numbers_for_synthesis(identity_inputs)
-        prompt_text = CASE_REPORT_SYNTHESIS_PROMPT.format(
-            case_context=case_context,
-            calls_block=calls_block,
-            numbers_block=numbers_block,
-            min_findings=MIN_TOP_FINDINGS,
-            max_findings=MAX_TOP_FINDINGS,
-        )
+        calls_by_id = {entry["call"].index: entry for entry in synthesis_inputs}
 
-        synth_text = _call_synth(engine, prompt_text)
-        if synth_text:
-            calls_by_id = {entry["call"].index: entry for entry in synthesis_inputs}
-            for f in _parse_findings(synth_text):
-                try:
-                    call_id = int((f.get("CALL_ID") or "").strip())
-                except ValueError:
-                    continue
-                entry = calls_by_id.get(call_id)
-                if not entry:
-                    continue
-                call = entry["call"]
-                ts_raw = (f.get("TIMESTAMP") or "").strip()
-                ts_clean = "" if ts_raw.upper() in ("NONE", "N/A", "") else ts_raw
-                findings.append({
-                    "headline": f.get("HEADLINE", "").strip(),
-                    "detail": f.get("DETAIL", "").strip(),
-                    "timestamp": ts_clean,
-                    "call_filename": U.shorten(call.filename, 56),
-                    "call_date": _format_call_datetime_short(call),
-                    "viewer_link": _viewer_link(call, ts_clean or None),
-                    "pdf_link": _transcript_pdf_link(call),
-                })
-            identity_map = _parse_identities(synth_text)
-            if findings or identity_map:
-                synthesis_state = "ok"
+        if hasattr(engine, "generate_json"):
+            prompt_text = CASE_REPORT_SYNTHESIS_JSON_PROMPT.format(
+                case_context=case_context,
+                calls_block=calls_block,
+                numbers_block=numbers_block,
+                min_findings=MIN_TOP_FINDINGS,
+                max_findings=MAX_TOP_FINDINGS,
+            )
+            synth_json = _call_synth_json(engine, prompt_text)
+            if synth_json:
+                for item in synth_json.findings:
+                    entry = calls_by_id.get(item.call_id)
+                    if not entry:
+                        continue
+                    call = entry["call"]
+                    ts_clean = (item.timestamp or "").strip()
+                    findings.append({
+                        "headline": item.headline.strip(),
+                        "detail": item.detail.strip(),
+                        "timestamp": ts_clean,
+                        "call_filename": U.shorten(call.filename, 56),
+                        "call_date": _format_call_datetime_short(call),
+                        "viewer_link": _viewer_link(call, ts_clean or None),
+                        "pdf_link": _transcript_pdf_link(call),
+                    })
+                identity_map = {
+                    item.number: {
+                        "inference": item.inference,
+                        "confidence": item.confidence,
+                    }
+                    for item in synth_json.identities
+                }
+                synthesis_state = "ok" if (findings or identity_map) else "parse_failed"
             else:
-                synthesis_state = "parse_failed"
+                synthesis_state = "synth_unavailable"
         else:
-            synthesis_state = "synth_unavailable"
+            prompt_text = CASE_REPORT_SYNTHESIS_PROMPT.format(
+                case_context=case_context,
+                calls_block=calls_block,
+                numbers_block=numbers_block,
+                min_findings=MIN_TOP_FINDINGS,
+                max_findings=MAX_TOP_FINDINGS,
+            )
+
+            synth_text = _call_synth(engine, prompt_text)
+            if synth_text:
+                for f in _parse_findings(synth_text):
+                    try:
+                        call_id = int((f.get("CALL_ID") or "").strip())
+                    except ValueError:
+                        continue
+                    entry = calls_by_id.get(call_id)
+                    if not entry:
+                        continue
+                    call = entry["call"]
+                    ts_raw = (f.get("TIMESTAMP") or "").strip()
+                    ts_clean = "" if ts_raw.upper() in ("NONE", "N/A", "") else ts_raw
+                    findings.append({
+                        "headline": f.get("HEADLINE", "").strip(),
+                        "detail": f.get("DETAIL", "").strip(),
+                        "timestamp": ts_clean,
+                        "call_filename": U.shorten(call.filename, 56),
+                        "call_date": _format_call_datetime_short(call),
+                        "viewer_link": _viewer_link(call, ts_clean or None),
+                        "pdf_link": _transcript_pdf_link(call),
+                    })
+                identity_map = _parse_identities(synth_text)
+                if findings or identity_map:
+                    synthesis_state = "ok"
+                else:
+                    synthesis_state = "parse_failed"
+            else:
+                synthesis_state = "synth_unavailable"
 
     callers = _build_caller_stats(done_calls, parsed_by_index, identity_map)
     top_callers = callers[:10]

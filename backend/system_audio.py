@@ -1,11 +1,12 @@
 """
 System audio detection and filtering for jail call transcripts.
 
-Appends a SYSTEM_AUDIO detection instruction to the summary prompt and parses
-the JSON line the engine returns, then either strips or relabels the detected
-automated telecom turns (IVR prompts, time warnings, provider sign-offs).
-Engine-agnostic: both Gemini (cloud) and Gemma (local) emit the same tail
-format, so filtering works regardless of which engine is selected.
+Gemini uses a dedicated first-pass structured-output request to identify
+automated telecom turns before the citation-bearing summary call runs. Gemma
+keeps the legacy combined summary + `SYSTEM_AUDIO:` tail format. Both paths
+ultimately feed the same filtering helpers here, which either strip or relabel
+the detected automated telecom turns (IVR prompts, time warnings, provider
+sign-offs).
 """
 
 import json
@@ -52,6 +53,21 @@ SYSTEM_AUDIO_DETECTION_PROMPT = (
     '{"turn": 1, "text": "For English, press 1."}, ...]\n'
     "Include every automated turn/segment. Use the turn numbers shown in brackets at the "
     "start of each transcript line."
+)
+
+SYSTEM_AUDIO_DETECTION_JSON_PROMPT = (
+    "AUTOMATED MESSAGE DETECTION:\n"
+    "Identify all automated telecom system messages in the transcript turns below.\n"
+    "Return a JSON object matching the provided schema.\n"
+    "Each system_audio item must contain:\n"
+    '- "turn": the 0-based turn index shown in brackets at the start of the transcript turn\n'
+    '- "text": ONLY the automated telecom substring from that turn\n'
+    "Automated messages include IVR prompts, call acceptance prompts, monitoring warnings, "
+    "balance announcements, provider sign-offs, and time-remaining warnings.\n"
+    "These are not human speech.\n"
+    "For mixed turns containing both human speech and system audio, include only the "
+    "automated substring, not the full turn.\n"
+    "If there are no automated telecom messages, return an empty system_audio array."
 )
 
 

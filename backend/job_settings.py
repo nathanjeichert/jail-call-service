@@ -72,9 +72,9 @@ class RuntimeSelection:
 
     @property
     def effective_auto_message_mode(self) -> Optional[str]:
-        # System-audio filtering piggybacks on the summary prompt, so it's
-        # active whenever summarization runs — both cloud (Gemini) and local
-        # (Gemma) engines carry the SYSTEM_AUDIO: tail.
+        # System-audio filtering only runs when summarization is active. Gemini
+        # performs it in a dedicated first pass; Gemma keeps the legacy
+        # combined summary + SYSTEM_AUDIO tail.
         if self.skip_summary:
             return None
         return self.auto_message_mode

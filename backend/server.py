@@ -255,7 +255,11 @@ def create_job(req: CreateJobRequest):
         xml_metadata_path=req.xml_metadata_path,
         transcription_engine=normalize_optional_name(req.transcription_engine),
         summarization_engine=normalize_optional_name(req.summarization_engine),
-        auto_message_mode=normalize_auto_message_mode(req.auto_message_mode),
+        auto_message_mode=(
+            normalize_auto_message_mode(req.auto_message_mode)
+            if req.auto_message_mode is not None
+            else "label"
+        ),
     )
     return _job_summary(job)
 

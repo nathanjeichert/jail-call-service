@@ -121,7 +121,8 @@ class GemmaEngine:
         prompt: str,
         metadata: Optional[dict] = None,
     ) -> Dict:
-        transcript_text = build_transcript_text(turns)
+        duration = float((metadata or {}).get("duration_seconds") or 0.0)
+        transcript_text = build_transcript_text(turns, duration)
         full_prompt = build_full_prompt(prompt, transcript_text, metadata)
         return self._generate_sync(full_prompt)
 

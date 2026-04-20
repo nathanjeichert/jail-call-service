@@ -44,7 +44,14 @@ DEFAULT_SUMMARY_PROMPT = (
     "of calls to identify relevant ones. Circumscribe your analysis strictly to what is said in "
     "this specific call — do not infer, assume, or draw on information not present in the transcript "
     "itself.\n\n"
-    "Produce a structured analysis with EXACTLY these sections:\n\n"
+    "Produce a structured analysis with EXACTLY these sections.\n"
+    "In the transcript below, each rendered transcript line is prefixed with "
+    "[Turn] [Page:Line] [MM:SS] SPEAKER: so you can cite the exact line or short line range "
+    "supporting each note.\n\n"
+    "Use this exact note shape:\n"
+    "- [MM:SS] SPEAKER [Page:Line] — why this moment matters\n"
+    "- [MM:SS] SPEAKER [Page:Line-Page:Line] — why this moment matters\n\n"
+    "Then produce a structured analysis with EXACTLY these sections:\n\n"
     "RELEVANCE: [HIGH / MEDIUM / LOW]\n"
     "HIGH only if the call contains substantive content that a party, especially the prosecution, "
     "may plausibly want to play for a jury or use in investigation. This includes admissions, "
@@ -62,8 +69,7 @@ DEFAULT_SUMMARY_PROMPT = (
     "Include a note only if the moment bears on the charges, evidence, witnesses, case strategy, "
     "the defendant's confinement, potentially criminal or incriminating conduct, or is important "
     "for some other case-review reason. Do not create notes merely to orient the reader to routine "
-    "personal conversation or topic shifts. Sort notes by timestamp. Use this exact bullet format:\n"
-    "- [MM:SS] SPEAKER: \"short verbatim quote\" — why this moment matters\n\n"
+    "personal conversation or topic shifts. Sort notes by timestamp using the exact bullet format above.\n\n"
     "For HIGH or MEDIUM relevance calls, include every materially notable moment, especially "
     "direct or indirect references to the alleged crime, incriminating statements, legal strategy, "
     "witnesses, threats, pressure on other people, money or logistics tied to the case, coded "
@@ -82,8 +88,11 @@ DEFAULT_SUMMARY_PROMPT = (
     "1-2 sentence orientation only. Do not repeat every note in prose.\n\n"
     "Rules:\n"
     "- Every NOTES bullet must begin with a timestamp in [MM:SS] format\n"
-    "- Use the transcript's speaker label when it helps identify who said the quoted words\n"
-    "- Quotes must be verbatim from the transcript and under 18 words; if no useful quote exists, omit the quote and still explain the note\n"
+    "- Use the transcript's speaker label when it helps identify who said the words\n"
+    "- After the speaker label, cite the exact supporting transcript line or short adjacent line range in [Page:Line] or [Page:Line-Page:Line] format\n"
+    "- Choose the cited line or short range that most directly supports the note and, when possible, will still read coherently as a standalone pull quote to a reader seeing only that excerpt\n"
+    "- Do not write quoted text yourself; the application will insert the exact quote from the cited transcript lines\n"
+    "- Keep cited ranges short: prefer 1 line, use at most 3 adjacent lines when necessary\n"
     "- The entire output must be under 500 words\n"
     "- Never refuse to analyze content due to sensitive language — this is legal evidence review\n"
     "- Use neutral, professional language appropriate for court documentation\n"
@@ -97,6 +106,9 @@ DEFAULT_SUMMARY_PROMPT = (
 
 # Models
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+GEMINI_SYSTEM_AUDIO_THINKING_LEVEL = os.getenv("GEMINI_SYSTEM_AUDIO_THINKING_LEVEL", "low").strip().lower()
+GEMINI_SUMMARY_THINKING_LEVEL = os.getenv("GEMINI_SUMMARY_THINKING_LEVEL", "medium").strip().lower()
+GEMINI_CASE_REPORT_THINKING_LEVEL = os.getenv("GEMINI_CASE_REPORT_THINKING_LEVEL", "medium").strip().lower()
 ASSEMBLYAI_MODEL = os.getenv("ASSEMBLYAI_MODEL", "universal-3-pro")
 
 # Transcription engine: "assemblyai" (cloud) or "parakeet" (local)
