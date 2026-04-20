@@ -55,11 +55,8 @@ body {
 }
 
 .label,
-.eyebrow,
 .meta-label,
-.footer-label,
-.page-num,
-.cite-label {
+.footer-label {
     text-transform: uppercase;
     letter-spacing: 0;
 }
@@ -70,14 +67,29 @@ body {
         linear-gradient(180deg, #ffffff 0, #ffffff 70%, #f7f9f9 100%);
 }
 
-.cover::after {
+.cover::after,
+.summary::after {
     content: "";
     position: absolute;
     right: -0.05in;
     top: 0.7in;
     width: 2.05in;
     height: 8.7in;
+}
+
+.cover::after {
     background: linear-gradient(145deg, transparent 0%, transparent 45%, rgba(0,116,107,0.09) 45%, rgba(0,116,107,0.09) 51%, transparent 51%, transparent 100%);
+}
+
+.summary {
+    background:
+        linear-gradient(90deg, var(--ink) 0, var(--ink) 0.18in, transparent 0.18in),
+        linear-gradient(180deg, #ffffff 0, #ffffff 73%, #f7f9f9 100%);
+}
+
+.summary::after {
+    background: linear-gradient(145deg, transparent 0%, transparent 45%, rgba(0,116,107,0.07) 45%, rgba(0,116,107,0.07) 51%, transparent 51%, transparent 100%);
+    z-index: 0;
 }
 
 .cover-spine {
@@ -89,13 +101,23 @@ body {
     background: var(--ink);
 }
 
-.cover-header {
+.cover-header,
+.summary-header {
     position: absolute;
     left: 0.68in;
     right: 0.62in;
     top: 0.55in;
+    border-bottom: 1px solid var(--ink);
+    z-index: 1;
+}
+
+.cover-header {
     height: 0.43in;
-    border-bottom: 1px solid var(--rule);
+    border-bottom-color: var(--rule);
+}
+
+.summary-header {
+    height: 0.78in;
 }
 
 .cover-doc-type {
@@ -253,58 +275,6 @@ body {
     background: var(--teal);
 }
 
-.footer {
-    position: absolute;
-    left: 0.68in;
-    right: 0.62in;
-    bottom: 0.43in;
-    border-top: 1px solid var(--ink);
-    padding-top: 0.12in;
-    color: var(--muted);
-    font-size: 7.8pt;
-    z-index: 1;
-}
-
-.footer-label {
-    color: var(--ink);
-    font-weight: 800;
-}
-
-.page-num {
-    position: absolute;
-    right: 0;
-    top: 0.12in;
-    color: var(--quiet);
-    font-size: 8pt;
-}
-
-.summary {
-    background:
-        linear-gradient(90deg, var(--ink) 0, var(--ink) 0.18in, transparent 0.18in),
-        linear-gradient(180deg, #ffffff 0, #ffffff 73%, #f7f9f9 100%);
-}
-
-.summary::after {
-    content: "";
-    position: absolute;
-    right: -0.05in;
-    top: 0.7in;
-    width: 2.05in;
-    height: 8.7in;
-    background: linear-gradient(145deg, transparent 0%, transparent 45%, rgba(0,116,107,0.07) 45%, rgba(0,116,107,0.07) 51%, transparent 51%, transparent 100%);
-    z-index: 0;
-}
-
-.summary-header {
-    position: absolute;
-    left: 0.68in;
-    right: 0.62in;
-    top: 0.55in;
-    height: 0.78in;
-    border-bottom: 1px solid var(--ink);
-    z-index: 1;
-}
-
 .summary-header-left {
     position: absolute;
     left: 0;
@@ -332,13 +302,6 @@ body {
     white-space: nowrap;
 }
 
-.eyebrow {
-    color: var(--teal);
-    font-size: 8pt;
-    font-weight: 800;
-    margin-bottom: 0.04in;
-}
-
 .summary-title {
     margin: 0;
     color: var(--ink);
@@ -348,15 +311,28 @@ body {
     line-height: 1;
 }
 
-.assessment {
+.summary-content {
     position: absolute;
     left: 0.68in;
     right: 0.62in;
     top: 1.55in;
+    bottom: 0.74in;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.14in;
+}
+
+.summary-content-notes-only {
+    gap: 0.12in;
+}
+
+.assessment {
+    position: relative;
     height: 0.74in;
     border: 1px solid var(--rule-strong);
     background: var(--wash);
-    z-index: 1;
+    flex: 0 0 auto;
 }
 
 .relevance-pill {
@@ -405,25 +381,51 @@ body {
     overflow-wrap: break-word;
 }
 
-.summary-body {
-    position: absolute;
-    left: 0.68in;
-    right: 0.62in;
-    top: 2.58in;
-    bottom: 0.82in;
-    z-index: 1;
+.context-grid {
+    display: grid;
+    gap: 0.16in;
+    flex: 0 0 auto;
 }
 
-/* Continuation page: no relevance assessment bar, so the notes start
-   higher up and the usable vertical room grows accordingly. */
-.summary-body-continued {
-    top: 1.58in;
-    bottom: 0.82in;
+.context-grid.side-by-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.context-grid.stacked,
+.context-grid.single {
+    grid-template-columns: 1fr;
+}
+
+.context-card {
+    border: 1px solid var(--rule);
+    background: rgba(255, 255, 255, 0.96);
+    padding: 0.16in 0.18in;
+}
+
+.context-card-title {
+    color: var(--teal);
+    font-size: 7.8pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.08in;
+}
+
+.context-card-text {
+    color: var(--body);
+    font-size: 9.1pt;
+    line-height: 1.48;
+}
+
+.notes-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.08in;
+    flex: 1 1 auto;
 }
 
 .section-heading {
     position: relative;
-    margin: 0 0 0.12in;
+    margin: 0;
     color: var(--teal);
     font-size: 8.2pt;
     font-weight: 800;
@@ -439,74 +441,45 @@ body {
     border-top: 1px solid var(--rule);
 }
 
-/* Split-heading variant: shows "Notes" on the left and a subtle
-   "+N more on next page →" pill on the right for HIGH-relevance calls
-   whose cues spill onto a continuation page. */
-.section-heading-split {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.18in;
-}
-
-.section-heading-split::after {
-    display: none;
-}
-
 .section-heading-label {
     position: relative;
+    z-index: 1;
     padding-right: 0.14in;
     background: var(--paper);
 }
 
-.section-heading-label::after {
-    content: "";
-    position: absolute;
-    left: 100%;
-    right: -0.22in;
-    top: 0.06in;
-    border-top: 1px solid var(--rule);
-}
-
-.section-heading-continued {
-    flex: 0 0 auto;
-    color: var(--muted);
-    font-size: 7.4pt;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: none;
-    padding: 0.035in 0.1in;
-    border: 1px solid var(--rule-strong);
-    border-radius: 0.04in;
+.notes-key {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.1in 0.16in;
+    border: 1px solid var(--rule);
     background: var(--wash);
+    padding: 0.08in 0.12in;
 }
 
-.section-heading-continued .continued-arrow {
-    color: var(--teal);
-    font-weight: 800;
+.notes-key-item {
+    display: flex;
+    gap: 0.08in;
+    align-items: baseline;
 }
 
-.notes-legend {
-    margin: -0.02in 0 0.07in;
+.notes-key-label {
     color: var(--muted);
     font-size: 7pt;
-    line-height: 1.2;
-}
-
-.notes-legend span {
-    display: inline;
-    margin-right: 0.16in;
-}
-
-.legend-label {
-    color: var(--muted);
     font-weight: 800;
+    text-transform: uppercase;
+    flex: 0 0 auto;
+}
+
+.notes-key-value {
+    color: var(--body);
+    font-size: 7.7pt;
+    line-height: 1.3;
 }
 
 .cue-table {
     width: 100%;
     border-collapse: collapse;
-    margin-bottom: 0.23in;
 }
 
 .cue-table tr {
@@ -528,10 +501,13 @@ body {
 
 .cue-timestamp,
 .cue-line-cite {
+    line-height: 1.12;
+}
+
+.cue-timestamp {
     color: var(--teal);
     font-size: 9.7pt;
     font-weight: 800;
-    line-height: 1.12;
 }
 
 .cue-line-cite {
@@ -539,38 +515,6 @@ body {
     color: var(--muted);
     font-size: 8pt;
     font-weight: 700;
-}
-
-.no-notes {
-    border-top: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
-    padding: 0.22in 0 0.22in 0.18in;
-    margin-bottom: 0.27in;
-    position: relative;
-}
-
-.no-notes::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0.26in;
-    width: 0.07in;
-    height: 0.07in;
-    background: var(--teal);
-}
-
-.no-notes-title {
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 13pt;
-    line-height: 1.25;
-    margin-bottom: 0.04in;
-}
-
-.no-notes-text {
-    color: var(--body);
-    font-size: 8.8pt;
-    line-height: 1.42;
 }
 
 .cue-text {
@@ -599,38 +543,35 @@ body {
     line-height: 1.38;
 }
 
-.summary-bottom {
-    width: 100%;
-    border-collapse: collapse;
+.no-notes {
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.22in 0 0.22in 0.18in;
+    position: relative;
 }
 
-.summary-bottom td {
-    width: 50%;
-    vertical-align: top;
-    padding-top: 0.03in;
+.no-notes::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.26in;
+    width: 0.07in;
+    height: 0.07in;
+    background: var(--teal);
 }
 
-.summary-bottom td:first-child {
-    padding-right: 0.24in;
+.no-notes-title {
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 13pt;
+    line-height: 1.25;
+    margin-bottom: 0.04in;
 }
 
-.summary-bottom td:last-child {
-    padding-left: 0.24in;
-    border-left: 1px solid var(--rule);
-}
-
-.mini-heading {
-    color: var(--teal);
-    font-size: 7.8pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    margin-bottom: 0.08in;
-}
-
-.mini-text {
+.no-notes-text {
     color: var(--body);
-    font-size: 9.1pt;
-    line-height: 1.48;
+    font-size: 8.8pt;
+    line-height: 1.42;
 }
 
 .raw-analysis p,
@@ -647,6 +588,18 @@ body {
 
 .raw-analysis p {
     margin: 0 0 0.1in;
+}
+
+.footer {
+    position: absolute;
+    left: 0.68in;
+    right: 0.62in;
+    bottom: 0.43in;
+    border-top: 1px solid var(--ink);
+    padding-top: 0.12in;
+    color: var(--muted);
+    font-size: 7.8pt;
+    z-index: 1;
 }
 </style>
 </head>
@@ -695,9 +648,7 @@ body {
         Review this transcript against the source recording before quotation, filing, or use in court.
     </div>
 
-    <div class="footer">
-        <span class="page-num">01</span>
-    </div>
+    <div class="footer"></div>
 </div>
 
 {% if has_summary %}
@@ -714,114 +665,116 @@ body {
         {% endif %}
     </div>
 
-    {% if relevance %}
-    <div class="assessment rel-{{ relevance|lower }}">
-        <div class="relevance-pill">
-            <div class="label">Relevance</div>
-            <div class="relevance-value">{{ relevance|title }}</div>
-        </div>
-        <div class="assessment-copy">
-            <strong>{{ relevance_desc or "Review priority assigned from call content." }}</strong>
-        </div>
-    </div>
-    {% endif %}
-
-    <div class="summary-body">
-        {% if is_structured %}
-        <div class="section-heading{% if has_continuation %} section-heading-split{% endif %}">
-            <span class="section-heading-label">Notes</span>
-            {% if has_continuation %}
-            <span class="section-heading-continued">
-                +{{ page2_cue_count }} more on next page <span class="continued-arrow">&rarr;</span>
-            </span>
-            {% endif %}
-        </div>
-        {% if page1_review_cues %}
-        <div class="notes-legend">
-            <span><span class="legend-label">[MM:SS]</span> is the audio timestamp.</span>
-            <span><span class="legend-label">Page:Line</span> is the transcript cite.</span>
-        </div>
-        <table class="cue-table">
-            {% for cue in page1_review_cues %}
-            <tr>
-                <td class="cue-time">
-                    <div class="cue-timestamp">{{ cue.timestamp }}</div>
-                    {% if cue.line_cite %}
-                    <div class="cue-line-cite">{{ cue.line_cite }}</div>
-                    {% endif %}
-                </td>
-                <td class="cue-text">
-                    {% if cue.speaker %}
-                    <div class="cue-speaker">{{ cue.speaker }}</div>
-                    {% endif %}
-                    {% if cue.quote %}
-                    <div class="cue-quote">&ldquo;{{ cue.quote }}&rdquo;</div>
-                    {% endif %}
-                    {% if cue.note %}
-                    <div class="cue-note">{{ cue.note }}</div>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
-        {% else %}
-        <div class="no-notes">
-            <div class="no-notes-title">No relevant information found.</div>
-            <div class="no-notes-text">No transcript moments were identified as needing attorney attention.</div>
+    <div class="summary-content">
+        {% if relevance %}
+        <div class="assessment rel-{{ relevance|lower }}">
+            <div class="relevance-pill">
+                <div class="label">Relevance</div>
+                <div class="relevance-value">{{ relevance|title }}</div>
+            </div>
+            <div class="assessment-copy">
+                <strong>{{ relevance_desc or "Review priority assigned from call content." }}</strong>
+            </div>
         </div>
         {% endif %}
 
-        {% if speakers or call_summary %}
-        <table class="summary-bottom">
-            <tr>
+        {% if is_structured %}
+            {% if speakers or call_summary %}
+            <div class="context-grid {{ context_layout or 'single' }}">
                 {% if speakers %}
-                <td>
-                    <div class="mini-heading">Identity of Outside Party</div>
-                    <div class="mini-text">{{ speakers }}</div>
-                </td>
+                <div class="context-card">
+                    <div class="context-card-title">Identity of Outside Party</div>
+                    <div class="context-card-text">{{ speakers }}</div>
+                </div>
                 {% endif %}
                 {% if call_summary %}
-                <td>
-                    <div class="mini-heading">Brief Summary</div>
-                    <div class="mini-text">{{ call_summary }}</div>
-                </td>
+                <div class="context-card">
+                    <div class="context-card-title">Brief Summary</div>
+                    <div class="context-card-text">{{ call_summary }}</div>
+                </div>
                 {% endif %}
-            </tr>
-        </table>
-        {% endif %}
-
-        {% elif raw_body %}
-        <div class="section-heading">Analysis</div>
-        <div class="raw-analysis">
-            {% for block in raw_blocks %}
-            {% if block.type == 'bullet' %}
-            <ul>
-                {% for item in block.bullets %}
-                <li>{{ item }}</li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <p>{{ block.text }}</p>
+            </div>
             {% endif %}
-            {% endfor %}
+
+            <div class="notes-section">
+                <div class="section-heading"><span class="section-heading-label">Notes</span></div>
+                {% if page1_review_cues %}
+                <div class="notes-key">
+                    <div class="notes-key-item">
+                        <span class="notes-key-label">Audio timestamp</span>
+                        <span class="notes-key-value">[MM:SS]</span>
+                    </div>
+                    <div class="notes-key-item">
+                        <span class="notes-key-label">Transcript cite</span>
+                        <span class="notes-key-value">Page:Line</span>
+                    </div>
+                </div>
+                <table class="cue-table">
+                    {% for cue in page1_review_cues %}
+                    <tr>
+                        <td class="cue-time">
+                            <div class="cue-timestamp">{{ cue.timestamp }}</div>
+                            {% if cue.line_cite %}
+                            <div class="cue-line-cite">{{ cue.line_cite }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="cue-text">
+                            {% if cue.speaker %}
+                            <div class="cue-speaker">{{ cue.speaker }}</div>
+                            {% endif %}
+                            {% if cue.quote %}
+                            <div class="cue-quote">&ldquo;{{ cue.quote }}&rdquo;</div>
+                            {% endif %}
+                            {% if cue.note %}
+                            <div class="cue-note">{{ cue.note }}</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                {% else %}
+                <div class="no-notes">
+                    <div class="no-notes-title">No relevant information found.</div>
+                    <div class="no-notes-text">No transcript moments were identified as needing attorney attention.</div>
+                </div>
+                {% endif %}
+            </div>
+        {% elif raw_body %}
+        <div class="notes-section">
+            <div class="section-heading"><span class="section-heading-label">Analysis</span></div>
+            <div class="raw-analysis">
+                {% for block in raw_blocks %}
+                {% if block.type == 'bullet' %}
+                <ul>
+                    {% for item in block.bullets %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p>{{ block.text }}</p>
+                {% endif %}
+                {% endfor %}
+            </div>
         </div>
         {% else %}
-        <div class="section-heading">Notes</div>
-        <div class="mini-text">No structured notes were provided for this call.</div>
+        <div class="notes-section">
+            <div class="section-heading"><span class="section-heading-label">Notes</span></div>
+            <div class="no-notes">
+                <div class="no-notes-title">No structured notes were provided.</div>
+                <div class="no-notes-text">The summary output did not contain renderable structured notes for this call.</div>
+            </div>
+        </div>
         {% endif %}
     </div>
 
-    <div class="footer">
-        <span class="page-num">02{% if has_continuation %} / 03{% endif %}</span>
-    </div>
+    <div class="footer"></div>
 </div>
 
-{% if has_continuation %}
-<div class="page summary summary-continued">
+{% for overflow_page in overflow_review_cue_pages or [] %}
+<div class="page summary">
     <div class="summary-header">
         <div class="summary-header-left">
-            <div class="eyebrow">Continued from page 02</div>
-            <h2 class="summary-title">Notes, continued</h2>
+            <h2 class="summary-title">Summary</h2>
         </div>
         {% if summary_meta_file or summary_meta_details %}
         <div class="summary-header-right">
@@ -831,43 +784,38 @@ body {
         {% endif %}
     </div>
 
-    <div class="summary-body summary-body-continued">
-        <div class="section-heading section-heading-split">
-            <span class="section-heading-label">Notes {{ page2_first_index }}&ndash;{{ page2_last_index }}</span>
-            <span class="section-heading-continued">
-                <span class="continued-arrow">&larr;</span> continued from page 02
-            </span>
+    <div class="summary-content summary-content-notes-only">
+        <div class="notes-section">
+            <div class="section-heading"><span class="section-heading-label">Notes</span></div>
+            <table class="cue-table">
+                {% for cue in overflow_page.review_cues %}
+                <tr>
+                    <td class="cue-time">
+                        <div class="cue-timestamp">{{ cue.timestamp }}</div>
+                        {% if cue.line_cite %}
+                        <div class="cue-line-cite">{{ cue.line_cite }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="cue-text">
+                        {% if cue.speaker %}
+                        <div class="cue-speaker">{{ cue.speaker }}</div>
+                        {% endif %}
+                        {% if cue.quote %}
+                        <div class="cue-quote">&ldquo;{{ cue.quote }}&rdquo;</div>
+                        {% endif %}
+                        {% if cue.note %}
+                        <div class="cue-note">{{ cue.note }}</div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
         </div>
-        <table class="cue-table">
-            {% for cue in page2_review_cues %}
-            <tr>
-                <td class="cue-time">
-                    <div class="cue-timestamp">{{ cue.timestamp }}</div>
-                    {% if cue.line_cite %}
-                    <div class="cue-line-cite">{{ cue.line_cite }}</div>
-                    {% endif %}
-                </td>
-                <td class="cue-text">
-                    {% if cue.speaker %}
-                    <div class="cue-speaker">{{ cue.speaker }}</div>
-                    {% endif %}
-                    {% if cue.quote %}
-                    <div class="cue-quote">&ldquo;{{ cue.quote }}&rdquo;</div>
-                    {% endif %}
-                    {% if cue.note %}
-                    <div class="cue-note">{{ cue.note }}</div>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
     </div>
 
-    <div class="footer">
-        <span class="page-num">03</span>
-    </div>
+    <div class="footer"></div>
 </div>
-{% endif %}
+{% endfor %}
 {% endif %}
 
 </body>

@@ -345,18 +345,18 @@ def parse_summary_sections(summary: str) -> dict:
         sections["relevance"] = rel_match.group(1).upper()
 
     header_patterns = [
-        ("review_cues", r"NOTES:?"),
-        ("review_cues", r"REVIEW\s+CUES:?"),
-        ("review_cues", r"NOTABLE\s+MOMENTS:?"),
-        ("review_cues", r"KEY\s+MOMENTS:?"),
-        ("review_cues", r"PULL\s+QUOTES:?"),
-        ("key_findings", r"KEY\s+FINDINGS:?"),
-        ("speakers", r"IDENTITY\s+OF\s+OUTSIDE\s+PARTY:?"),
-        ("speakers", r"SPEAKERS?\s*(?:&|AND)\s*RELATIONSHIP:?"),
-        ("speakers", r"SPEAKER\s+NOTES:?"),
-        ("call_summary", r"BRIEF\s+SUMMARY:?"),
-        ("call_summary", r"CALL\s+SUMMARY:?"),
-        ("call_summary", r"SUMMARY:?"),
+        ("review_cues", r"(?m)^\s*NOTES:?"),
+        ("review_cues", r"(?m)^\s*REVIEW\s+CUES:?"),
+        ("review_cues", r"(?m)^\s*NOTABLE\s+MOMENTS:?"),
+        ("review_cues", r"(?m)^\s*KEY\s+MOMENTS:?"),
+        ("review_cues", r"(?m)^\s*PULL\s+QUOTES:?"),
+        ("key_findings", r"(?m)^\s*KEY\s+FINDINGS:?"),
+        ("speakers", r"(?m)^\s*IDENTITY\s+OF\s+OUTSIDE\s+PARTY:?"),
+        ("speakers", r"(?m)^\s*SPEAKERS?\s*(?:&|AND)\s*RELATIONSHIP:?"),
+        ("speakers", r"(?m)^\s*SPEAKER\s+NOTES:?"),
+        ("call_summary", r"(?m)^\s*BRIEF\s+SUMMARY:?"),
+        ("call_summary", r"(?m)^\s*CALL\s+SUMMARY:?"),
+        ("call_summary", r"(?m)^\s*SUMMARY:?"),
     ]
 
     positions: List[tuple] = []

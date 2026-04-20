@@ -2,6 +2,8 @@ import logging
 import os
 from dotenv import load_dotenv
 
+from .summary_normalization import SUMMARY_NOTE_LIMITS
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -73,8 +75,12 @@ DEFAULT_SUMMARY_PROMPT = (
     "For HIGH or MEDIUM relevance calls, include every materially notable moment, especially "
     "direct or indirect references to the alleged crime, incriminating statements, legal strategy, "
     "witnesses, threats, pressure on other people, money or logistics tied to the case, coded "
-    "language, evasive language, or anything a diligent attorney should hear. For LOW relevance "
-    "calls, include notes only if a moment still plausibly matters for attorney review. If you are "
+    "language, evasive language, or anything a diligent attorney should hear. Still be selective: "
+    "keep only the strongest moments and omit weaker or redundant notes once the review value drops. "
+    f"For LOW relevance calls, include notes only if a moment still plausibly matters for attorney review, and never exceed {SUMMARY_NOTE_LIMITS['LOW']['hard']} notes. "
+    f"For MEDIUM relevance calls, never exceed {SUMMARY_NOTE_LIMITS['MEDIUM']['hard']} notes. "
+    f"For HIGH relevance calls, never exceed {SUMMARY_NOTE_LIMITS['HIGH']['hard']} notes total, "
+    "and only use the full note budget when the extra moments are clearly worth an attorney's time. If you are "
     "really positive there is nothing in the transcript an attorney prosecuting or defending the "
     "case would want to know about, write exactly: NOTES: NONE.\n\n"
     "IDENTITY OF OUTSIDE PARTY:\n"
@@ -83,9 +89,11 @@ DEFAULT_SUMMARY_PROMPT = (
     "Do not include the defendant's name — it is already known to the reviewing attorney. "
     "Note the caller's relationship to the defendant (e.g., mother, attorney, friend) only if "
     "it is clearly indicated by the conversation. If a relationship is likely but not certain, state "
-    "the basis briefly. Omit this entirely if the relationship cannot be reasonably determined from context.\n\n"
+    "the basis briefly. Keep this concise enough to fit in a short summary card. Omit this entirely if "
+    "the relationship cannot be reasonably determined from context.\n\n"
     "BRIEF SUMMARY:\n"
-    "1-2 sentence orientation only. Do not repeat every note in prose.\n\n"
+    "1-2 short sentences of orientation only. Do not repeat every note in prose, and keep it concise "
+    "enough to fit in a short summary card.\n\n"
     "Rules:\n"
     "- Every NOTES bullet must begin with a timestamp in [MM:SS] format\n"
     "- Use the transcript's speaker label when it helps identify who said the words\n"

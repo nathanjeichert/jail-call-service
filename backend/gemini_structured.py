@@ -6,7 +6,6 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-
 class SystemAudioMarker(BaseModel):
     turn: int = Field(ge=0, description="0-based transcript turn index.")
     text: str = Field(
@@ -74,6 +73,9 @@ GEMINI_SUMMARY_JSON_INSTRUCTIONS = (
     "Choose the shortest cited range that both directly supports the note and, when possible, "
     "will read coherently when rendered as a standalone pull quote.\n"
     "Use an empty notes array when there is nothing attorney-relevant to note.\n"
+    "Keep LOW calls to at most 3 notes, MEDIUM calls to at most 6 notes, "
+    "and HIGH calls to at most 21 notes. "
+    "If more moments seem arguable, omit weaker or redundant ones.\n"
     "Set identity_of_outside_party to null when the caller cannot be reasonably identified.\n"
     "Ignore any transcript lines spoken by AUTOMATED MESSAGE when choosing notes or writing the brief summary."
 )

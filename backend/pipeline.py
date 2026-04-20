@@ -145,6 +145,8 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
         SystemAudioResponse,
         render_summary_text,
     )
+    from .summary_normalization import normalize_structured_summary, normalize_summary_text
+    from .transcript_formatting import compute_line_entries
 
     job_store.update_call(job_id, call.index, status=CallStatus.SUMMARIZING)
 
@@ -205,10 +207,9 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
                 SummaryResponse,
                 thinking_level=cfg.GEMINI_SUMMARY_THINKING_LEVEL,
             )
-            from .transcript_formatting import compute_line_entries
-
             line_entries = compute_line_entries(call.turns, call.duration_seconds or 0.0)
-            summary_text = render_summary_text(summary_result["parsed"], line_entries)
+            normalized_summary = normalize_structured_summary(summary_result["parsed"], line_entries)
+            summary_text = render_summary_text(normalized_summary, line_entries)
             total_input_tokens += summary_result["input_tokens"]
             total_output_tokens += summary_result["output_tokens"]
             total_thinking_tokens += summary_result["thinking_tokens"]
@@ -246,6 +247,9 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
                     )
             else:
                 summary_text = raw_text
+
+            line_entries = compute_line_entries(call.turns, call.duration_seconds or 0.0)
+            summary_text = normalize_summary_text(summary_text, line_entries)
 
     job_store.update_call(job_id, call.index, summary=summary_text, status=CallStatus.GENERATING_PDF, **token_kwargs)
     call.summary = summary_text

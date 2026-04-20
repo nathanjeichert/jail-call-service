@@ -56,15 +56,48 @@ MAX_LINE_CHARS = int((_TRANSCRIPT_RULE_WIDTH - 12) / _COURIER_CHAR_W)
 PDF_TEXT_BLOCK_WIDTH = MAX_LINE_CHARS * _COURIER_CHAR_W
 PDF_TEXT_X = PDF_RULE_LEFT_INNER + ((_TRANSCRIPT_RULE_WIDTH - PDF_TEXT_BLOCK_WIDTH) / 2.0)
 
-# Maximum review cues that fit on the summary page 1 alongside the relevance
-# pill, Identity of Outside Party, and Brief Summary blocks. For HIGH-relevance
-# calls with more cues than this, the excess spills onto a continuation page
-# so that attorney-relevant notes are never clipped.
-SUMMARY_PAGE1_CUE_CAP = 7
-# Safety ceiling on the continuation page so an unusually long note list can
-# still never overflow. In practice Gemini is bounded by a 500-word response
-# cap which keeps total cues under ~18, well below this limit.
-SUMMARY_PAGE2_CUE_CAP = 14
+SUMMARY_LEFT = 0.68 * inch
+SUMMARY_RIGHT = 0.62 * inch
+SUMMARY_WIDTH = PDF_PAGE_WIDTH - SUMMARY_LEFT - SUMMARY_RIGHT
+SUMMARY_CONTENT_TOP = 1.55 * inch
+SUMMARY_CONTENT_BOTTOM = 0.74 * inch
+SUMMARY_CONTENT_HEIGHT = PDF_PAGE_HEIGHT - SUMMARY_CONTENT_TOP - SUMMARY_CONTENT_BOTTOM
+SUMMARY_ASSESSMENT_HEIGHT = 0.74 * inch
+SUMMARY_SECTION_GAP = 0.14 * inch
+SUMMARY_CARD_GAP = 0.16 * inch
+SUMMARY_CARD_PADDING_X = 0.18 * inch
+SUMMARY_CARD_PADDING_Y = 0.16 * inch
+SUMMARY_CONTEXT_TWO_COL_GAP = 0.18 * inch
+SUMMARY_NOTES_HEADING_HEIGHT = 0.24 * inch
+SUMMARY_NOTES_KEY_HEIGHT = 0.34 * inch
+SUMMARY_NOTES_TABLE_BOTTOM = 0.08 * inch
+SUMMARY_NO_NOTES_HEIGHT = 0.82 * inch
+SUMMARY_CUE_TIME_WIDTH = 1.02 * inch
+SUMMARY_CUE_TEXT_PAD_LEFT = 0.13 * inch
+SUMMARY_CUE_TIME_TEXT_WIDTH = SUMMARY_CUE_TIME_WIDTH - 0.06 * inch
+SUMMARY_CUE_TEXT_WIDTH = SUMMARY_WIDTH - SUMMARY_CUE_TIME_WIDTH - SUMMARY_CUE_TEXT_PAD_LEFT
+
+SUMMARY_CARD_TITLE_FONT = "Helvetica-Bold"
+SUMMARY_CARD_TITLE_SIZE = 7.8
+SUMMARY_CARD_TITLE_LINE_HEIGHT = 10.0
+SUMMARY_CARD_BODY_FONT = "Helvetica"
+SUMMARY_CARD_BODY_SIZE = 9.1
+SUMMARY_CARD_BODY_LINE_HEIGHT = 13.5
+SUMMARY_SPEAKER_FONT = "Helvetica-Bold"
+SUMMARY_SPEAKER_SIZE = 7.6
+SUMMARY_SPEAKER_LINE_HEIGHT = 9.0
+SUMMARY_QUOTE_FONT = "Times-Roman"
+SUMMARY_QUOTE_SIZE = 10.4
+SUMMARY_QUOTE_LINE_HEIGHT = 13.7
+SUMMARY_NOTE_FONT = "Helvetica"
+SUMMARY_NOTE_SIZE = 8.75
+SUMMARY_NOTE_LINE_HEIGHT = 12.1
+SUMMARY_TIMESTAMP_FONT = "Helvetica-Bold"
+SUMMARY_TIMESTAMP_SIZE = 9.7
+SUMMARY_TIMESTAMP_LINE_HEIGHT = 10.9
+SUMMARY_LINE_CITE_FONT = "Helvetica-Bold"
+SUMMARY_LINE_CITE_SIZE = 8.0
+SUMMARY_LINE_CITE_LINE_HEIGHT = 9.0
 
 # Re-export public symbols that other modules depend on
 timestamp_to_seconds = U.timestamp_to_seconds
@@ -90,6 +123,199 @@ def wrap_text(text: str, max_width: int) -> List[str]:
     if current:
         lines.append(" ".join(current))
     return lines or [""]
+
+
+def _wrap_text_to_width(
+    text: str,
+    max_width: float,
+    *,
+    font_name: str,
+    font_size: float,
+) -> List[str]:
+    text = " ".join(str(text or "").split()).strip()
+    if not text:
+        return []
+
+    words = text.split()
+    lines: List[str] = []
+    current: List[str] = []
+    for word in words:
+        candidate = " ".join(current + [word]).strip()
+        if current and stringWidth(candidate, font_name, font_size) > max_width:
+            lines.append(" ".join(current))
+            current = [word]
+        else:
+            current.append(word)
+    if current:
+        lines.append(" ".join(current))
+    return lines or [text]
+
+
+def _estimate_context_card_height(text: str, inner_width: float) -> float:
+    if not text:
+        return 0.0
+    body_lines = max(
+        len(
+            _wrap_text_to_width(
+                text,
+                inner_width,
+                font_name=SUMMARY_CARD_BODY_FONT,
+                font_size=SUMMARY_CARD_BODY_SIZE,
+            )
+        ),
+        1,
+    )
+    return (
+        (2 * SUMMARY_CARD_PADDING_Y)
+        + SUMMARY_CARD_TITLE_LINE_HEIGHT
+        + 0.08 * inch
+        + (body_lines * SUMMARY_CARD_BODY_LINE_HEIGHT)
+    )
+
+
+def _choose_context_layout(speakers: str, call_summary: str) -> str:
+    has_speakers = bool(speakers)
+    has_summary = bool(call_summary)
+    if has_speakers and has_summary:
+        two_col_inner_width = (
+            (SUMMARY_WIDTH - SUMMARY_CONTEXT_TWO_COL_GAP) / 2.0
+        ) - (2 * SUMMARY_CARD_PADDING_X)
+        speaker_height = _estimate_context_card_height(speakers, two_col_inner_width)
+        summary_height = _estimate_context_card_height(call_summary, two_col_inner_width)
+        if max(speaker_height, summary_height) <= 2.2 * inch:
+            return "side-by-side"
+        return "stacked"
+    if has_speakers or has_summary:
+        return "single"
+    return "none"
+
+
+def _estimate_context_height(layout: str, speakers: str, call_summary: str) -> float:
+    if layout == "none":
+        return 0.0
+
+    if layout == "single":
+        inner_width = SUMMARY_WIDTH - (2 * SUMMARY_CARD_PADDING_X)
+        text = speakers or call_summary
+        return _estimate_context_card_height(text, inner_width)
+
+    if layout == "stacked":
+        inner_width = SUMMARY_WIDTH - (2 * SUMMARY_CARD_PADDING_X)
+        total = 0.0
+        if speakers:
+            total += _estimate_context_card_height(speakers, inner_width)
+        if call_summary:
+            if total:
+                total += SUMMARY_CARD_GAP
+            total += _estimate_context_card_height(call_summary, inner_width)
+        return total
+
+    two_col_inner_width = (
+        (SUMMARY_WIDTH - SUMMARY_CONTEXT_TWO_COL_GAP) / 2.0
+    ) - (2 * SUMMARY_CARD_PADDING_X)
+    return max(
+        _estimate_context_card_height(speakers, two_col_inner_width),
+        _estimate_context_card_height(call_summary, two_col_inner_width),
+    )
+
+
+def _estimate_cue_height(cue: dict) -> float:
+    timestamp_lines = max(
+        len(
+            _wrap_text_to_width(
+                cue.get("timestamp", ""),
+                SUMMARY_CUE_TIME_TEXT_WIDTH,
+                font_name=SUMMARY_TIMESTAMP_FONT,
+                font_size=SUMMARY_TIMESTAMP_SIZE,
+            )
+        ),
+        1,
+    )
+    time_height = timestamp_lines * SUMMARY_TIMESTAMP_LINE_HEIGHT
+    if cue.get("line_cite"):
+        line_cite_lines = len(
+            _wrap_text_to_width(
+                cue.get("line_cite", ""),
+                SUMMARY_CUE_TIME_TEXT_WIDTH,
+                font_name=SUMMARY_LINE_CITE_FONT,
+                font_size=SUMMARY_LINE_CITE_SIZE,
+            )
+        )
+        time_height += (0.055 * inch) + (line_cite_lines * SUMMARY_LINE_CITE_LINE_HEIGHT)
+
+    text_height = 0.0
+    if cue.get("speaker"):
+        text_height += SUMMARY_SPEAKER_LINE_HEIGHT + 0.03 * inch
+    if cue.get("quote"):
+        quote_lines = len(
+            _wrap_text_to_width(
+                cue.get("quote", ""),
+                SUMMARY_CUE_TEXT_WIDTH,
+                font_name=SUMMARY_QUOTE_FONT,
+                font_size=SUMMARY_QUOTE_SIZE,
+            )
+        )
+        text_height += (quote_lines * SUMMARY_QUOTE_LINE_HEIGHT) + 0.035 * inch
+    if cue.get("note"):
+        note_lines = len(
+            _wrap_text_to_width(
+                cue.get("note", ""),
+                SUMMARY_CUE_TEXT_WIDTH,
+                font_name=SUMMARY_NOTE_FONT,
+                font_size=SUMMARY_NOTE_SIZE,
+            )
+        )
+        text_height += note_lines * SUMMARY_NOTE_LINE_HEIGHT
+
+    content_height = max(time_height, text_height, SUMMARY_NOTE_LINE_HEIGHT)
+    return content_height + (0.21 * inch)
+
+
+def paginate_structured_summary(
+    review_cues: List[dict],
+    *,
+    speakers: str = "",
+    call_summary: str = "",
+) -> dict:
+    """Pack summary notes by estimated rendered height instead of fixed counts."""
+    context_layout = _choose_context_layout(speakers, call_summary)
+    context_height = _estimate_context_height(context_layout, speakers, call_summary)
+
+    page1_budget = SUMMARY_CONTENT_HEIGHT - SUMMARY_ASSESSMENT_HEIGHT - SUMMARY_SECTION_GAP
+    if context_height:
+        page1_budget -= context_height + SUMMARY_SECTION_GAP
+    page1_budget -= SUMMARY_NOTES_HEADING_HEIGHT
+    if review_cues:
+        page1_budget -= SUMMARY_NOTES_KEY_HEIGHT + SUMMARY_NOTES_TABLE_BOTTOM
+    else:
+        page1_budget -= SUMMARY_NO_NOTES_HEIGHT
+
+    overflow_budget = SUMMARY_CONTENT_HEIGHT - SUMMARY_NOTES_HEADING_HEIGHT - SUMMARY_NOTES_TABLE_BOTTOM
+    page_budgets = [max(page1_budget, 0.0)]
+    pages: List[List[dict]] = [[]]
+
+    current_page = 0
+    remaining = page_budgets[0]
+    for cue in review_cues:
+        cue_height = _estimate_cue_height(cue)
+        if pages[current_page] and cue_height > remaining:
+            pages.append([])
+            current_page += 1
+            page_budgets.append(max(overflow_budget, 0.0))
+            remaining = page_budgets[current_page]
+
+        pages[current_page].append(cue)
+        remaining -= cue_height
+
+    return {
+        "context_layout": context_layout,
+        "page1_review_cues": pages[0] if pages else [],
+        "overflow_review_cue_pages": [
+            {"review_cues": page_cues}
+            for page_cues in pages[1:]
+            if page_cues
+        ],
+    }
 
 
 def _draw_transcript_rules(c: canvas.Canvas) -> None:
@@ -489,7 +715,7 @@ def _render_cover_pages(
     # ── Summary page context ──
     if summary:
         ctx["summary_meta_file"] = U.shorten_middle(file_name)
-        meta_details = [display_datetime or call_datetime, file_duration]
+        meta_details = [display_datetime or call_datetime]
         ctx["summary_meta_details"] = " \u00b7 ".join(p for p in meta_details if p)
 
         sections = U.parse_summary_sections(summary)
@@ -502,27 +728,19 @@ def _render_cover_pages(
             ctx["review_cues"] = hydrate_review_cues(sections.get("review_cue_items", []), line_entries)
             ctx["cue_count"] = len(ctx["review_cues"])
 
-            # Split review cues across two summary pages for HIGH-relevance
-            # calls when they exceed what fits on page 1 alongside Identity +
-            # Brief Summary. MEDIUM/LOW keep the existing single-page layout.
-            all_cues = ctx["review_cues"]
-            if rel == "HIGH" and len(all_cues) > SUMMARY_PAGE1_CUE_CAP:
-                ctx["page1_review_cues"] = all_cues[:SUMMARY_PAGE1_CUE_CAP]
-                ctx["page2_review_cues"] = all_cues[SUMMARY_PAGE1_CUE_CAP:SUMMARY_PAGE1_CUE_CAP + SUMMARY_PAGE2_CUE_CAP]
-                ctx["has_continuation"] = True
-                ctx["page2_cue_count"] = len(ctx["page2_review_cues"])
-                ctx["page2_first_index"] = SUMMARY_PAGE1_CUE_CAP + 1
-                ctx["page2_last_index"] = SUMMARY_PAGE1_CUE_CAP + len(ctx["page2_review_cues"])
-            else:
-                ctx["page1_review_cues"] = all_cues
-                ctx["page2_review_cues"] = []
-                ctx["has_continuation"] = False
-
             spk = sections.get("speakers", "")
             ctx["speakers"] = spk.replace("\n", " ").strip() if spk else ""
 
             cs = sections.get("call_summary", "")
             ctx["call_summary"] = cs.replace("\n", " ").strip() if cs else ""
+            pagination = paginate_structured_summary(
+                ctx["review_cues"],
+                speakers=ctx["speakers"],
+                call_summary=ctx["call_summary"],
+            )
+            ctx["page1_review_cues"] = pagination["page1_review_cues"]
+            ctx["overflow_review_cue_pages"] = pagination["overflow_review_cue_pages"]
+            ctx["context_layout"] = pagination["context_layout"]
         else:
             rel_match = re.search(r"RELEVANCE:\s*(HIGH|MEDIUM|LOW)", summary, re.IGNORECASE)
             if rel_match:
@@ -534,6 +752,7 @@ def _render_cover_pages(
                 body = summary.strip()
 
             ctx["raw_body"] = body
+            ctx["overflow_review_cue_pages"] = []
             raw_blocks: list = []
             for para in re.split(r'\n{2,}', body):
                 para = para.strip()

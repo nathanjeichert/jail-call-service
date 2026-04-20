@@ -9,7 +9,7 @@ ffmpeg-python==0.2.0
 pydub==0.25.1
 pydantic==2.10.0
 assemblyai==0.50.0
-google-genai==1.52.0
+google-genai==1.73.1
 sse-starlette==1.8.0
 python-dotenv==1.0.1
 sqlalchemy==2.0.36
