@@ -427,9 +427,12 @@ body {
     position: relative;
     margin: 0;
     color: var(--teal);
-    font-size: 8.2pt;
+    font-size: 9pt;
     font-weight: 800;
     text-transform: uppercase;
+    line-height: 1;
+    padding-top: 0.03in;
+    padding-bottom: 0.03in;
 }
 
 .section-heading::after {
@@ -437,44 +440,26 @@ body {
     position: absolute;
     left: 1.08in;
     right: 0;
-    top: 0.06in;
+    top: 0.17in;
     border-top: 1px solid var(--rule);
 }
 
 .section-heading-label {
     position: relative;
     z-index: 1;
-    padding-right: 0.14in;
+    padding-right: 0.16in;
     background: var(--paper);
 }
 
 .notes-key {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.1in 0.16in;
+    width: 1.02in;
+    padding: 0.05in 0.08in 0.055in;
     border: 1px solid var(--rule);
     background: var(--wash);
-    padding: 0.08in 0.12in;
 }
 
-.notes-key-item {
-    display: flex;
-    gap: 0.08in;
-    align-items: baseline;
-}
-
-.notes-key-label {
-    color: var(--muted);
-    font-size: 7pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    flex: 0 0 auto;
-}
-
-.notes-key-value {
-    color: var(--body);
-    font-size: 7.7pt;
-    line-height: 1.3;
+.notes-key-sample {
+    width: 100%;
 }
 
 .cue-table {
@@ -700,13 +685,9 @@ body {
                 <div class="section-heading"><span class="section-heading-label">Notes</span></div>
                 {% if page1_review_cues %}
                 <div class="notes-key">
-                    <div class="notes-key-item">
-                        <span class="notes-key-label">Audio timestamp</span>
-                        <span class="notes-key-value">[MM:SS]</span>
-                    </div>
-                    <div class="notes-key-item">
-                        <span class="notes-key-label">Transcript cite</span>
-                        <span class="notes-key-value">Page:Line</span>
+                    <div class="notes-key-sample">
+                        <div class="cue-timestamp">[MM:SS]</div>
+                        <div class="cue-line-cite">Page:Line</div>
                     </div>
                 </div>
                 <table class="cue-table">

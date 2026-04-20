@@ -39,6 +39,8 @@ class QuoteLineRefTests(unittest.TestCase):
 
         self.assertEqual(cues[0]["line_cite"], line_ref)
         expected_quote = f"{line_entries[0]['text']} {line_entries[1]['text']}".strip()
+        if len(line_entries) > 2:
+            expected_quote += "..."
         self.assertEqual(cues[0]["quote"], expected_quote)
 
     def test_timestamp_only_cue_still_gets_line_cite(self):
@@ -119,8 +121,38 @@ class QuoteLineRefTests(unittest.TestCase):
         cues = hydrate_review_cues(sections.get("review_cue_items"), line_entries)
 
         self.assertEqual(cues[0]["line_cite"], line_ref)
-        expected_quote = " ".join(line_entries[i]["text"] for i in range(3)).strip()
+        expected_quote = " ".join(line_entries[i]["text"] for i in range(3)).strip() + "..."
         self.assertEqual(cues[0]["quote"], expected_quote)
+
+    def test_mid_sentence_line_ref_gets_ellipses_on_both_sides(self):
+        turns = [
+            TranscriptTurn(
+                speaker="INMATE",
+                timestamp="[00:00]",
+                text=(
+                    "This is a single continuous sentence with enough detail to wrap across "
+                    "multiple transcript lines so a middle cited line should gain ellipses on "
+                    "both sides when the extractor shows only that mid sentence fragment."
+                ),
+            )
+        ]
+        line_entries = compute_line_entries(turns, 0.0)
+        self.assertGreaterEqual(len(line_entries), 3)
+
+        middle_entry = line_entries[1]
+        line_ref = f"{middle_entry['page']}:{middle_entry['line']}"
+        summary = (
+            "RELEVANCE: MEDIUM\n\n"
+            "NOTES:\n"
+            f"- [00:00] INMATE [{line_ref}] - Example note.\n\n"
+            "BRIEF SUMMARY:\n"
+            "Example."
+        )
+
+        sections = parse_summary_sections(summary)
+        cues = hydrate_review_cues(sections.get("review_cue_items"), line_entries)
+
+        self.assertEqual(cues[0]["quote"], f"...{middle_entry['text']}...")
 
     def test_structured_summary_renders_derived_timestamp_and_speaker(self):
         turns = [

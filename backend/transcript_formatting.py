@@ -68,8 +68,8 @@ SUMMARY_CARD_GAP = 0.16 * inch
 SUMMARY_CARD_PADDING_X = 0.18 * inch
 SUMMARY_CARD_PADDING_Y = 0.16 * inch
 SUMMARY_CONTEXT_TWO_COL_GAP = 0.18 * inch
-SUMMARY_NOTES_HEADING_HEIGHT = 0.24 * inch
-SUMMARY_NOTES_KEY_HEIGHT = 0.34 * inch
+SUMMARY_NOTES_HEADING_HEIGHT = 0.31 * inch
+SUMMARY_NOTES_KEY_HEIGHT = 0.31 * inch
 SUMMARY_NOTES_TABLE_BOTTOM = 0.08 * inch
 SUMMARY_NO_NOTES_HEIGHT = 0.82 * inch
 SUMMARY_CUE_TIME_WIDTH = 1.02 * inch
@@ -368,6 +368,7 @@ def _line_cite_for_timestamp(timestamp: str, line_entries: Optional[List[dict]])
 
 _LINE_CITE_RANGE_RE = re.compile(r"^\s*(\d+):(\d+)(?:\s*[-\u2013\u2014]\s*(\d+):(\d+))?\s*$")
 _INLINE_QUOTED_TEXT_RE = re.compile(r'"([^"\n]{1,200})"')
+_SENTENCE_END_RE = re.compile(r"[.!?](?:['\")\]]+)?\s*$")
 
 
 def _normalize_line_cite_range(value: str) -> str:
@@ -430,6 +431,63 @@ def _entries_for_line_cite(
     return selected
 
 
+def _line_entry_lookup(line_entries: Optional[List[dict]]) -> dict:
+    lookup = {}
+    for entry in line_entries or []:
+        try:
+            key = (int(entry.get("turn_index", -1)), int(entry.get("line_index", -1)))
+        except (TypeError, ValueError):
+            continue
+        lookup[key] = entry
+    return lookup
+
+
+def _same_turn_neighbor(
+    entry: dict,
+    lookup: dict,
+    *,
+    direction: int,
+) -> Optional[dict]:
+    try:
+        key = (int(entry.get("turn_index", -1)), int(entry.get("line_index", -1)) + direction)
+    except (TypeError, ValueError):
+        return None
+    return lookup.get(key)
+
+
+def _has_sentence_boundary_before(entry: dict, lookup: dict) -> bool:
+    prev_entry = _same_turn_neighbor(entry, lookup, direction=-1)
+    if not prev_entry:
+        return True
+
+    prev_text = str(prev_entry.get("text", "") or "").strip()
+    if not prev_text:
+        return True
+    return bool(_SENTENCE_END_RE.search(prev_text))
+
+
+def _has_sentence_boundary_after(entry: dict, lookup: dict) -> bool:
+    next_entry = _same_turn_neighbor(entry, lookup, direction=1)
+    if not next_entry:
+        return True
+
+    text = str(entry.get("text", "") or "").strip()
+    if not text:
+        return True
+    return bool(_SENTENCE_END_RE.search(text))
+
+
+def _apply_quote_ellipses(text: str, *, prefix: bool, suffix: bool) -> str:
+    quote = str(text or "").strip()
+    if not quote:
+        return ""
+    if prefix and not quote.startswith("..."):
+        quote = f"...{quote}"
+    if suffix and not quote.endswith("..."):
+        quote = f"{quote}..."
+    return quote
+
+
 def resolve_line_ref_context(
     line_cite: str,
     line_entries: Optional[List[dict]],
@@ -482,7 +540,13 @@ def _quote_from_line_cite(
 
     quote = " ".join(str(entry.get("text", "")).strip() for entry in excerpt if str(entry.get("text", "")).strip())
     quote = re.sub(r"\s+", " ", quote).strip()
-    return quote if quote and len(quote) <= max_chars else ""
+    if not quote or len(quote) > max_chars:
+        return ""
+
+    lookup = _line_entry_lookup(line_entries)
+    prefix_ellipsis = not _has_sentence_boundary_before(excerpt[0], lookup)
+    suffix_ellipsis = excerpt[-1].get("id") != selected[-1].get("id") or not _has_sentence_boundary_after(excerpt[-1], lookup)
+    return _apply_quote_ellipses(quote, prefix=prefix_ellipsis, suffix=suffix_ellipsis)
 
 
 def hydrate_review_cues(
