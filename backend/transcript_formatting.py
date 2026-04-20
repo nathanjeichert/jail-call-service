@@ -10,6 +10,7 @@ Ported and trimmed from main/backend/transcript_formatting.py.
 """
 
 import io
+import os
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -18,7 +19,9 @@ from typing import Dict, List, Optional
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
+from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 from . import pdf_utils as U
@@ -76,20 +79,22 @@ SUMMARY_CUE_TIME_WIDTH = 1.02 * inch
 SUMMARY_CUE_TEXT_PAD_LEFT = 0.13 * inch
 SUMMARY_CUE_TIME_TEXT_WIDTH = SUMMARY_CUE_TIME_WIDTH - 0.06 * inch
 SUMMARY_CUE_TEXT_WIDTH = SUMMARY_WIDTH - SUMMARY_CUE_TIME_WIDTH - SUMMARY_CUE_TEXT_PAD_LEFT
+SUMMARY_WRAP_WIDTH_RESERVE = 0.03 * inch
+SUMMARY_QUOTE_GLYPHS = "\u201c\u201d"
 
 SUMMARY_CARD_TITLE_FONT = "Helvetica-Bold"
 SUMMARY_CARD_TITLE_SIZE = 7.8
 SUMMARY_CARD_TITLE_LINE_HEIGHT = 10.0
-SUMMARY_CARD_BODY_FONT = "Helvetica"
+SUMMARY_CARD_BODY_FONT = "Summary-Avenir"
 SUMMARY_CARD_BODY_SIZE = 9.1
 SUMMARY_CARD_BODY_LINE_HEIGHT = 13.5
 SUMMARY_SPEAKER_FONT = "Helvetica-Bold"
 SUMMARY_SPEAKER_SIZE = 7.6
 SUMMARY_SPEAKER_LINE_HEIGHT = 9.0
-SUMMARY_QUOTE_FONT = "Times-Roman"
+SUMMARY_QUOTE_FONT = "Summary-Georgia"
 SUMMARY_QUOTE_SIZE = 10.4
 SUMMARY_QUOTE_LINE_HEIGHT = 13.7
-SUMMARY_NOTE_FONT = "Helvetica"
+SUMMARY_NOTE_FONT = "Summary-Avenir"
 SUMMARY_NOTE_SIZE = 8.75
 SUMMARY_NOTE_LINE_HEIGHT = 12.1
 SUMMARY_TIMESTAMP_FONT = "Helvetica-Bold"
@@ -102,6 +107,58 @@ SUMMARY_LINE_CITE_LINE_HEIGHT = 9.0
 # Re-export public symbols that other modules depend on
 timestamp_to_seconds = U.timestamp_to_seconds
 parse_summary_sections = U.parse_summary_sections
+
+
+_SUMMARY_FONT_CANDIDATES = {
+    "Summary-Georgia": [
+        "/System/Library/Fonts/Supplemental/Georgia.ttf",
+        "/usr/share/fonts/truetype/msttcorefonts/Georgia.ttf",
+        "/usr/share/fonts/truetype/msttcorefonts/georgia.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+    ],
+    "Summary-Avenir": [
+        "/System/Library/Fonts/Avenir Next.ttc",
+        "/System/Library/Fonts/Avenir.ttc",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ],
+}
+_SUMMARY_FONT_FALLBACKS = {
+    "Summary-Georgia": "Times-Roman",
+    "Summary-Avenir": "Helvetica",
+}
+_SUMMARY_FONT_MAP: Dict[str, str] = {}
+
+
+def _register_summary_measurement_fonts() -> None:
+    """Register closer metric fonts for summary layout estimation when available."""
+    if _SUMMARY_FONT_MAP:
+        return
+
+    for logical_name, candidates in _SUMMARY_FONT_CANDIDATES.items():
+        for path in candidates:
+            if not os.path.isfile(path):
+                continue
+            try:
+                if logical_name not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont(logical_name, path))
+                _SUMMARY_FONT_MAP[logical_name] = logical_name
+                break
+            except Exception:
+                continue
+        else:
+            _SUMMARY_FONT_MAP[logical_name] = _SUMMARY_FONT_FALLBACKS[logical_name]
+
+
+def _summary_font(font_name: str) -> str:
+    _register_summary_measurement_fonts()
+    return _SUMMARY_FONT_MAP.get(font_name, font_name)
+
+
+def _safe_wrap_width(max_width: float) -> float:
+    return max(max_width - SUMMARY_WRAP_WIDTH_RESERVE, 1.0)
 
 
 def wrap_text(text: str, max_width: int) -> List[str]:
@@ -136,6 +193,8 @@ def _wrap_text_to_width(
     if not text:
         return []
 
+    font_name = _summary_font(font_name)
+    max_width = _safe_wrap_width(max_width)
     words = text.split()
     lines: List[str] = []
     current: List[str] = []
@@ -247,9 +306,10 @@ def _estimate_cue_height(cue: dict) -> float:
     if cue.get("speaker"):
         text_height += SUMMARY_SPEAKER_LINE_HEIGHT + 0.03 * inch
     if cue.get("quote"):
+        quote_text = f"{SUMMARY_QUOTE_GLYPHS[0]}{cue.get('quote', '')}{SUMMARY_QUOTE_GLYPHS[1]}"
         quote_lines = len(
             _wrap_text_to_width(
-                cue.get("quote", ""),
+                quote_text,
                 SUMMARY_CUE_TEXT_WIDTH,
                 font_name=SUMMARY_QUOTE_FONT,
                 font_size=SUMMARY_QUOTE_SIZE,

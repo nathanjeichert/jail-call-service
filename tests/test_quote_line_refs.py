@@ -176,8 +176,16 @@ class QuoteLineRefTests(unittest.TestCase):
         summary = SummaryResponse(
             relevance="MEDIUM",
             notes=[
-                SummaryNote(line_ref=later_line_ref, reason="Follow-up instruction about discovery."),
-                SummaryNote(line_ref=earlier_line_ref, reason="Outside party reports discovery has not been produced."),
+                SummaryNote(
+                    line_ref=later_line_ref,
+                    reason="Follow-up instruction about discovery.",
+                    importance_rank=2,
+                ),
+                SummaryNote(
+                    line_ref=earlier_line_ref,
+                    reason="Outside party reports discovery has not been produced.",
+                    importance_rank=1,
+                ),
             ],
             brief_summary="Discovery status is discussed.",
         )

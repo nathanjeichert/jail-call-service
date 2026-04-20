@@ -7,7 +7,7 @@ from backend.gemini_structured import SummaryNote, SummaryResponse, render_summa
 from backend.models import TranscriptTurn
 from backend.pdf_utils import parse_summary_sections
 from backend.summary_normalization import (
-    SUMMARY_NOTE_LIMITS,
+    SUMMARY_NOTE_HARD_MAX,
     normalize_structured_summary,
     normalize_summary_text,
 )
@@ -52,21 +52,25 @@ def _line_ref_blocks(line_entries, count, *, span=3):
 
 
 class TranscriptSummaryLayoutTests(unittest.TestCase):
-    def _build_summary_fixture(self, note_count):
+    def _build_summary_fixture(self, note_count, *, relevance="HIGH", importance_ranks=None, reason=None):
         turns = _fixture_001_1646962560_5000_13_159_593()
         line_entries = compute_line_entries(turns, 18 * 60.0)
         line_refs = _line_ref_blocks(line_entries, note_count, span=3)
+        if importance_ranks is None:
+            importance_ranks = list(range(1, note_count + 1))
+        reason_text = reason or (
+            "Flags a detailed attorney-review moment about witness credibility, "
+            "charging posture, evidence, or defense preparation."
+        )
         summary = SummaryResponse(
-            relevance="HIGH",
+            relevance=relevance,
             notes=[
                 SummaryNote(
                     line_ref=line_ref,
-                    reason=(
-                        "Flags a detailed attorney-review moment about witness credibility, "
-                        "charging posture, evidence, or defense preparation."
-                    ),
+                    reason=reason_text,
+                    importance_rank=importance_ranks[idx],
                 )
-                for line_ref in line_refs
+                for idx, line_ref in enumerate(line_refs)
             ],
             identity_of_outside_party=(
                 "The outside party is the defendant's father, addressed as Dad early in the call, "
@@ -79,19 +83,32 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
         )
         return turns, line_entries, summary
 
-    def test_normalized_structured_summary_caps_high_notes(self):
-        turns, line_entries, summary = self._build_summary_fixture(30)
+    def test_summary_schema_caps_notes_and_requires_importance_rank(self):
+        schema = SummaryResponse.model_json_schema()
+
+        self.assertEqual(schema["properties"]["notes"]["maxItems"], SUMMARY_NOTE_HARD_MAX)
+        note_schema = schema["$defs"]["SummaryNote"]
+        self.assertIn("importance_rank", note_schema["required"])
+        self.assertEqual(note_schema["properties"]["importance_rank"]["minimum"], 1)
+        self.assertEqual(note_schema["properties"]["importance_rank"]["maximum"], SUMMARY_NOTE_HARD_MAX)
+
+    def test_normalized_structured_summary_drops_low_ranked_notes_first(self):
+        turns, line_entries, summary = self._build_summary_fixture(
+            7,
+            relevance="LOW",
+            importance_ranks=[7, 6, 5, 4, 3, 2, 1],
+            reason=(
+                "Flags a detailed attorney-review moment about witness credibility, charging posture, "
+                "evidence, defense preparation, and enough extra context to force page-budget trimming."
+            ),
+        )
         normalized = normalize_structured_summary(summary, line_entries)
-        self.assertLessEqual(len(normalized.notes), SUMMARY_NOTE_LIMITS["HIGH"]["hard"])
-        self.assertGreater(len(normalized.notes), 0)
 
-        rendered = render_summary_text(normalized, line_entries)
-        sections = parse_summary_sections(rendered)
-        cues = hydrate_review_cues(sections.get("review_cue_items"), line_entries)
-
-        self.assertEqual(len(cues), len(normalized.notes))
-        self.assertIn("IDENTITY OF OUTSIDE PARTY", rendered)
-        self.assertIn("BRIEF SUMMARY", rendered)
+        kept_ranks = {note.importance_rank for note in normalized.notes}
+        self.assertLess(len(normalized.notes), 7)
+        self.assertIn(1, kept_ranks)
+        self.assertIn(2, kept_ranks)
+        self.assertNotIn(7, kept_ranks)
 
     def test_normalize_summary_text_strips_reasoning_preamble(self):
         turns, line_entries, _ = self._build_summary_fixture(6)
@@ -114,10 +131,15 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
         normalized = normalize_summary_text(raw, line_entries)
         sections = parse_summary_sections(normalized)
         cues = hydrate_review_cues(sections.get("review_cue_items"), line_entries)
+        pagination = paginate_structured_summary(
+            cues,
+            speakers=sections.get("speakers", ""),
+            call_summary=sections.get("call_summary", ""),
+        )
 
         self.assertTrue(normalized.startswith("RELEVANCE: LOW"))
         self.assertNotIn("Thinking Process", normalized)
-        self.assertEqual(len(cues), SUMMARY_NOTE_LIMITS["LOW"]["hard"])
+        self.assertFalse(pagination["overflow_review_cue_pages"])
 
     def test_paginator_preserves_every_kept_cue(self):
         turns, line_entries, summary = self._build_summary_fixture(19)
@@ -139,6 +161,22 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
 
         self.assertEqual(len(paged_cues), len(cues))
         self.assertTrue(pagination["overflow_review_cue_pages"])
+
+    def test_rendered_notes_remain_chronological_after_ranked_selection(self):
+        turns, line_entries, summary = self._build_summary_fixture(
+            4,
+            relevance="HIGH",
+            importance_ranks=[4, 3, 2, 1],
+        )
+        rendered = render_summary_text(summary, line_entries)
+        sections = parse_summary_sections(rendered)
+        cues = sections.get("review_cue_items") or []
+        timestamps = [cue["timestamp"] for cue in cues]
+
+        self.assertEqual(
+            timestamps,
+            sorted(timestamps, key=lambda value: int(value[1:3]) * 60 + int(value[4:6])),
+        )
 
     def test_pdf_regression_keeps_context_on_page_one_and_removes_continued_chrome(self):
         turns, line_entries, summary = self._build_summary_fixture(19)

@@ -532,6 +532,47 @@ def get_config():
     }
 
 
+@app.get("/api/debug/mem")
+def debug_mem():
+    """Live memory snapshot — intended for pipeline benchmarking.
+
+    `ps`-RSS alone undercounts MLX on Apple Silicon because unified memory is
+    billed separately from the resident Python heap. `mx.metal.*` exposes the
+    Metal-side allocations directly, so we surface both alongside a
+    resource-module RSS reading from inside the server process.
+    """
+    import resource
+
+    rusage = resource.getrusage(resource.RUSAGE_SELF)
+    # macOS reports ru_maxrss in bytes, Linux in KB — normalize to bytes.
+    maxrss_bytes = rusage.ru_maxrss
+    if maxrss_bytes < 1024 * 1024 * 16:  # heuristic: looks like KB, not bytes
+        maxrss_bytes *= 1024
+
+    mlx: dict = {}
+    try:
+        import mlx.core as mx
+        metal = mx.metal
+        for name, fn in (
+            ("active_memory_bytes", getattr(metal, "get_active_memory", None)),
+            ("peak_memory_bytes", getattr(metal, "get_peak_memory", None)),
+            ("cache_memory_bytes", getattr(metal, "get_cache_memory", None)),
+        ):
+            if fn is None:
+                continue
+            try:
+                mlx[name] = int(fn())
+            except Exception:
+                pass
+    except ImportError:
+        pass
+
+    return {
+        "ps_maxrss_bytes": int(maxrss_bytes),
+        "mlx": mlx,
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

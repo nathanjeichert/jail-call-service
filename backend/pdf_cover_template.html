@@ -695,13 +695,13 @@ body {
             {% if speakers or call_summary %}
             <div class="context-grid {{ context_layout or 'single' }}">
                 {% if speakers %}
-                <div class="context-card">
+                <div class="context-card" data-summary-role="identity-card">
                     <div class="context-card-title">Identity of Outside Party</div>
                     <div class="context-card-text">{{ speakers }}</div>
                 </div>
                 {% endif %}
                 {% if call_summary %}
-                <div class="context-card">
+                <div class="context-card" data-summary-role="brief-card">
                     <div class="context-card-title">Brief Summary</div>
                     <div class="context-card-text">{{ call_summary }}</div>
                 </div>
@@ -720,7 +720,7 @@ body {
                 </div>
                 <table class="cue-table">
                     {% for cue in page1_review_cues %}
-                    <tr>
+                    <tr class="cue-row" data-cue-timestamp="{{ cue.timestamp }}">
                         <td class="cue-time">
                             <div class="cue-timestamp">{{ cue.timestamp }}</div>
                             {% if cue.line_cite %}
@@ -798,7 +798,7 @@ body {
         <div class="notes-section">
             <table class="cue-table">
                 {% for cue in overflow_page.review_cues %}
-                <tr>
+                <tr class="cue-row" data-cue-timestamp="{{ cue.timestamp }}">
                     <td class="cue-time">
                         <div class="cue-timestamp">{{ cue.timestamp }}</div>
                         {% if cue.line_cite %}

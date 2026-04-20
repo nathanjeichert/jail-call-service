@@ -23,18 +23,34 @@ class SummaryNote(BaseModel):
         min_length=3,
         description=(
             "Exact supporting transcript line cite in Page:Line or "
-            "Page:Line-Page:Line format. Keep ranges short."
+            "Page:Line-Page:Line format. Prefer a single line when it fully "
+            "supports the note; otherwise keep ranges short."
         ),
     )
     reason: str = Field(
         min_length=1,
         description="Why this cited moment matters for attorney review.",
     )
+    importance_rank: int = Field(
+        ge=1,
+        le=21,
+        description=(
+            "Unique importance rank for this returned note. 1 is the most "
+            "important note in the response, and larger numbers are weaker."
+        ),
+    )
 
 
 class SummaryResponse(BaseModel):
     relevance: Literal["HIGH", "MEDIUM", "LOW"]
-    notes: List[SummaryNote] = Field(default_factory=list)
+    notes: List[SummaryNote] = Field(
+        default_factory=list,
+        max_length=21,
+        description=(
+            "Ordered from most important note to least important note. "
+            "Return no more than 21 notes total."
+        ),
+    )
     identity_of_outside_party: Optional[str] = Field(default=None)
     brief_summary: str = Field(default="")
 
@@ -68,14 +84,21 @@ GEMINI_SUMMARY_JSON_INSTRUCTIONS = (
     '- "line_ref": the exact supporting transcript line or short adjacent line range in '
     'Page:Line or Page:Line-Page:Line format\n'
     '- "reason": why that cited moment matters\n'
+    '- "importance_rank": unique integer rank where 1 is the strongest note in the response\n'
     "Do NOT include timestamps, speakers, or quoted text in the JSON notes. "
     "The application derives those from the cited lines.\n"
+    "Order the notes array from most important to least important. The application will "
+    "re-sort kept notes chronologically for display.\n"
     "Choose the shortest cited range that both directly supports the note and, when possible, "
-    "will read coherently when rendered as a standalone pull quote.\n"
+    "will read coherently when rendered as a standalone pull quote. Prefer a single cited line "
+    "when it fully supports the point; use 2-3 adjacent lines only when necessary.\n"
     "Use an empty notes array when there is nothing attorney-relevant to note.\n"
-    "Keep LOW calls to at most 3 notes, MEDIUM calls to at most 6 notes, "
-    "and HIGH calls to at most 21 notes. "
-    "If more moments seem arguable, omit weaker or redundant ones.\n"
+    "For LOW calls, usually return 0-3 notes. "
+    "For MEDIUM calls, do not exceed 6 notes. "
+    "For HIGH calls, usually keep the note count to about 12 so the strongest material fits cleanly "
+    "in two summary pages, but for unusually dense and highly relevant calls you may return more "
+    "when warranted, up to 21 notes total. "
+    "If more moments seem arguable, omit weaker or redundant ones so the strongest notes fit first.\n"
     "Set identity_of_outside_party to null when the caller cannot be reasonably identified.\n"
     "Ignore any transcript lines spoken by AUTOMATED MESSAGE when choosing notes or writing the brief summary."
 )

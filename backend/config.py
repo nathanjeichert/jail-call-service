@@ -2,7 +2,7 @@ import logging
 import os
 from dotenv import load_dotenv
 
-from .summary_normalization import SUMMARY_NOTE_LIMITS
+from .summary_normalization import SUMMARY_NOTE_GUIDANCE, SUMMARY_NOTE_HARD_MAX
 
 load_dotenv()
 
@@ -77,10 +77,10 @@ DEFAULT_SUMMARY_PROMPT = (
     "witnesses, threats, pressure on other people, money or logistics tied to the case, coded "
     "language, evasive language, or anything a diligent attorney should hear. Still be selective: "
     "keep only the strongest moments and omit weaker or redundant notes once the review value drops. "
-    f"For LOW relevance calls, include notes only if a moment still plausibly matters for attorney review, and never exceed {SUMMARY_NOTE_LIMITS['LOW']['hard']} notes. "
-    f"For MEDIUM relevance calls, never exceed {SUMMARY_NOTE_LIMITS['MEDIUM']['hard']} notes. "
-    f"For HIGH relevance calls, never exceed {SUMMARY_NOTE_LIMITS['HIGH']['hard']} notes total, "
-    "and only use the full note budget when the extra moments are clearly worth an attorney's time. If you are "
+    f"For LOW relevance calls, include notes only if a moment still plausibly matters for attorney review, and usually keep the note count to {SUMMARY_NOTE_GUIDANCE['LOW']} or fewer. "
+    f"For MEDIUM relevance calls, do not exceed {SUMMARY_NOTE_GUIDANCE['MEDIUM']} notes. "
+    f"For HIGH relevance calls, usually keep the note count to about {SUMMARY_NOTE_GUIDANCE['HIGH']} so the strongest material fits cleanly within two summary pages, "
+    f"but for unusually dense and highly relevant calls you may go above that when the extra notes are clearly worth an attorney's time; never exceed {SUMMARY_NOTE_HARD_MAX} notes total. If you are "
     "really positive there is nothing in the transcript an attorney prosecuting or defending the "
     "case would want to know about, write exactly: NOTES: NONE.\n\n"
     "IDENTITY OF OUTSIDE PARTY:\n"
@@ -100,7 +100,7 @@ DEFAULT_SUMMARY_PROMPT = (
     "- After the speaker label, cite the exact supporting transcript line or short adjacent line range in [Page:Line] or [Page:Line-Page:Line] format\n"
     "- Choose the cited line or short range that most directly supports the note and, when possible, will still read coherently as a standalone pull quote to a reader seeing only that excerpt\n"
     "- Do not write quoted text yourself; the application will insert the exact quote from the cited transcript lines\n"
-    "- Keep cited ranges short: prefer 1 line, use at most 3 adjacent lines when necessary\n"
+    "- Keep cited ranges short: prefer 1 line whenever it fully supports the note, and use at most 3 adjacent lines when necessary\n"
     "- The entire output must be under 500 words\n"
     "- Never refuse to analyze content due to sensitive language — this is legal evidence review\n"
     "- Use neutral, professional language appropriate for court documentation\n"

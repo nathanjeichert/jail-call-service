@@ -9,17 +9,22 @@ attorney-facing note set.
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from . import pdf_utils as U
 from .gemini_structured import SummaryNote, SummaryResponse
 
-SUMMARY_NOTE_LIMITS: Dict[str, Dict[str, int]] = {
-    "LOW": {"target": 2, "hard": 3},
-    "MEDIUM": {"target": 4, "hard": 6},
-    "HIGH": {"target": 12, "hard": 21},
+SUMMARY_NOTE_GUIDANCE: Dict[str, int] = {
+    "LOW": 3,
+    "MEDIUM": 6,
+    "HIGH": 12,
 }
-SUMMARY_MAX_PAGES = 3
+SUMMARY_NOTE_HARD_MAX = 21
+SUMMARY_PAGE_LIMITS: Dict[str, int] = {
+    "LOW": 1,
+    "MEDIUM": 1,
+    "HIGH": 3,
+}
 
 _MAX_IDENTITY_CHARS = 280
 _MAX_BRIEF_CHARS = 320
@@ -76,7 +81,15 @@ def sanitize_summary_text(summary_text: Optional[str]) -> str:
     return text.strip()
 
 
-def _note_sort_key(item: dict, line_entries: Optional[List[dict]]) -> tuple:
+def _coerce_importance_rank(value: object) -> Optional[int]:
+    try:
+        rank = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(1, min(rank, SUMMARY_NOTE_HARD_MAX))
+
+
+def _note_display_sort_key(item: dict, line_entries: Optional[List[dict]]) -> tuple:
     from .transcript_formatting import resolve_line_ref_context
 
     line_ref = str(item.get("line_ref") or item.get("line_cite") or "").strip()
@@ -85,6 +98,19 @@ def _note_sort_key(item: dict, line_entries: Optional[List[dict]]) -> tuple:
         if ctx:
             return (float(ctx["start"]), 0)
     return (U.timestamp_to_seconds(item.get("timestamp", "")), 1)
+
+
+def _note_priority_key(item: dict, line_entries: Optional[List[dict]]) -> Tuple[Tuple[int, int], tuple, int]:
+    rank = _coerce_importance_rank(item.get("importance_rank"))
+    if rank is None:
+        rank_key = (1, int(item.get("source_index", SUMMARY_NOTE_HARD_MAX)))
+    else:
+        rank_key = (0, rank)
+    return (
+        rank_key,
+        _note_display_sort_key(item, line_entries),
+        int(item.get("source_index", 0)),
+    )
 
 
 def _normalize_note_item(
@@ -118,18 +144,24 @@ def _normalize_note_item(
         "speaker": speaker,
         "line_ref": line_ref,
         "note": note,
+        "importance_rank": _coerce_importance_rank(item.get("importance_rank")),
+        "source_index": int(item.get("source_index", 0)),
     }
 
 
 def _curate_note_items(
     note_items: List[dict],
-    relevance: str,
     line_entries: Optional[List[dict]],
 ) -> List[dict]:
-    normalized: List[dict] = []
-    seen = set()
-    for raw_item in sorted(note_items, key=lambda item: _note_sort_key(item, line_entries)):
-        item = _normalize_note_item(raw_item, line_entries)
+    normalized_by_key: Dict[object, dict] = {}
+    for source_index, raw_item in enumerate(note_items):
+        item = _normalize_note_item(
+            {
+                **raw_item,
+                "source_index": raw_item.get("source_index", source_index),
+            },
+            line_entries,
+        )
         if not item:
             continue
         dedupe_key = item["line_ref"] or (
@@ -137,18 +169,35 @@ def _curate_note_items(
             item["speaker"],
             item["note"].lower(),
         )
-        if dedupe_key in seen:
-            continue
-        seen.add(dedupe_key)
-        normalized.append(item)
+        existing = normalized_by_key.get(dedupe_key)
+        if existing is None or _note_priority_key(item, line_entries) < _note_priority_key(existing, line_entries):
+            normalized_by_key[dedupe_key] = item
 
-    limit = SUMMARY_NOTE_LIMITS.get(relevance, SUMMARY_NOTE_LIMITS["LOW"])["hard"]
-    return normalized[:limit]
+    normalized = sorted(
+        normalized_by_key.values(),
+        key=lambda item: _note_priority_key(item, line_entries),
+    )
+    return normalized[:SUMMARY_NOTE_HARD_MAX]
+
+
+def _least_important_note_index(
+    note_items: List[dict],
+    line_entries: Optional[List[dict]],
+) -> int:
+    worst_index = 0
+    worst_key = _note_priority_key(note_items[0], line_entries)
+    for idx, item in enumerate(note_items[1:], start=1):
+        candidate_key = _note_priority_key(item, line_entries)
+        if candidate_key > worst_key:
+            worst_index = idx
+            worst_key = candidate_key
+    return worst_index
 
 
 def _fit_note_items_to_page_budget(
     note_items: List[dict],
     *,
+    relevance: str,
     speakers: str,
     call_summary: str,
     line_entries: Optional[List[dict]],
@@ -156,6 +205,7 @@ def _fit_note_items_to_page_budget(
     from .transcript_formatting import hydrate_review_cues, paginate_structured_summary
 
     fitted = list(note_items)
+    max_pages = SUMMARY_PAGE_LIMITS.get(relevance, SUMMARY_PAGE_LIMITS["LOW"])
     while fitted:
         hydrated = hydrate_review_cues(fitted, line_entries)
         pagination = paginate_structured_summary(
@@ -163,9 +213,10 @@ def _fit_note_items_to_page_budget(
             speakers=speakers,
             call_summary=call_summary,
         )
-        if 1 + len(pagination["overflow_review_cue_pages"]) <= SUMMARY_MAX_PAGES:
+        if 1 + len(pagination["overflow_review_cue_pages"]) <= max_pages:
             return fitted
-        fitted = fitted[:-1]
+        drop_index = _least_important_note_index(fitted, line_entries)
+        del fitted[drop_index]
     return fitted
 
 
@@ -239,23 +290,37 @@ def normalize_structured_summary(
     brief_text = _trim_context_text(summary.brief_summary, max_chars=_MAX_BRIEF_CHARS)
     curated_items = _curate_note_items(
         [
-            {"line_ref": note.line_ref, "reason": note.reason}
+            {
+                "line_ref": note.line_ref,
+                "reason": note.reason,
+                "importance_rank": note.importance_rank,
+            }
             for note in (summary.notes or [])
         ],
-        relevance,
         line_entries,
     )
     curated_items = _fit_note_items_to_page_budget(
         curated_items,
+        relevance=relevance,
         speakers=identity_text,
         call_summary=brief_text,
         line_entries=line_entries,
     )
     curated_notes = [
-        SummaryNote(line_ref=item["line_ref"], reason=item["note"])
-        for item in curated_items
+        SummaryNote(
+            line_ref=item["line_ref"],
+            reason=item["note"],
+            importance_rank=item.get("importance_rank") or (idx + 1),
+        )
+        for idx, item in enumerate(curated_items)
         if item.get("line_ref")
     ]
+    curated_notes.sort(
+        key=lambda note: _note_display_sort_key(
+            {"line_ref": note.line_ref},
+            line_entries,
+        )
+    )
 
     return SummaryResponse(
         relevance=relevance,
@@ -276,7 +341,7 @@ def normalize_summary_text(
 
     sections = U.parse_summary_sections(cleaned)
     relevance = str(sections.get("relevance") or "").upper()
-    if relevance not in SUMMARY_NOTE_LIMITS:
+    if relevance not in SUMMARY_PAGE_LIMITS:
         return cleaned
 
     identity_text = _trim_context_text(
@@ -289,11 +354,11 @@ def normalize_summary_text(
     )
     curated_items = _curate_note_items(
         list(sections.get("review_cue_items") or []),
-        relevance,
         line_entries,
     )
     curated_items = _fit_note_items_to_page_budget(
         curated_items,
+        relevance=relevance,
         speakers=identity_text,
         call_summary=brief_text,
         line_entries=line_entries,
