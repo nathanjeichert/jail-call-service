@@ -427,7 +427,7 @@ body {
     position: relative;
     margin: 0;
     color: var(--teal);
-    font-size: 9pt;
+    font-size: 8.2pt;
     font-weight: 800;
     text-transform: uppercase;
     line-height: 1;
@@ -440,31 +440,49 @@ body {
     position: absolute;
     left: 1.08in;
     right: 0;
-    top: 0.17in;
+    top: 0.12in;
     border-top: 1px solid var(--rule);
 }
 
 .section-heading-label {
     position: relative;
     z-index: 1;
-    padding-right: 0.16in;
+    display: inline-block;
+    padding-right: 0.14in;
     background: var(--paper);
-}
-
-.notes-key {
-    width: 1.02in;
-    padding: 0.05in 0.08in 0.055in;
-    border: 1px solid var(--rule);
-    background: var(--wash);
-}
-
-.notes-key-sample {
-    width: 100%;
 }
 
 .cue-table {
     width: 100%;
     border-collapse: collapse;
+}
+
+.notes-guide {
+    position: relative;
+    display: block;
+    margin-top: 0.11in;
+    padding: 0.02in 0 0.095in;
+    min-height: 0.34in;
+    border-bottom: 1px solid var(--ink);
+}
+
+.notes-guide-time {
+    width: 1.02in;
+    position: relative;
+    z-index: 1;
+}
+
+.notes-guide-title {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0.045in;
+    text-align: center;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 18pt;
+    font-weight: normal;
+    line-height: 1;
 }
 
 .cue-table tr {
@@ -475,6 +493,16 @@ body {
     border-bottom: 1px solid var(--rule);
     vertical-align: top;
     padding: 0.105in 0;
+}
+
+.notes-empty-heading {
+    margin: 0.05in 0 0.02in;
+    text-align: center;
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 18pt;
+    font-weight: normal;
+    line-height: 1;
 }
 
 .cue-time {
@@ -682,13 +710,13 @@ body {
             {% endif %}
 
             <div class="notes-section">
-                <div class="section-heading"><span class="section-heading-label">Notes</span></div>
                 {% if page1_review_cues %}
-                <div class="notes-key">
-                    <div class="notes-key-sample">
+                <div class="notes-guide">
+                    <div class="notes-guide-time">
                         <div class="cue-timestamp">[MM:SS]</div>
                         <div class="cue-line-cite">Page:Line</div>
                     </div>
+                    <div class="notes-guide-title">Notes</div>
                 </div>
                 <table class="cue-table">
                     {% for cue in page1_review_cues %}
@@ -714,6 +742,7 @@ body {
                     {% endfor %}
                 </table>
                 {% else %}
+                <div class="notes-empty-heading">Notes</div>
                 <div class="no-notes">
                     <div class="no-notes-title">No relevant information found.</div>
                     <div class="no-notes-text">No transcript moments were identified as needing attorney attention.</div>
@@ -767,7 +796,6 @@ body {
 
     <div class="summary-content summary-content-notes-only">
         <div class="notes-section">
-            <div class="section-heading"><span class="section-heading-label">Notes</span></div>
             <table class="cue-table">
                 {% for cue in overflow_page.review_cues %}
                 <tr>

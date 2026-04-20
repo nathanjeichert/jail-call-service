@@ -68,8 +68,8 @@ SUMMARY_CARD_GAP = 0.16 * inch
 SUMMARY_CARD_PADDING_X = 0.18 * inch
 SUMMARY_CARD_PADDING_Y = 0.16 * inch
 SUMMARY_CONTEXT_TWO_COL_GAP = 0.18 * inch
-SUMMARY_NOTES_HEADING_HEIGHT = 0.31 * inch
-SUMMARY_NOTES_KEY_HEIGHT = 0.31 * inch
+SUMMARY_NOTES_HEADING_HEIGHT = 0.0
+SUMMARY_NOTES_KEY_HEIGHT = 0.50 * inch
 SUMMARY_NOTES_TABLE_BOTTOM = 0.08 * inch
 SUMMARY_NO_NOTES_HEIGHT = 0.82 * inch
 SUMMARY_CUE_TIME_WIDTH = 1.02 * inch
@@ -290,7 +290,7 @@ def paginate_structured_summary(
     else:
         page1_budget -= SUMMARY_NO_NOTES_HEIGHT
 
-    overflow_budget = SUMMARY_CONTENT_HEIGHT - SUMMARY_NOTES_HEADING_HEIGHT - SUMMARY_NOTES_TABLE_BOTTOM
+    overflow_budget = SUMMARY_CONTENT_HEIGHT - SUMMARY_NOTES_TABLE_BOTTOM
     page_budgets = [max(page1_budget, 0.0)]
     pages: List[List[dict]] = [[]]
 
