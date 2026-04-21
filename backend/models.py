@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 from enum import Enum
 
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a"})
+SPEAKER_ASSIGNMENTS = frozenset({"left_inmate", "right_inmate"})
+DEFAULT_SPEAKER_ASSIGNMENT = "left_inmate"
 
 
 def strip_audio_extension(filename: str) -> str:
@@ -13,6 +15,13 @@ def strip_audio_extension(filename: str) -> str:
     if ext and ext.lower() in AUDIO_EXTENSIONS:
         return base
     return filename
+
+
+def normalize_speaker_assignment(value: Optional[str]) -> str:
+    candidate = str(value or "").strip().lower()
+    if candidate in SPEAKER_ASSIGNMENTS:
+        return candidate
+    return DEFAULT_SPEAKER_ASSIGNMENT
 
 
 def call_stem(index: int, filename: str) -> str:
@@ -123,6 +132,7 @@ class Job(BaseModel):
     transcription_engine: Optional[str] = None
     summarization_engine: Optional[str] = None
     auto_message_mode: Optional[str] = None  # "exclude", "label", or None (keep)
+    speaker_assignment: str = DEFAULT_SPEAKER_ASSIGNMENT
 
     class Config:
         use_enum_values = True

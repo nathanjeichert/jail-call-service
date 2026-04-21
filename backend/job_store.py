@@ -8,9 +8,17 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import joinedload
 
-from .models import Job, JobStage, CallResult, CallStatus
+from .models import (
+    DEFAULT_SPEAKER_ASSIGNMENT,
+    Job,
+    JobStage,
+    CallResult,
+    CallStatus,
+    normalize_speaker_assignment,
+)
 from . import config as cfg
 from .db import SessionLocal, engine, Base
 from .db_models import DBJob, DBCall
@@ -19,6 +27,20 @@ logger = logging.getLogger(__name__)
 
 # Initialize DB tables
 Base.metadata.create_all(bind=engine)
+
+
+def _ensure_schema_columns() -> None:
+    """Add lightweight columns that older local SQLite files may be missing."""
+    with engine.begin() as conn:
+        job_columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(jobs)"))
+        }
+        if "speaker_assignment" not in job_columns:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN speaker_assignment VARCHAR"))
+
+
+_ensure_schema_columns()
 
 def _job_dir(job_id: str) -> str:
     d = os.path.join(cfg.JOBS_DIR, job_id)
@@ -53,6 +75,7 @@ def _apply_job_fields(db_job: DBJob, job: Job) -> None:
     db_job.transcription_engine = job.transcription_engine
     db_job.summarization_engine = job.summarization_engine
     db_job.auto_message_mode = job.auto_message_mode
+    db_job.speaker_assignment = normalize_speaker_assignment(job.speaker_assignment)
 
 
 def _apply_call_fields(db_call: DBCall, call: CallResult) -> None:
@@ -145,11 +168,14 @@ def _map_to_pydantic(db_job: DBJob, *, include_turns: bool = True) -> Job:
         transcription_engine=db_job.transcription_engine,
         summarization_engine=db_job.summarization_engine,
         auto_message_mode=db_job.auto_message_mode,
+        speaker_assignment=normalize_speaker_assignment(
+            getattr(db_job, "speaker_assignment", None) or DEFAULT_SPEAKER_ASSIGNMENT
+        ),
         calls=calls,
     )
 
 
-def create_job(case_name: str, input_folder: str, summary_prompt: str, defendant_name: Optional[str] = None, skip_summary: bool = False, file_paths: Optional[List[str]] = None, xml_metadata_path: Optional[str] = None, transcription_engine: Optional[str] = None, summarization_engine: Optional[str] = None, auto_message_mode: Optional[str] = None) -> Job:
+def create_job(case_name: str, input_folder: str, summary_prompt: str, defendant_name: Optional[str] = None, skip_summary: bool = False, file_paths: Optional[List[str]] = None, xml_metadata_path: Optional[str] = None, transcription_engine: Optional[str] = None, summarization_engine: Optional[str] = None, auto_message_mode: Optional[str] = None, speaker_assignment: Optional[str] = None) -> Job:
     job_id = str(uuid.uuid4())
     _job_dir(job_id)  # ensure the folder exists for output
 
@@ -168,6 +194,7 @@ def create_job(case_name: str, input_folder: str, summary_prompt: str, defendant
             transcription_engine=transcription_engine,
             summarization_engine=summarization_engine,
             auto_message_mode=auto_message_mode,
+            speaker_assignment=normalize_speaker_assignment(speaker_assignment),
         )
         db.add(new_job)
         db.commit()

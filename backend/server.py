@@ -33,7 +33,13 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from . import job_store, pipeline
-from .models import AUDIO_EXTENSIONS, Job, CallStatus
+from .models import (
+    AUDIO_EXTENSIONS,
+    DEFAULT_SPEAKER_ASSIGNMENT,
+    Job,
+    CallStatus,
+    normalize_speaker_assignment,
+)
 from . import config as cfg
 from .job_settings import (
     compose_summary_prompt,
@@ -85,6 +91,7 @@ class CreateJobRequest(BaseModel):
     transcription_engine: Optional[str] = None
     summarization_engine: Optional[str] = None
     auto_message_mode: Optional[str] = None  # "exclude", "label", or None
+    speaker_assignment: Optional[str] = None
 
 
 class UpdateSummaryRequest(BaseModel):
@@ -126,6 +133,7 @@ def _job_summary(job: Job) -> dict:
         "error": job.error,
         "defendant_name": job.defendant_name,
         "summary_prompt": job.summary_prompt,
+        "speaker_assignment": normalize_speaker_assignment(job.speaker_assignment),
     }
 
 
@@ -259,6 +267,7 @@ def create_job(req: CreateJobRequest):
             if req.auto_message_mode is not None
             else "label"
         ),
+        speaker_assignment=normalize_speaker_assignment(req.speaker_assignment),
     )
     return _job_summary(job)
 
@@ -310,6 +319,9 @@ def get_job_settings(job_id: str):
         "transcription_engine": job.transcription_engine or "",
         "summarization_engine": job.summarization_engine or "",
         "auto_message_mode": job.auto_message_mode or "",
+        "speaker_assignment": normalize_speaker_assignment(
+            job.speaker_assignment or DEFAULT_SPEAKER_ASSIGNMENT
+        ),
     }
 
 

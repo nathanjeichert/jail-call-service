@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 const API = '/api';
@@ -18,6 +19,7 @@ type JobSummary = {
   error?: string;
   defendant_name?: string;
   summary_prompt?: string;
+  speaker_assignment?: string;
 };
 
 type AppConfig = {
@@ -105,6 +107,7 @@ function StatusBadge({ stage }: { stage: string }) {
 }
 
 export default function JobsPage() {
+  const router = useRouter();
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,6 +127,7 @@ export default function JobsPage() {
   const [selectedEngine, setSelectedEngine] = useState('');
   const [selectedSumEngine, setSelectedSumEngine] = useState('');
   const [autoMessageMode, setAutoMessageMode] = useState('label');
+  const [speakerAssignment, setSpeakerAssignment] = useState('left_inmate');
 
   const caseNameRef = useRef<HTMLInputElement>(null);
   const defendantNameRef = useRef<HTMLInputElement>(null);
@@ -204,6 +208,7 @@ export default function JobsPage() {
       transcription_engine: selectedEngine || undefined,
       summarization_engine: selectedSumEngine || undefined,
       auto_message_mode: autoMessageMode,
+      speaker_assignment: speakerAssignment,
     };
 
     if (!body.input_folder && (!body.file_paths || body.file_paths.length === 0)) {
@@ -222,6 +227,8 @@ export default function JobsPage() {
         const err = await safeJson(res);
         setError(err?.detail || 'Failed to create job');
       } else {
+        const createdJob = await safeJson(res);
+        const createdJobId = createdJob?.id;
         if (caseNameRef.current) caseNameRef.current.value = '';
         if (defendantNameRef.current) defendantNameRef.current.value = '';
         if (pathsRef.current) pathsRef.current.value = '';
@@ -233,6 +240,18 @@ export default function JobsPage() {
         setSelectedEngine(config?.default_transcription_engine || 'assemblyai');
         setSelectedSumEngine(config?.default_summarization_engine || 'gemini');
         setAutoMessageMode('label');
+        setSpeakerAssignment('left_inmate');
+
+        if (createdJobId) {
+          const startRes = await fetch(`${API}/jobs/${createdJobId}/start`, { method: 'POST' });
+          if (startRes.ok) {
+            setSubmitting(false);
+            router.push(`/jobs/${createdJobId}`);
+            return;
+          }
+          const startErr = await safeJson(startRes);
+          setError(startErr?.detail || 'Job was created but failed to start.');
+        }
         await loadJobs();
       }
     } catch (e) {
@@ -274,6 +293,7 @@ export default function JobsPage() {
       if (s.transcription_engine) setSelectedEngine(s.transcription_engine);
       if (s.summarization_engine) setSelectedSumEngine(s.summarization_engine);
       setAutoMessageMode(s.auto_message_mode || 'label');
+      setSpeakerAssignment(s.speaker_assignment || 'left_inmate');
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch {}
   };
@@ -408,13 +428,38 @@ export default function JobsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Defendant Name <span className="text-slate-400 font-normal">(Channel 1)</span></label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Defendant Name <span className="text-slate-400 font-normal">(used for the inmate speaker label)</span></label>
               <input
                 ref={defendantNameRef}
                 type="text"
                 placeholder="John Smith"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent"
               />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Speaker Assignment</label>
+              <div className="flex gap-3">
+                {[
+                  { value: 'left_inmate', label: 'Left = Inmate / Defendant' },
+                  { value: 'right_inmate', label: 'Right = Inmate / Defendant' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSpeakerAssignment(opt.value)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      speakerAssignment === opt.value
+                        ? 'bg-slate-800 text-white border-slate-800'
+                        : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Default is left speaker = inmate/defendant. Switch this if the recording sides are reversed for the whole job.
+              </p>
             </div>
             <EngineSelector
               label="Transcription Engine"
@@ -557,7 +602,7 @@ export default function JobsPage() {
               disabled={submitting || uploading}
               className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {uploading ? 'Uploading...' : submitting ? 'Creating...' : 'Create Job'}
+              {uploading ? 'Uploading...' : submitting ? 'Creating...' : 'Create & Start Job'}
             </button>
           </div>
         </form>

@@ -20,7 +20,16 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from .models import AUDIO_EXTENSIONS, Job, JobStage, CallResult, CallStatus, call_stem
+from .models import (
+    AUDIO_EXTENSIONS,
+    DEFAULT_SPEAKER_ASSIGNMENT,
+    Job,
+    JobStage,
+    CallResult,
+    CallStatus,
+    call_stem,
+    normalize_speaker_assignment,
+)
 from .icm_parser import find_icm_report, parse_icm_report
 from . import job_store, config as cfg, pdf_utils as U
 from .job_settings import resolve_runtime_selection, validate_runtime_selection
@@ -80,6 +89,24 @@ def _format_duration(seconds: Optional[float]) -> str:
     return U.format_duration(seconds)
 
 
+def _build_channel_labels(
+    call: CallResult,
+    defendant_name: Optional[str],
+    speaker_assignment: Optional[str],
+) -> Dict[int, str]:
+    inmate_label = call.inmate_name or defendant_name or "INMATE"
+    assignment = normalize_speaker_assignment(speaker_assignment or DEFAULT_SPEAKER_ASSIGNMENT)
+    if assignment == "right_inmate":
+        return {
+            1: "OUTSIDE PARTY",
+            2: inmate_label,
+        }
+    return {
+        1: inmate_label,
+        2: "OUTSIDE PARTY",
+    }
+
+
 # ── Per-call worker functions ──
 
 async def _convert_one(job_id, call, audio_dir, executor):
@@ -116,14 +143,11 @@ async def _convert_one(job_id, call, audio_dir, executor):
         return None
 
 
-async def _transcribe_one(job_id, call, defendant_name, engine):
+async def _transcribe_one(job_id, call, defendant_name, speaker_assignment, engine):
     """Transcribe a single call using the configured transcription engine."""
     job_store.update_call(job_id, call.index, status=CallStatus.TRANSCRIBING)
 
-    channel_labels = {
-        1: call.inmate_name or defendant_name or "INMATE",
-        2: "OUTSIDE PARTY",
-    }
+    channel_labels = _build_channel_labels(call, defendant_name, speaker_assignment)
     turns = await engine.transcribe(call.mp3_path, channel_labels=channel_labels)
     job_store.update_call(job_id, call.index, turns=turns, status=CallStatus.SUMMARIZING)
     call.turns = turns
@@ -539,7 +563,13 @@ async def _run_pipeline(job: Job) -> None:
                 return
             _advance_stage(JobStage.TRANSCRIBING)
             try:
-                result = await _transcribe_one(job_id, item, job.defendant_name, transcription_engine)
+                result = await _transcribe_one(
+                    job_id,
+                    item,
+                    job.defendant_name,
+                    job.speaker_assignment,
+                    transcription_engine,
+                )
                 progress["transcribing"] += 1
                 _emit(job_id, {
                     "type": "call_update", "index": result.index,

@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 
 from ..audio_converter import FFMPEG_PATH, _find_binary
 from ..models import TranscriptTurn, WordTimestamp
-from .base import mark_continuation_turns
+from .base import default_channel_speaker, mark_continuation_turns
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ def _segment_words(
     if not words:
         return []
 
-    speaker = channel_labels.get(channel) or f"CHANNEL {channel}"
+    speaker = channel_labels.get(channel) or default_channel_speaker(channel)
     segments = []
     current_words = [words[0]]
 
@@ -234,7 +234,7 @@ class ParakeetEngine:
                 "or set the FLUIDAUDIO_PATH environment variable."
             )
 
-        labels = channel_labels or {1: "CHANNEL 1", 2: "CHANNEL 2"}
+        labels = channel_labels or {1: default_channel_speaker(1), 2: default_channel_speaker(2)}
         loop = asyncio.get_event_loop()
 
         work_dir = tempfile.mkdtemp(prefix="parakeet_")

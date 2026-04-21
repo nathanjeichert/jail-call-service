@@ -38,6 +38,7 @@ type JobDetail = {
   calls: CallSummary[];
   defendant_name?: string;
   summary_prompt?: string;
+  speaker_assignment?: string;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -327,6 +328,7 @@ export default function JobDetailPage() {
   const isRunning = !['created', 'done', 'error', 'paused'].includes(job.stage);
   const pct = job.total_calls > 0 ? Math.round((job.done_calls / job.total_calls) * 100) : 0;
   const jobTitle = job.case_name || 'Jail Calls';
+  const inmateSpeakerSide = job.speaker_assignment === 'right_inmate' ? 'Right' : 'Left';
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -367,7 +369,7 @@ export default function JobDetailPage() {
                 disabled={starting}
                 className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors"
               >
-                {starting ? 'Starting...' : 'Start Processing'}
+                {starting ? 'Starting...' : 'Start Existing Job'}
               </button>
             )}
             {isRunning && (
@@ -466,6 +468,7 @@ export default function JobDetailPage() {
         <div className="mt-4 flex gap-6 text-sm">
           <div><span className="text-slate-400">Total:</span> <span className="font-medium">{job.total_calls}</span></div>
           <div><span className="text-slate-400">Done:</span> <span className="font-medium text-green-700">{job.done_calls}</span></div>
+          <div><span className="text-slate-400">Inmate Speaker:</span> <span className="font-medium">{inmateSpeakerSide}</span></div>
           {job.error_calls > 0 && (
             <div><span className="text-slate-400">Errors:</span> <span className="font-medium text-red-600">{job.error_calls}</span></div>
           )}

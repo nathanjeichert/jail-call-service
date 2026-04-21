@@ -7,8 +7,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backend.audio_converter import convert_single
-from backend.models import AUDIO_EXTENSIONS, CallResult, CallStatus, call_stem
-from backend.pipeline import _discover_audio_files, _record_pdf_failure
+from backend.models import (
+    AUDIO_EXTENSIONS,
+    DEFAULT_SPEAKER_ASSIGNMENT,
+    CallResult,
+    CallStatus,
+    call_stem,
+    normalize_speaker_assignment,
+)
+from backend.pipeline import _build_channel_labels, _discover_audio_files, _record_pdf_failure
 
 
 def _sha256(path: str) -> str:
@@ -103,6 +110,34 @@ class PipelineAudioRegressionTests(unittest.TestCase):
         )
         self.assertEqual(call.status, CallStatus.ERROR)
         self.assertEqual(call.error, "PDF failed: boom")
+
+    def test_build_channel_labels_defaults_to_left_inmate(self):
+        call = CallResult(
+            index=0,
+            filename="call.wav",
+            original_path="/tmp/call.wav",
+            inmate_name="Jane Doe",
+        )
+
+        labels = _build_channel_labels(call, "Fallback Name", DEFAULT_SPEAKER_ASSIGNMENT)
+
+        self.assertEqual(labels, {1: "Jane Doe", 2: "OUTSIDE PARTY"})
+
+    def test_build_channel_labels_swaps_when_right_is_inmate(self):
+        call = CallResult(
+            index=0,
+            filename="call.wav",
+            original_path="/tmp/call.wav",
+        )
+
+        labels = _build_channel_labels(call, "John Smith", "right_inmate")
+
+        self.assertEqual(labels, {1: "OUTSIDE PARTY", 2: "John Smith"})
+
+    def test_normalize_speaker_assignment_falls_back_to_default(self):
+        self.assertEqual(normalize_speaker_assignment("right_inmate"), "right_inmate")
+        self.assertEqual(normalize_speaker_assignment("bogus"), DEFAULT_SPEAKER_ASSIGNMENT)
+        self.assertEqual(normalize_speaker_assignment(None), DEFAULT_SPEAKER_ASSIGNMENT)
 
 
 if __name__ == "__main__":

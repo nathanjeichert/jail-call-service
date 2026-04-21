@@ -12,7 +12,7 @@ from tenacity import retry, retry_if_exception_type, wait_random_exponential, st
 
 from .. import config as cfg
 from ..models import TranscriptTurn, WordTimestamp
-from .base import mark_continuation_turns
+from .base import default_channel_speaker, mark_continuation_turns
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ def _turns_from_multichannel_response(
         except (TypeError, ValueError):
             channel_index = 1
 
-        speaker_name = labels.get(channel_index) or f"CHANNEL {channel_index}"
+        speaker_name = labels.get(channel_index) or default_channel_speaker(channel_index)
 
         timestamp_str = None
         if getattr(utterance, "start", None) is not None:
@@ -160,4 +160,4 @@ def _turns_from_multichannel_response(
     text_value = str(getattr(transcript, "text", "") or "").strip()
     if not text_value:
         return []
-    return [TranscriptTurn(speaker="CHANNEL 1", text=text_value, timestamp="[00:00]")]
+    return [TranscriptTurn(speaker=default_channel_speaker(1), text=text_value, timestamp="[00:00]")]

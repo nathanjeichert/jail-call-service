@@ -27,6 +27,7 @@ class DBJob(Base):
     transcription_engine = Column(String, nullable=True)
     summarization_engine = Column(String, nullable=True)
     auto_message_mode = Column(String, nullable=True)
+    speaker_assignment = Column(String, nullable=True)
 
     # One-to-many relationship with calls
     calls = relationship("DBCall", back_populates="job", cascade="all, delete-orphan", order_by="DBCall.index")

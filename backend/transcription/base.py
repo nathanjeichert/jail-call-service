@@ -14,6 +14,13 @@ _SPEAKER_LETTER_RE = re.compile(r"^[A-Z]$")
 _SPEAKER_NUMERIC_RE = re.compile(r"^[0-9]+$")
 
 
+def default_channel_speaker(channel: int) -> str:
+    return {
+        1: "LEFT SPEAKER",
+        2: "RIGHT SPEAKER",
+    }.get(int(channel), f"SPEAKER {channel}")
+
+
 def normalize_speaker_label(raw_value: object, fallback: str = "SPEAKER A") -> str:
     fallback_value = str(fallback or "").strip().upper() or "SPEAKER A"
     candidate = str(raw_value or "").strip()
