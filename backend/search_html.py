@@ -10,12 +10,12 @@ to a specific timestamp) or open the formatted transcript PDF.
 All call data is embedded in a <script> JSON blob; no external deps.
 """
 
-import json
 import logging
 import os
 import re
 from typing import List, Optional
 
+from .html_json import dump_script_safe_json
 from .models import call_stem
 from . import pdf_utils as U
 from .pdf_utils import parse_summary_sections, timestamp_to_seconds
@@ -131,14 +131,7 @@ def _build_call_data(calls) -> List[dict]:
 
 def generate_search_html(calls, case_name: str = "") -> str:
     call_data = _build_call_data(calls)
-    data_json = json.dumps(call_data, ensure_ascii=False)
-    # Neutralize any literal </script> or similar sequences so transcript text
-    # can't escape the embedding <script> block. Also escape U+2028/U+2029
-    # which are valid JSON but terminate JS string literals.
-    data_json = (data_json
-                 .replace("</", "<\\/")
-                 .replace("\u2028", "\\u2028")
-                 .replace("\u2029", "\\u2029"))
+    data_json = dump_script_safe_json(call_data)
     title = f"{case_name} — Searchable Call Index" if case_name else "Searchable Call Index"
 
     return _TEMPLATE.replace("__TITLE__", _escape(title)) \

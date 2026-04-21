@@ -7,8 +7,9 @@ since the rendered file ships as viewer.html alongside the audio/ directory.
 """
 
 import html as html_mod
-import json
 import os
+
+from ..html_json import dump_script_safe_json
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template.html")
 
@@ -65,7 +66,7 @@ def render_viewer(calls, case_name: str = "") -> str:
         line_entries = _line_entries_for_call(call)
         call_data.append(_build_call_entry(call, line_entries))
 
-    calls_json = json.dumps(call_data, ensure_ascii=False)
+    calls_json = dump_script_safe_json(call_data)
     escaped_case_name = html_mod.escape(case_name or "Jail Calls")
     result = template.replace("{{CALLS_JSON}}", calls_json)
     result = result.replace("{{ CALLS_JSON }}", calls_json)
