@@ -17,6 +17,7 @@ import asyncio
 import concurrent.futures
 import logging
 import re
+import io
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -48,6 +49,56 @@ MAX_IDENTITY_DESCS_PER_NUMBER = 6
 # attempt. Tenacity then retries up to 3 times with exponential backoff, so
 # the worst-case wall time is bounded.
 SYNTHESIS_TIMEOUT_SEC = 120
+
+
+def _is_case_report_local_link(uri: str) -> bool:
+    """Return True when a case-report link should resolve in the output package."""
+    if not uri:
+        return False
+    lower = uri.lower()
+    return (
+        lower.startswith("viewer.html?call=")
+        or lower.startswith("viewer.html")
+        or lower.startswith("transcripts/")
+    )
+
+
+def _rewrite_local_links_to_launch_actions(pdf_bytes: bytes) -> bytes:
+    """Rewrite relative /URI link actions to /Launch so macOS opens local files correctly."""
+    try:
+        from pypdf import PdfReader, PdfWriter
+        from pypdf.generic import NameObject, TextStringObject
+
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        writer = PdfWriter()
+
+        for page in reader.pages:
+            annots = page.get("/Annots") or []
+            for annot in annots:
+                annotation_obj = annot.get_object()
+                action = annotation_obj.get("/A")
+                if not action:
+                    continue
+                action_obj = action.get_object()
+                uri = action_obj.get("/URI")
+                if not isinstance(uri, str) or not _is_case_report_local_link(uri):
+                    continue
+                action_obj[NameObject("/S")] = NameObject("/Launch")
+                action_obj[NameObject("/F")] = TextStringObject(uri)
+                action_obj.pop("/URI", None)
+                annotation_obj[NameObject("/A")] = action_obj
+
+            writer.add_page(page)
+
+        output = io.BytesIO()
+        writer.write(output)
+        return output.getvalue()
+    except Exception as e:
+        logger.warning(
+            "Could not rewrite case-report PDF links for local launch actions: %s",
+            e,
+        )
+        return pdf_bytes
 
 
 CASE_REPORT_SYNTHESIS_PROMPT = """You are synthesizing analysis of multiple jail phone call transcripts for a legal team.
@@ -931,9 +982,8 @@ def generate_case_report_pdf(
     template = U.get_jinja_env().get_template("case_report_template.html")
     html_str = template.render(**ctx)
     # base_url is intentionally omitted so that relative <a href> values
-    # (e.g. "viewer.html?call=...", "transcripts/xxx.pdf") are written into
-    # the PDF link annotations as-is. The delivery zip places case-report.pdf
-    # at its root, next to viewer.html and the transcripts/ directory, so PDF
-    # readers resolve those relative URIs against wherever the end user
-    # extracts the zip.
-    return HTML(string=html_str).write_pdf()
+    # (e.g. "viewer.html?call=...", "transcripts/xxx.pdf") stay portable.
+    # We then rewrite those relative URI annotations to Launch actions so
+    # macOS opens them as local files from the extracted delivery root.
+    raw_pdf = HTML(string=html_str).write_pdf()
+    return _rewrite_local_links_to_launch_actions(raw_pdf)
