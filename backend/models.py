@@ -1,7 +1,18 @@
+import os
 import re
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from enum import Enum
+
+AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a"})
+
+
+def strip_audio_extension(filename: str) -> str:
+    """Strip one supported audio extension from a filename, if present."""
+    base, ext = os.path.splitext(filename)
+    if ext and ext.lower() in AUDIO_EXTENSIONS:
+        return base
+    return filename
 
 
 def call_stem(index: int, filename: str) -> str:
@@ -12,9 +23,7 @@ def call_stem(index: int, filename: str) -> str:
     pipeline, the case report, and the search page all build links using
     this helper so the names stay in lockstep.
     """
-    base = filename
-    if base.lower().endswith(".wav"):
-        base = base[:-4]
+    base = strip_audio_extension(filename)
     safe = re.sub(r"[^\w.\-]", "_", base)
     safe = re.sub(r"_+", "_", safe).strip("_") or "call"
     return f"{index + 1:03d}-{safe}"

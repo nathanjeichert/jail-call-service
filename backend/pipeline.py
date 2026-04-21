@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from .models import Job, JobStage, CallResult, CallStatus, call_stem
+from .models import AUDIO_EXTENSIONS, Job, JobStage, CallResult, CallStatus, call_stem
 from .icm_parser import find_icm_report, parse_icm_report
 from . import job_store, config as cfg, pdf_utils as U
 from .job_settings import resolve_runtime_selection, validate_runtime_selection
@@ -60,16 +60,16 @@ def _emit(job_id: str, event: dict) -> None:
 
 # ── Helpers ──
 
-def _discover_wav_files(input_folder: str) -> List[str]:
-    """Find all .wav files in the input folder (recursive)."""
+def _discover_audio_files(input_folder: str) -> List[str]:
+    """Find all supported audio files in the input folder (recursive)."""
     if not input_folder or not os.path.isdir(input_folder):
         return []
-    wav_files = []
+    audio_files = []
     for root, dirs, files in os.walk(input_folder):
         for f in files:
-            if f.lower().endswith(".wav"):
-                wav_files.append(os.path.join(root, f))
-    return sorted(wav_files)
+            if os.path.splitext(f)[1].lower() in AUDIO_EXTENSIONS:
+                audio_files.append(os.path.join(root, f))
+    return sorted(audio_files)
 
 
 def _call_stem(index: int, filename: str) -> str:
@@ -87,11 +87,13 @@ async def _convert_one(job_id, call, audio_dir, executor):
     from .audio_converter import convert_single
 
     stem = _call_stem(call.index, call.filename)
+    # Keep working copies outside output/ so they never ship in the delivery ZIP.
+    working_dir = os.path.join(job_store._job_dir(job_id), "source-working")
     job_store.update_call(job_id, call.index, status=CallStatus.CONVERTING)
 
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
-        executor, convert_single, call.index, call.original_path, audio_dir, stem,
+        executor, convert_single, call.index, call.original_path, audio_dir, stem, working_dir,
     )
 
     if result.success:
@@ -306,6 +308,14 @@ async def _generate_pdf_one(job_id, call, case_name, transcripts_dir, transcript
     return call
 
 
+def _record_pdf_failure(job_id: str, call: CallResult, error: Exception | str) -> None:
+    """Persist a PDF generation failure and keep the in-memory call in sync."""
+    message = f"PDF failed: {error}"
+    job_store.update_call(job_id, call.index, status=CallStatus.ERROR, error=message)
+    call.status = CallStatus.ERROR
+    call.error = message
+
+
 # ── Main pipeline ──
 
 async def run_job(job_id: str) -> None:
@@ -342,12 +352,14 @@ async def _run_pipeline(job: Job) -> None:
     # ── Stage 0: Discover files & initialize call records ──
     _emit(job_id, {"type": "stage", "stage": "discovering"})
 
-    wav_files = job.file_paths if job.file_paths else _discover_wav_files(job.input_folder)
+    wav_files = job.file_paths if job.file_paths else _discover_audio_files(job.input_folder)
     if not wav_files:
-        raise RuntimeError(f"No WAV files found in: {job.input_folder} and no files explicitly provided.")
+        raise RuntimeError(
+            f"No supported audio files found in: {job.input_folder} and no files explicitly provided."
+        )
 
     _emit(job_id, {"type": "discovered", "count": len(wav_files)})
-    logger.info("Discovered %d WAV files for job %s", len(wav_files), job_id)
+    logger.info("Discovered %d audio files for job %s", len(wav_files), job_id)
 
     # Load ICM report metadata if present
     if job.xml_metadata_path and os.path.exists(job.xml_metadata_path):
@@ -619,7 +631,7 @@ async def _run_pipeline(job: Job) -> None:
                     return
             except Exception as e:
                 logger.error("PDF error for %s: %s", item.filename, e)
-                job_store.update_call(job_id, item.index, error=f"PDF failed: {e}")
+                _record_pdf_failure(job_id, item, e)
                 progress["generating_pdf"] += 1
                 _emit(job_id, {
                     "type": "call_update", "index": item.index,

@@ -1,8 +1,8 @@
 """
-Batch G.729 WAV -> MP3 converter using native ffmpeg subprocess.
+Batch audio -> MP3 converter using native ffmpeg subprocess.
 
-Runs wav_repair first on each file, then converts to 64k MP3.
-Uses ThreadPoolExecutor for parallelism (ffmpeg processes).
+Copies each source file into a job-local working directory before any repair
+attempt so original evidence files are never mutated in place.
 """
 
 import os
@@ -10,7 +10,7 @@ import logging
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 from .wav_repair import repair_file_in_place
 
@@ -83,6 +83,7 @@ FFPROBE_PATH = _find_ffprobe()
 class ConversionResult:
     index: int
     original_path: str
+    working_path: Optional[str] = None
     mp3_path: Optional[str] = None
     duration_seconds: Optional[float] = None
     repaired: bool = False
@@ -120,9 +121,11 @@ def convert_single(
     src_path: str,
     output_dir: str,
     stem: Optional[str] = None,
+    working_dir: Optional[str] = None,
 ) -> ConversionResult:
     """
-    Repair header if needed, then convert src_path to MP3 in output_dir.
+    Copy the source into a job-local working directory, repair that working
+    copy if needed, then convert it to MP3 in output_dir.
     stem overrides the output filename stem (without extension).
     """
     result = ConversionResult(index=index, original_path=src_path)
@@ -135,39 +138,56 @@ def convert_single(
         result.error = f"Source file not found: {src_path}"
         return result
 
-    # Repair header if zeroed
-    try:
-        repaired = repair_file_in_place(src_path)
-        result.repaired = repaired
-    except Exception as e:
-        logger.warning("Header repair failed for %s: %s", src_path, e)
-
-    # Determine output path
     if stem is None:
         stem = os.path.splitext(os.path.basename(src_path))[0]
+
+    src_ext = os.path.splitext(src_path)[1].lower()
+    working_dir = working_dir or os.path.join(os.path.dirname(output_dir), "source-working")
+    os.makedirs(working_dir, exist_ok=True)
+    working_path = os.path.join(working_dir, f"{stem}{src_ext}")
+    shutil.copy2(src_path, working_path)
+    result.working_path = working_path
+
+    # Repair zeroed WAV headers on the working copy only.
+    try:
+        if src_ext == ".wav":
+            repaired = repair_file_in_place(working_path)
+            result.repaired = repaired
+    except Exception as e:
+        logger.warning("Header repair failed for working copy %s: %s", working_path, e)
+
+    # Determine output path
     mp3_path = os.path.join(output_dir, f"{stem}.mp3")
 
-    # Run ffmpeg: force G.729 decoder, preserve stereo channels, 64k MP3.
-    # Stereo output is intentional: ch1 (left) = inmate, ch2 (right) = outside party.
-    # AssemblyAI multichannel transcription requires separate channels — do NOT mix to mono.
+    # Run ffmpeg against the working copy. For WAV inputs, try the explicit G.729
+    # decode path first; for other accepted audio formats, use normal probing.
     cmd = [
         FFMPEG_PATH,
-        '-y',                    # overwrite
-        '-f', 'wav',             # force WAV container parse
-        '-c:a', 'g729',          # force G.729 decoder
-        '-i', src_path,
+        '-y',
+        '-i', working_path,
         '-c:a', 'libmp3lame',
         '-b:a', '64k',
         mp3_path,
     ]
+    if src_ext == ".wav":
+        cmd = [
+            FFMPEG_PATH,
+            '-y',
+            '-f', 'wav',
+            '-c:a', 'g729',
+            '-i', working_path,
+            '-c:a', 'libmp3lame',
+            '-b:a', '64k',
+            mp3_path,
+        ]
 
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if proc.returncode != 0:
+        if proc.returncode != 0 and src_ext == ".wav":
             # Retry without forcing decoder (some files may be clean)
             cmd_retry = [
                 FFMPEG_PATH, '-y',
-                '-i', src_path,
+                '-i', working_path,
                 '-c:a', 'libmp3lame',
                 '-b:a', '64k',
                 mp3_path,
@@ -176,6 +196,9 @@ def convert_single(
             if proc2.returncode != 0:
                 result.error = f"ffmpeg failed (rc={proc2.returncode}): {proc2.stderr[-500:]}"
                 return result
+        elif proc.returncode != 0:
+            result.error = f"ffmpeg failed (rc={proc.returncode}): {proc.stderr[-500:]}"
+            return result
 
         result.mp3_path = mp3_path
         result.duration_seconds = get_duration(mp3_path)
@@ -194,16 +217,18 @@ def batch_convert(
     files: List[str],
     output_dir: str,
     stems: Optional[List[str]] = None,
+    working_dir: Optional[str] = None,
     max_workers: Optional[int] = None,
     progress_callback=None,
 ) -> List[ConversionResult]:
     """
-    Convert a list of WAV files to MP3 in parallel.
+    Convert a list of audio files to MP3 in parallel.
 
     Args:
         files: List of source file paths
         output_dir: Directory for output MP3 files
         stems: Optional list of output stems (without .mp3). Defaults to source filename stems.
+        working_dir: Optional directory for copied source-working files.
         max_workers: Thread pool size. Defaults to cpu_count.
         progress_callback: Called with (completed, total) after each file finishes.
 
@@ -222,7 +247,7 @@ def batch_convert(
         futures = {}
         for i, src in enumerate(files):
             stem = stems[i] if stems else None
-            fut = executor.submit(convert_single, i, src, output_dir, stem)
+            fut = executor.submit(convert_single, i, src, output_dir, stem, working_dir)
             futures[fut] = i
 
         completed = 0

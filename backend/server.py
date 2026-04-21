@@ -33,7 +33,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from . import job_store, pipeline
-from .models import Job, CallStatus
+from .models import AUDIO_EXTENSIONS, Job, CallStatus
 from . import config as cfg
 from .job_settings import (
     compose_summary_prompt,
@@ -166,7 +166,6 @@ def _call_summary(call) -> dict:
 
 # ── Endpoints ──
 
-AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a"}
 XML_EXTENSIONS = {".xml"}
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 
