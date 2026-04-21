@@ -62,6 +62,20 @@ SYSTEM_AUDIO_DETECTION_JSON_PROMPT = (
     "Each system_audio item must contain:\n"
     '- "turn": the 0-based turn index shown in brackets at the start of the transcript turn\n'
     '- "text": ONLY the automated telecom substring from that turn\n'
+    "We are ONLY looking for pre-recorded system messages from the jail call service provider, "
+    "such as IVR prompts, monitoring warnings, balance announcements, provider sign-offs, and "
+    "time-remaining warnings.\n"
+    "Do NOT flag ordinary human conversation, crosstalk, backchanneling, or repeated human "
+    'speech just because both speakers say similar words, such as "Hey" / "Hey" or "yeah" / "yeah".\n'
+    "Key rule: provider-injected system audio is often played into BOTH otherwise hard-panned "
+    "channels at the same or nearly the same timestamp, so it can appear on both the INMATE and "
+    "OUTSIDE PARTY turns with the same underlying message.\n"
+    "Because the ASR transcript was produced separately for each channel, the two channel versions "
+    "of the same automated message may differ slightly in wording, spelling, punctuation, or may "
+    "have a missing/extra word or two. That does NOT mean only one turn should be flagged.\n"
+    "If the same provider-generated automated message appears on both channels at matching or "
+    "near-matching timestamps, include BOTH turn indices as separate system_audio items even if "
+    "their transcribed text is not perfectly identical.\n"
     "Automated messages include IVR prompts, call acceptance prompts, monitoring warnings, "
     "balance announcements, provider sign-offs, and time-remaining warnings.\n"
     "These are not human speech.\n"
