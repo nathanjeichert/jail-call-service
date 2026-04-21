@@ -314,10 +314,13 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
+      row-gap: 8px;
     }
 
     .search-input {
       flex: 1;
+      min-width: 220px;
       padding: 7px 12px;
       font-size: 13px;
       border: 1px solid var(--border);
@@ -350,6 +353,15 @@
       display: flex;
       align-items: center;
       gap: 6px;
+    }
+
+    .trans-tools {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     .page-info {
@@ -484,6 +496,80 @@
     .word-ts.active-word {
       background: rgba(184, 160, 106, 0.35);
       color: var(--accent);
+    }
+
+    .follow-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .follow-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-muted);
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .follow-state::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-faint);
+      flex-shrink: 0;
+    }
+
+    .follow-state.following {
+      border-color: rgba(184, 160, 106, 0.45);
+      background: rgba(184, 160, 106, 0.12);
+      color: var(--accent);
+    }
+
+    .follow-state.following::before {
+      background: var(--gold);
+      box-shadow: 0 0 0 3px rgba(184, 160, 106, 0.16);
+    }
+
+    .follow-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .follow-btn {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: background 0.12s, transform 0.12s;
+      white-space: nowrap;
+    }
+
+    .follow-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .follow-btn:active {
+      transform: translateY(1px);
+    }
+
+    .follow-btn[hidden] {
+      display: none;
     }
 
     /* ── Summary pane ── */
@@ -679,18 +765,25 @@
           <div class="trans-header">
             <input type="text" class="search-input" id="searchInput" placeholder="Search transcript…">
             <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
-            <div class="page-nav">
-              <button class="page-btn" id="prevBtn" onclick="goPage(-1)" disabled>
-                <svg viewBox="0 0 24 24">
-                  <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
-                </svg>
-              </button>
-              <span class="page-info" id="pageInfo">–</span>
-              <button class="page-btn" id="nextBtn" onclick="goPage(1)" disabled>
-                <svg viewBox="0 0 24 24">
-                  <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
-                </svg>
-              </button>
+            <div class="trans-tools">
+              <div class="page-nav">
+                <button class="page-btn" id="prevBtn" onclick="goPage(-1)" disabled>
+                  <svg viewBox="0 0 24 24">
+                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                  </svg>
+                </button>
+                <span class="page-info" id="pageInfo">–</span>
+                <button class="page-btn" id="nextBtn" onclick="goPage(1)" disabled>
+                  <svg viewBox="0 0 24 24">
+                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+                  </svg>
+                </button>
+              </div>
+              <div class="follow-controls">
+                <span class="follow-state following" id="followState">Following playback</span>
+                <span class="follow-meta" id="followMeta">Playback position updates here</span>
+                <button class="follow-btn" id="followResumeBtn" type="button" hidden>Return to playback</button>
+              </div>
             </div>
           </div>
           <div class="trans-scroll" id="transScroll"></div>
@@ -739,6 +832,9 @@
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
     const pageInfo = document.getElementById('pageInfo');
+    const followState = document.getElementById('followState');
+    const followMeta = document.getElementById('followMeta');
+    const followResumeBtn = document.getElementById('followResumeBtn');
     const mainTitleFilename = document.getElementById('mainTitleFilename');
     const mainMeta = document.getElementById('mainMeta');
     const mainDur = document.getElementById('mainDur');
@@ -747,12 +843,59 @@
     const loadingOverlay = document.getElementById('loadingOverlay');
     const toastEl = document.getElementById('toast');
     let isScrubbing = false;
+    let followPlayback = true;
+    let activePlaybackEntryKey = '';
+    let activePlaybackPage = 1;
+    let activePlaybackTime = 0;
+    let transcriptScrollGuard = 0;
 
     function showToast(msg, isError) {
       toastEl.textContent = msg;
       toastEl.className = 'toast visible' + (isError ? ' error' : '');
       clearTimeout(showToast._timer);
       showToast._timer = setTimeout(() => { toastEl.className = 'toast'; }, 3500);
+    }
+
+    function entryKey(entry) {
+      if (!entry) return '';
+      return String(entry.id || `${entry.page || 1}:${entry.line || 0}:${parseFloat(entry.start) || 0}`);
+    }
+
+    function setTranscriptScrollGuard(ms) {
+      clearTimeout(transcriptScrollGuard);
+      transScroll.dataset.programmatic = '1';
+      transcriptScrollGuard = setTimeout(() => {
+        delete transScroll.dataset.programmatic;
+      }, ms);
+    }
+
+    function updateFollowUi() {
+      followState.classList.toggle('following', followPlayback);
+      followState.textContent = followPlayback ? 'Following playback' : 'Browsing transcript';
+      if (lineEntries.length) {
+        const bits = [`Now playing ${formatTime(activePlaybackTime || 0)}`];
+        if (activePlaybackPage) bits.push(`p. ${activePlaybackPage}`);
+        followMeta.textContent = bits.join(' • ');
+      } else {
+        followMeta.textContent = 'Playback position updates here';
+      }
+      followResumeBtn.hidden = followPlayback;
+    }
+
+    function pauseFollowPlayback() {
+      if (!followPlayback) return;
+      followPlayback = false;
+      updateFollowUi();
+    }
+
+    function resumeFollowPlayback() {
+      if (searchInput.value.trim()) {
+        clearSearch();
+      }
+      followPlayback = true;
+      activePlaybackEntryKey = '';
+      updateFollowUi();
+      syncActiveLines(ws.getCurrentTime(), { forceReveal: true });
     }
 
     // ── Init call list ──
@@ -805,10 +948,15 @@
       // Build line entries
       lineEntries = call.lines || [];
       totalPages = lineEntries.reduce((m, l) => Math.max(m, l.page || 1), 1);
+      followPlayback = true;
+      activePlaybackEntryKey = '';
+      activePlaybackPage = 1;
+      activePlaybackTime = 0;
+      updateFollowUi();
 
       searchInput.value = '';
       searchClear.style.display = 'none';
-      goToPage(1);
+      goToPage(1, { source: 'load' });
     }
 
     // ── Transcript rendering ──
@@ -880,14 +1028,17 @@
       updatePageNav(page, maxPage, q);
     }
 
-    function goToPage(page) {
+    function goToPage(page, options) {
+      const source = options?.source || 'manual';
       currentPage = Math.max(1, Math.min(page, totalPages));
       renderPage(currentPage, searchInput.value);
+      setTranscriptScrollGuard(source === 'playback' ? 700 : 250);
       transScroll.scrollTo({ top: 0 });
+      if (source === 'manual') pauseFollowPlayback();
     }
 
     function goPage(delta) {
-      goToPage(currentPage + delta);
+      goToPage(currentPage + delta, { source: 'manual' });
     }
 
     function updatePageNav(page, maxPage, query) {
@@ -910,6 +1061,7 @@
     searchInput.addEventListener('input', () => {
       const q = searchInput.value.trim();
       searchClear.style.display = q ? 'block' : 'none';
+      if (q) pauseFollowPlayback();
       renderPage(currentPage, q);
     });
 
@@ -918,6 +1070,13 @@
       searchClear.style.display = 'none';
       renderPage(currentPage, '');
     }
+
+    followResumeBtn.addEventListener('click', resumeFollowPlayback);
+    transScroll.addEventListener('scroll', () => {
+      if (!followPlayback) return;
+      if (transScroll.dataset.programmatic === '1') return;
+      pauseFollowPlayback();
+    }, { passive: true });
 
     // ── Summary panel collapse ──
     function toggleSummaryPane() {
@@ -1106,31 +1265,36 @@
     speedBtn.textContent = SPEEDS[speedIdx] + '×';
     speedBtn.classList.toggle('modified', SPEEDS[speedIdx] !== 1);
 
-    function syncActiveLines(t) {
-      let activePage = 0;
+    function syncActiveLines(t, options) {
+      const forceReveal = !!options?.forceReveal;
+      let activeEntry = null;
       for (const entry of lineEntries) {
         const start = parseFloat(entry.start) || 0;
         const end = parseFloat(entry.end) || 0;
         if (t >= start && t < (end || start + 5)) {
-          activePage = entry.page || 1;
+          activeEntry = entry;
           break;
         }
       }
 
-      if (activePage && activePage !== currentPage) {
-        goToPage(activePage);
+      const activePage = activeEntry ? (activeEntry.page || 1) : 0;
+      const activeEntryKey = entryKey(activeEntry);
+      activePlaybackTime = t;
+      if (activePage) activePlaybackPage = activePage;
+      updateFollowUi();
+
+      const shouldFollow = followPlayback && !searchInput.value.trim();
+      if (shouldFollow && activePage && activePage !== currentPage) {
+        goToPage(activePage, { source: 'playback' });
       }
 
-      let didScroll = false;
+      let activeLineEl = null;
       document.querySelectorAll('.trans-line').forEach(el => {
         const start = parseFloat(el.dataset.start) || 0;
         const end = parseFloat(el.dataset.end) || 0;
         const isActive = t >= start && t < (end || start + 5);
         el.classList.toggle('active', isActive);
-        if (isActive && !didScroll) {
-          didScroll = true;
-          el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
+        if (isActive && !activeLineEl) activeLineEl = el;
         // Highlight active word within the line
         el.querySelectorAll('.word-ts').forEach(ws => {
           const ws0 = parseFloat(ws.dataset.ws) || 0;
@@ -1138,6 +1302,12 @@
           ws.classList.toggle('active-word', t >= ws0 && t < we0);
         });
       });
+
+      if (shouldFollow && activeLineEl && (forceReveal || activeEntryKey !== activePlaybackEntryKey)) {
+        setTranscriptScrollGuard(700);
+        activeLineEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+      activePlaybackEntryKey = activeEntryKey;
     }
 
     // ── Utilities ──
