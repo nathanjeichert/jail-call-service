@@ -543,6 +543,23 @@ body {
     text-align: center;
 }
 
+.lede.compact {
+    margin-bottom: 0.16in;
+    max-width: 7in;
+    font-size: 9.7pt;
+    line-height: 1.48;
+}
+
+.shot.compact {
+    margin-bottom: 0.16in;
+    padding: 0.13in 0.13in 0.14in;
+}
+
+.shot.compact .shot-caption {
+    margin-top: 0.08in;
+    font-size: 7.7pt;
+}
+
 /* ──────────────── Steps ──────────────── */
 
 .steps {
@@ -598,6 +615,20 @@ body {
     font-family: "Courier New", Courier, monospace;
     color: var(--ink);
     font-size: 9.1pt;
+}
+
+.steps.compact td {
+    padding: 0.075in 0;
+}
+
+.steps.compact .step-num {
+    width: 0.78in;
+    font-size: 16.1pt;
+}
+
+.steps.compact .step-text {
+    font-size: 9.25pt;
+    line-height: 1.42;
 }
 
 /* ──────────────── Relevance pills (analysis page) ──────────────── */
@@ -881,13 +912,13 @@ body {
     </div>
 
     <div class="inner-body">
-        <p class="lede">
-            The viewer is a single self-contained page. Open it from the delivery folder and every call, transcript, and audio file is right there &mdash; no install, no upload, no internet.
+        <p class="lede compact">
+            Open <span class="mono">viewer.html</span> to review every call offline from one page with synced audio, transcript text, and AI notes.
         </p>
 
         <table class="section-heading"><tr><td class="h-text">Interface</td><td class="h-rule"></td></tr></table>
 
-        <div class="shot">
+        <div class="shot compact">
             {% if viewer_shot_url %}
             <img class="shot-img" src="{{ viewer_shot_url }}" alt="Call viewer screenshot">
             {% else %}
@@ -901,10 +932,10 @@ body {
 
         <table class="section-heading"><tr><td class="h-text">Steps</td><td class="h-rule"></td></tr></table>
 
-        <table class="steps">
+        <table class="steps compact">
             <tr>
                 <td class="step-num">01</td>
-                <td class="step-text">Pick a call from the sidebar on the left to load its audio and transcript.</td>
+                <td class="step-text">Select a call from the left sidebar to load its audio and transcript.</td>
             </tr>
             <tr>
                 <td class="step-num">02</td>
@@ -912,19 +943,15 @@ body {
             </tr>
             <tr>
                 <td class="step-num">03</td>
-                <td class="step-text">Click any line in the transcript to jump the audio to that exact moment in the conversation.</td>
+                <td class="step-text">Use the speed control when you want a faster or slower review pass.</td>
             </tr>
             <tr>
                 <td class="step-num">04</td>
-                <td class="step-text">Use the search box at the top right to search within the current call&rsquo;s transcript only.</td>
+                <td class="step-text">Click any transcript line to jump the audio to that exact moment in the conversation.</td>
             </tr>
             <tr>
                 <td class="step-num">05</td>
-                <td class="step-text">Adjust playback speed (<strong>0.5&times;</strong> to <strong>2&times;</strong>) for faster or slower review.</td>
-            </tr>
-            <tr>
-                <td class="step-num">06</td>
-                <td class="step-text">The active line highlights as audio plays, so you always know where you are in the conversation.</td>
+                <td class="step-text">Use the search box at the top right to search within the current call only; the active text stays synced as the call plays.</td>
             </tr>
         </table>
     </div>
@@ -948,13 +975,13 @@ body {
     </div>
 
     <div class="inner-body">
-        <p class="lede">
-            The search page is both the searchable call index and the fastest way to sweep every transcript at once without opening calls one by one.
+        <p class="lede compact">
+            Open <span class="mono">search.html</span> when you want one sortable, searchable index across the entire delivery.
         </p>
 
         <table class="section-heading"><tr><td class="h-text">Interface</td><td class="h-rule"></td></tr></table>
 
-        <div class="shot">
+        <div class="shot compact">
             {% if search_shot_url %}
             <img class="shot-img" src="{{ search_shot_url }}" alt="Search page screenshot">
             {% else %}
@@ -968,26 +995,22 @@ body {
 
         <table class="section-heading"><tr><td class="h-text">Steps</td><td class="h-rule"></td></tr></table>
 
-        <table class="steps">
+        <table class="steps compact">
             <tr>
                 <td class="step-num">01</td>
-                <td class="step-text">Type a name, phrase, or keyword to search across every transcript, or leave the query blank and work directly from the full call table.</td>
+                <td class="step-text">Search by name, phrase, or keyword, or leave the query blank to browse the full call table.</td>
             </tr>
             <tr>
                 <td class="step-num">02</td>
-                <td class="step-text">Use the built-in filters and sortable columns to narrow the list by date, phone number, relevance, or other call metadata.</td>
+                <td class="step-text">Filter or sort by date, phone number, relevance, or other call metadata to narrow the list quickly.</td>
             </tr>
             <tr>
                 <td class="step-num">03</td>
-                <td class="step-text">Expand any row to review its AI notes, summary, and transcript excerpt in place before deciding whether to open the full call.</td>
+                <td class="step-text">Expand any row to review the AI notes, summary, and transcript excerpt in place before opening the full call.</td>
             </tr>
             <tr>
                 <td class="step-num">04</td>
-                <td class="step-text">Use the viewer and transcript buttons in each row to jump into <span class="mono">viewer.html</span> or the corresponding transcript PDF.</td>
-            </tr>
-            <tr>
-                <td class="step-num">05</td>
-                <td class="step-text">Clear the query or filters at any time to return to the full searchable index of every processed call.</td>
+                <td class="step-text">Use the row buttons to open <span class="mono">viewer.html</span> or the transcript PDF for the selected call.</td>
             </tr>
         </table>
     </div>
