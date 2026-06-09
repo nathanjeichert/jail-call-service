@@ -39,7 +39,7 @@ class PipelineAudioRegressionTests(unittest.TestCase):
             before_mtime = os.path.getmtime(src_path)
             ffmpeg_inputs = []
 
-            def fake_run(cmd, capture_output, text, timeout):
+            def fake_run(cmd, **_kwargs):
                 ffmpeg_inputs.append(cmd[cmd.index("-i") + 1])
                 Path(cmd[-1]).write_bytes(b"fake mp3")
                 return subprocess.CompletedProcess(cmd, 0, "", "")

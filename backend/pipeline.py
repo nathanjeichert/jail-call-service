@@ -74,7 +74,7 @@ def _discover_audio_files(input_folder: str) -> List[str]:
     if not input_folder or not os.path.isdir(input_folder):
         return []
     audio_files = []
-    for root, dirs, files in os.walk(input_folder):
+    for root, _dirs, files in os.walk(input_folder):
         for f in files:
             if os.path.splitext(f)[1].lower() in AUDIO_EXTENSIONS:
                 audio_files.append(os.path.join(root, f))
@@ -863,7 +863,7 @@ async def _stage_package(job: Job, output_dir: str) -> str:
         safe_name = safe_name or "Jail Calls"
         zip_path = os.path.join(job_store._job_dir(job.id), f"{safe_name}.zip")
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for root, dirs, files in os.walk(output_dir):
+            for root, _dirs, files in os.walk(output_dir):
                 for file in files:
                     abs_path = os.path.join(root, file)
                     arcname = os.path.join(safe_name, os.path.relpath(abs_path, output_dir))

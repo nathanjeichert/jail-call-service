@@ -7,6 +7,7 @@ Gemma 4 E2B model (4-bit quantized, ~3.6 GB RAM).
 
 import asyncio
 import gc
+import importlib.util
 import logging
 import re
 from typing import Dict, List, Optional
@@ -26,11 +27,8 @@ _CLOSE_MARKER = re.compile(r"<\s*channel\s*\|\s*>", re.IGNORECASE)
 _OPEN_MARKER = re.compile(r"<\s*\|\s*channel\s*>\s*thought\b", re.IGNORECASE)
 
 GEMMA_AVAILABLE = False
-try:
-    import mlx_lm  # noqa: F401
+if importlib.util.find_spec("mlx_lm") is not None:
     GEMMA_AVAILABLE = True
-except ImportError:
-    pass
 
 
 def _strip_thinking(text: str) -> str:

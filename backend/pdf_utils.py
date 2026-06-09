@@ -8,7 +8,6 @@ case_report, guide_pdf, and pipeline modules.
 import logging
 import os
 import re
-import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional

@@ -12,7 +12,6 @@ All call data is embedded in a <script> JSON blob; no external deps.
 
 import logging
 import os
-import re
 from typing import List, Optional
 
 from .html_json import dump_script_safe_json

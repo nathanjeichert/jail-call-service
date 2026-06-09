@@ -4,7 +4,7 @@ Stores jobs and calls to track large batch state persistently.
 """
 
 import os
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 from . import config as cfg
 
@@ -20,7 +20,7 @@ engine = create_engine(
 
 # Enable WAL mode for better concurrent read/write performance
 @event.listens_for(engine, "connect")
-def _set_sqlite_pragmas(dbapi_conn, connection_record):
+def _set_sqlite_pragmas(dbapi_conn, _connection_record):
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA busy_timeout=30000")

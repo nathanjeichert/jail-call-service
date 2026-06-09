@@ -16,6 +16,14 @@ from .gemma_engine import GEMMA_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "AVAILABLE_ENGINES",
+    "build_full_prompt",
+    "build_transcript_text",
+    "get_engine",
+    "SummarizationEngine",
+]
+
 AVAILABLE_ENGINES = []
 if GEMINI_AVAILABLE:
     AVAILABLE_ENGINES.append("gemini")

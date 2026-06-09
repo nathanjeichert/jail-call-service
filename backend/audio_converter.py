@@ -9,9 +9,8 @@ import os
 import logging
 import shutil
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Optional
 from .wav_repair import repair_file_in_place
 
 logger = logging.getLogger(__name__)
@@ -211,58 +210,3 @@ def convert_single(
         result.error = f"Conversion error: {e}"
 
     return result
-
-
-def batch_convert(
-    files: List[str],
-    output_dir: str,
-    stems: Optional[List[str]] = None,
-    working_dir: Optional[str] = None,
-    max_workers: Optional[int] = None,
-    progress_callback=None,
-) -> List[ConversionResult]:
-    """
-    Convert a list of audio files to MP3 in parallel.
-
-    Args:
-        files: List of source file paths
-        output_dir: Directory for output MP3 files
-        stems: Optional list of output stems (without .mp3). Defaults to source filename stems.
-        working_dir: Optional directory for copied source-working files.
-        max_workers: Thread pool size. Defaults to cpu_count.
-        progress_callback: Called with (completed, total) after each file finishes.
-
-    Returns:
-        List of ConversionResult in original order.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    if max_workers is None:
-        max_workers = max(1, os.cpu_count() or 1)
-
-    results: List[ConversionResult] = [None] * len(files)
-    total = len(files)
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {}
-        for i, src in enumerate(files):
-            stem = stems[i] if stems else None
-            fut = executor.submit(convert_single, i, src, output_dir, stem, working_dir)
-            futures[fut] = i
-
-        completed = 0
-        for fut in as_completed(futures):
-            i = futures[fut]
-            try:
-                results[i] = fut.result()
-            except Exception as e:
-                results[i] = ConversionResult(
-                    index=i,
-                    original_path=files[i],
-                    error=str(e),
-                )
-            completed += 1
-            if progress_callback:
-                progress_callback(completed, total)
-
-    return results

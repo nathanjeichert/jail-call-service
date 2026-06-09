@@ -9,7 +9,7 @@ from backend.guide_pdf import generate_guide_pdf
 def _page_text_entries(page):
     entries = []
 
-    def visitor_text(text, cm, tm, font_dict, font_size):
+    def visitor_text(text, _cm, tm, _font_dict, _font_size):
         stripped = " ".join(text.split())
         if stripped:
             entries.append((stripped, tm[5]))

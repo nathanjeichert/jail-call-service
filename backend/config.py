@@ -30,8 +30,6 @@ os.makedirs(JOBS_DIR, exist_ok=True)
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-# Processing
-DEFAULT_LINES_PER_PAGE = 25
 # 50 keeps AssemblyAI submission bursts well under the 100/min new-stream rate
 # and Gemini Flash Tier 1's 300 RPM with headroom for retries.
 MAX_TRANSCRIPTION_CONCURRENT = int(os.getenv("MAX_TRANSCRIPTION_CONCURRENT", "50"))

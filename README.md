@@ -66,7 +66,7 @@ Select the engine per-job from the UI. The local engine uses NVIDIA Parakeet TDT
 ## Requirements
 
 - Python 3.11+
-- Node.js 18+
+- Node.js 20.9+
 - ffmpeg (must be on PATH: `brew install ffmpeg`)
 - Gemini API key (or GOOGLE_API_KEY)
 - AssemblyAI API key (only if using cloud transcription)

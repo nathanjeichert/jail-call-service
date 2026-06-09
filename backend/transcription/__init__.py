@@ -16,6 +16,14 @@ from .parakeet_engine import ParakeetEngine, _find_fluidaudiocli
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "AVAILABLE_ENGINES",
+    "get_engine",
+    "mark_continuation_turns",
+    "normalize_speaker_label",
+    "TranscriptionEngine",
+]
+
 AVAILABLE_ENGINES = []
 if ASSEMBLYAI_AVAILABLE:
     AVAILABLE_ENGINES.append("assemblyai")
