@@ -1,20 +1,17 @@
 """
-Shared PDF utilities — fonts, formatting helpers, template caching.
+Shared PDF utilities — formatting helpers, template caching, summary parsing.
 
 Centralises functions previously duplicated across transcript_formatting,
 case_report, guide_pdf, and pipeline modules.
 """
 
 import logging
-import os
 import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import jinja2
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 
 logger = logging.getLogger(__name__)
 
@@ -25,77 +22,6 @@ RELEVANCE_DESC: Dict[str, str] = {
     "MEDIUM": "Substantive legal or case context, not clearly central",
     "LOW": "Little to no apparent case relevance",
 }
-
-
-# ────────────────────────── Font registration ──────────────────────────
-
-# Platform-aware Courier New (or compatible) font registration.  Probes
-# common locations on macOS and Linux; falls back to ReportLab's built-in
-# Courier if no TrueType file is found.
-
-_COURIER_SEARCH_PATHS: List[List[str]] = [
-    # macOS
-    [
-        "/System/Library/Fonts/Supplemental/Courier New.ttf",
-        "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
-    ],
-    # Linux — msttcorefonts (installed via ttf-mscorefonts-installer)
-    [
-        "/usr/share/fonts/truetype/msttcorefonts/Courier_New.ttf",
-        "/usr/share/fonts/truetype/msttcorefonts/Courier_New_Bold.ttf",
-    ],
-    # Linux — alternative msttcorefonts naming
-    [
-        "/usr/share/fonts/truetype/msttcorefonts/cour.ttf",
-        "/usr/share/fonts/truetype/msttcorefonts/courbd.ttf",
-    ],
-    # Linux — Liberation Mono (metric-compatible Courier New substitute)
-    [
-        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
-    ],
-    # Linux — alternative liberation path (e.g. Fedora)
-    [
-        "/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf",
-        "/usr/share/fonts/liberation-mono/LiberationMono-Bold.ttf",
-    ],
-]
-
-_fonts_registered = False
-
-
-def register_fonts() -> None:
-    """Register CourierNew / CourierNew-Bold for ReportLab.
-
-    Tries platform-specific TrueType paths first, then falls back to
-    ReportLab's built-in Courier (always available but not TrueType).
-    Safe to call multiple times — registration is idempotent.
-    """
-    global _fonts_registered
-    if _fonts_registered:
-        return
-
-    for pair in _COURIER_SEARCH_PATHS:
-        regular, bold = pair
-        if os.path.isfile(regular) and os.path.isfile(bold):
-            pdfmetrics.registerFont(TTFont("CourierNew", regular))
-            pdfmetrics.registerFont(TTFont("CourierNew-Bold", bold))
-            _fonts_registered = True
-            logger.debug("Registered TrueType Courier from %s", regular)
-            return
-
-    # Fall back to built-in Courier — always available in ReportLab.
-    # We register a font-family alias so that canvas code using the
-    # "CourierNew" name transparently maps to the built-in Courier.
-    logger.warning(
-        "No TrueType Courier New / Liberation Mono found; "
-        "falling back to ReportLab built-in Courier. "
-        "Install fonts-liberation or ttf-mscorefonts-installer for better results."
-    )
-    from reportlab.lib.fonts import addMapping
-    addMapping("CourierNew", 0, 0, "Courier")        # normal
-    addMapping("CourierNew", 1, 0, "Courier-Bold")    # bold
-    _fonts_registered = True
 
 
 # ────────────────────────── Jinja2 template environment ──────────────────────────

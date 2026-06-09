@@ -8,6 +8,20 @@
     margin: 0;
 }
 
+@font-face {
+    font-family: "Courier Prime";
+    src: url("{{ courier_regular_uri }}") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "Courier Prime";
+    src: url("{{ courier_bold_uri }}") format("truetype");
+    font-weight: bold;
+    font-style: normal;
+}
+
 *, *::before, *::after {
     box-sizing: border-box;
 }
@@ -46,12 +60,66 @@ body {
     width: 8.5in;
     height: 11in;
     overflow: hidden;
-    page-break-after: always;
+    break-after: page;
     background: var(--paper);
 }
 
 .page:last-child {
-    page-break-after: auto;
+    break-after: auto;
+}
+
+/* ── Transcript sheets (legal deposition style) ─────────────────────
+   Geometry mirrors backend/transcript_formatting.py constants:
+   rules at 0.92in / 0.97in (left double) and 7.4in (right single),
+   line numbers right-aligned ending at 0.78in, 25 rows at 25pt pitch
+   with row `top` offsets precomputed in Python. */
+.t-rule {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    border-left: 0.5pt solid #000;
+}
+
+.t-rule-left-outer { left: 0.92in; }
+.t-rule-left-inner { left: 0.97in; }
+.t-rule-right { left: 7.4in; }
+
+/* Rows are placed with transform: translateY rather than `top` because
+   Chromium pixel-snaps the painted baseline of statically positioned text;
+   transforms keep the exact fractional 25pt pitch. */
+.t-row,
+.t-pageno {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    line-height: 25pt;
+    font-family: "Courier Prime", "Courier New", Courier, monospace;
+    color: #000;
+}
+
+.t-row {
+    font-size: 12pt;
+}
+
+.t-num {
+    display: inline-block;
+    width: {{ t_line_num_width }}pt;
+    text-align: right;
+    font-size: 10pt;
+}
+
+.t-text {
+    display: inline-block;
+    margin-left: {{ t_text_indent }}pt;
+    white-space: pre;
+}
+
+.t-pageno {
+    top: {{ t_pageno_top }}pt;
+    text-align: center;
+    font-size: 10pt;
 }
 
 .label,
@@ -826,6 +894,18 @@ body {
 </div>
 {% endfor %}
 {% endif %}
+
+{% for sheet in transcript_sheets %}
+<div class="page transcript">
+    <div class="t-rule t-rule-left-outer"></div>
+    <div class="t-rule t-rule-left-inner"></div>
+    <div class="t-rule t-rule-right"></div>
+    {%- for row in sheet.rows %}
+    <div class="t-row" style="top: {{ row.top }}pt;"><span class="t-num">{{ row.line }}</span><span class="t-text">{{ row.text }}</span></div>
+    {%- endfor %}
+    <div class="t-pageno">{{ sheet.number }}</div>
+</div>
+{% endfor %}
 
 </body>
 </html>

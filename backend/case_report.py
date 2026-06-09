@@ -9,8 +9,9 @@ Aggregates per-call summaries into a standalone case-level report:
   - Frequent caller statistics (with AI-inferred identities)
   - At-a-glance metrics, daily call timeline, relevance distribution
 
-Renders via WeasyPrint, sharing all design tokens with pdf_cover_template.html
-and guide_template.html.
+Renders via headless Chromium (backend.pdf_render) with Paged.js paged-media
+support, sharing all design tokens with pdf_cover_template.html and
+guide_template.html.
 """
 
 import asyncio
@@ -51,16 +52,29 @@ MAX_IDENTITY_DESCS_PER_NUMBER = 6
 SYNTHESIS_TIMEOUT_SEC = 120
 
 
-def _is_case_report_local_link(uri: str) -> bool:
-    """Return True when a case-report link should resolve in the output package."""
+# Trailing local-target portion of a link annotation URI. Chromium resolves
+# relative hrefs against the temp-file URL the HTML was rendered from, so the
+# annotations arrive as absolute file:///tmp/.../viewer.html?call=... URIs;
+# a bare relative URI (e.g. from older renderer output) is also accepted.
+# Group 1 captures the delivery-relative path: "viewer.html" with an optional
+# ?query, or "transcripts/<file>.pdf" with an optional #fragment.
+_LOCAL_TARGET_RE = re.compile(
+    r"(?:^|/)((?:viewer\.html(?:\?[^#]*)?)|(?:transcripts/[^/?#]+\.pdf(?:#.*)?))$"
+)
+
+
+def _extract_local_target(uri: str) -> Optional[str]:
+    """Return the delivery-relative target for a case-report local link.
+
+    Links are built upstream with ``urllib.parse.quote``; the percent-encoded
+    form is preserved exactly as it appears after the prefix strip (no
+    unquote/requote round-trip). URIs that do not end in a local-target
+    pattern return None and are left untouched.
+    """
     if not uri:
-        return False
-    lower = uri.lower()
-    return (
-        lower.startswith("viewer.html?call=")
-        or lower.startswith("viewer.html")
-        or lower.startswith("transcripts/")
-    )
+        return None
+    match = _LOCAL_TARGET_RE.search(uri)
+    return match.group(1) if match else None
 
 
 def _rewrite_local_links_to_launch_actions(pdf_bytes: bytes) -> bytes:
@@ -81,10 +95,11 @@ def _rewrite_local_links_to_launch_actions(pdf_bytes: bytes) -> bytes:
                     continue
                 action_obj = action.get_object()
                 uri = action_obj.get("/URI")
-                if not isinstance(uri, str) or not _is_case_report_local_link(uri):
+                target = _extract_local_target(uri) if isinstance(uri, str) else None
+                if not target:
                     continue
                 action_obj[NameObject("/S")] = NameObject("/Launch")
-                action_obj[NameObject("/F")] = TextStringObject(uri)
+                action_obj[NameObject("/F")] = TextStringObject(target)
                 action_obj.pop("/URI", None)
                 annotation_obj[NameObject("/A")] = action_obj
 
@@ -656,8 +671,8 @@ def _build_timeline(done_calls: List[CallResult]) -> Optional[Dict[str, Any]]:
     max_count = max((b["count"] for b in buckets), default=1) or 1
 
     # Bar heights in inches, computed here so the template can use absolute
-    # units (WeasyPrint does not reliably propagate percent heights into
-    # nested elements inside table cells).
+    # units rather than relying on percent heights propagating through
+    # nested elements.
     BAR_AREA_IN = 0.85
     MIN_BAR_IN = 0.13
     for b in buckets:
@@ -826,7 +841,7 @@ def generate_case_report_pdf(
     gen_date: Optional[str] = None,
 ) -> bytes:
     """Build the case report PDF for a completed job."""
-    from weasyprint import HTML
+    from .pdf_render import render_pdf
 
     if not gen_date:
         gen_date = datetime.now().strftime("%B %d, %Y")
@@ -981,9 +996,11 @@ def generate_case_report_pdf(
 
     template = U.get_jinja_env().get_template("case_report_template.html")
     html_str = template.render(**ctx)
-    # base_url is intentionally omitted so that relative <a href> values
-    # (e.g. "viewer.html?call=...", "transcripts/xxx.pdf") stay portable.
-    # We then rewrite those relative URI annotations to Launch actions so
-    # macOS opens them as local files from the extracted delivery root.
-    raw_pdf = HTML(string=html_str).write_pdf()
+    # Chromium resolves the relative <a href> values ("viewer.html?call=...",
+    # "transcripts/xxx.pdf") against the temp file it renders from, baking
+    # absolute file:///tmp/... URIs into the link annotations. The rewriter
+    # below strips that machine-specific prefix and converts each local link
+    # to a /Launch action carrying the portable delivery-relative path, so
+    # links keep working from the extracted delivery root on any machine.
+    raw_pdf = render_pdf(html_str, paged=True)
     return _rewrite_local_links_to_launch_actions(raw_pdf)

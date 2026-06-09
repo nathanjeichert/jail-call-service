@@ -1,49 +1,50 @@
 """
 PDF generation for jail call transcripts.
 
-Produces a 3-part PDF:
-  Page 1: Title page (case info, file metadata)
-  Page 2: AI summary
-  Pages 3+: Legal-formatted transcript (25 lines/page, Courier, line numbers)
+Produces a single-render PDF document:
+  Sheet 1: Title page (case info, file metadata)
+  Sheet 2+: AI summary sheet(s) (if a summary is provided)
+  Remaining sheets: Legal-formatted transcript (25 lines/page, Courier,
+                    line numbers)
 
-Ported and trimmed from main/backend/transcript_formatting.py.
+Every page is an explicit fixed-size 8.5in x 11in sheet in one Jinja
+template (``transcript_pdf_template.html``) rendered by headless Chromium
+via :func:`backend.pdf_render.render_pdf`. Pagination is decided entirely
+in Python — Chromium never makes a page-break decision — and the rendered
+page count is asserted against the emitted sheet count after every render.
 """
 
+import html
 import io
-import os
 import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.pdfmetrics import stringWidth
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfgen import canvas
-
+from . import font_metrics as FM
 from . import pdf_utils as U
 from .models import TranscriptTurn, WordTimestamp
-
-# Register monospace fonts (platform-aware; safe to call multiple times)
-U.register_fonts()
 
 # Text layout constants
 SPEAKER_PREFIX_SPACES = 10
 CONTINUATION_SPACES = 5
 SPEAKER_COLON = ":   "
 
+inch = 72.0
+
 # Transcript page geometry (legal deposition style)
-PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT = letter
+PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT = 612.0, 792.0  # US letter, points
 PDF_MARGIN_TOP = 0.75 * inch
 PDF_MARGIN_BOTTOM = 0.75 * inch
 PDF_LINE_HEIGHT = 25.0
-PDF_TEXT_FONT = "CourierNew"
 PDF_TEXT_SIZE = 12
 PDF_LINE_NUMBER_SIZE = 10
 PDF_PAGE_NUMBER_SIZE = 10
+
+# Embedded monospace font for the transcript sheets (@font-face file:// URIs)
+_FONTS_DIR = Path(__file__).parent / "fonts"
+_COURIER_REGULAR_URI = (_FONTS_DIR / "CourierPrime-Regular.ttf").as_uri()
+_COURIER_BOLD_URI = (_FONTS_DIR / "CourierPrime-Bold.ttf").as_uri()
 
 # Vertical rule positions
 PDF_LINE_NUM_RIGHT = 0.78 * inch      # right edge of line numbers
@@ -53,11 +54,37 @@ PDF_RULE_RIGHT = 7.4 * inch           # right single line
 
 # Derive transcript text block from the ruled corridor, centered between the
 # inner left rule and the right rule.
-_COURIER_CHAR_W = stringWidth("M", PDF_TEXT_FONT, PDF_TEXT_SIZE)
+#
+# Courier (and metric-compatible fonts such as the vendored Courier Prime)
+# advances exactly 0.6 em per character, i.e. 7.2 pt at 12 pt. This constant
+# previously came from ReportLab's stringWidth("M", "CourierNew", 12) and
+# evaluated to 7.201171875 pt with the macOS Courier New TTF; the pure 0.6 em
+# value yields the same MAX_LINE_CHARS, which is asserted below because every
+# page:line citation in the product depends on it.
+_COURIER_CHAR_W = 7.2
 _TRANSCRIPT_RULE_WIDTH = PDF_RULE_RIGHT - PDF_RULE_LEFT_INNER
 MAX_LINE_CHARS = int((_TRANSCRIPT_RULE_WIDTH - 12) / _COURIER_CHAR_W)
+assert MAX_LINE_CHARS == 62, (
+    f"MAX_LINE_CHARS changed ({MAX_LINE_CHARS} != 62); this would shift every "
+    "page:line citation in the product. Fix the arithmetic, not the value."
+)
 PDF_TEXT_BLOCK_WIDTH = MAX_LINE_CHARS * _COURIER_CHAR_W
 PDF_TEXT_X = PDF_RULE_LEFT_INNER + ((_TRANSCRIPT_RULE_WIDTH - PDF_TEXT_BLOCK_WIDTH) / 2.0)
+
+# Chromium line-box baseline offsets for the vendored Courier Prime
+# (unitsPerEm 2048, hhea ascent 1600, descent -700). For a line box of
+# height L and font size S the baseline sits at
+#     (L - S*(asc+desc)) / 2 + S*asc
+# from the top of the box. These are used to convert the ReportLab-era
+# baseline coordinates into CSS `top` offsets for the row boxes.
+_COURIER_ASCENT_EM = 1600.0 / 2048.0
+_COURIER_DESCENT_EM = 700.0 / 2048.0
+
+
+def _courier_baseline_in_box(box_height: float, font_size: float) -> float:
+    content = font_size * (_COURIER_ASCENT_EM + _COURIER_DESCENT_EM)
+    return ((box_height - content) / 2.0) + (font_size * _COURIER_ASCENT_EM)
+
 
 SUMMARY_LEFT = 0.68 * inch
 SUMMARY_RIGHT = 0.62 * inch
@@ -80,7 +107,7 @@ SUMMARY_CUE_TEXT_PAD_LEFT = 0.13 * inch
 SUMMARY_CUE_TIME_TEXT_WIDTH = SUMMARY_CUE_TIME_WIDTH - 0.06 * inch
 SUMMARY_CUE_TEXT_WIDTH = SUMMARY_WIDTH - SUMMARY_CUE_TIME_WIDTH - SUMMARY_CUE_TEXT_PAD_LEFT
 SUMMARY_WRAP_WIDTH_RESERVE = 0.03 * inch
-SUMMARY_QUOTE_GLYPHS = "\u201c\u201d"
+SUMMARY_QUOTE_GLYPHS = "“”"
 
 SUMMARY_CARD_TITLE_LINE_HEIGHT = 10.0
 SUMMARY_CARD_BODY_FONT = "Summary-Avenir"
@@ -103,54 +130,6 @@ SUMMARY_LINE_CITE_LINE_HEIGHT = 9.0
 # Re-export public symbols that other modules depend on
 timestamp_to_seconds = U.timestamp_to_seconds
 parse_summary_sections = U.parse_summary_sections
-
-
-_SUMMARY_FONT_CANDIDATES = {
-    "Summary-Georgia": [
-        "/System/Library/Fonts/Supplemental/Georgia.ttf",
-        "/usr/share/fonts/truetype/msttcorefonts/Georgia.ttf",
-        "/usr/share/fonts/truetype/msttcorefonts/georgia.ttf",
-        "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
-    ],
-    "Summary-Avenir": [
-        "/System/Library/Fonts/Avenir Next.ttc",
-        "/System/Library/Fonts/Avenir.ttc",
-        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ],
-}
-_SUMMARY_FONT_FALLBACKS = {
-    "Summary-Georgia": "Times-Roman",
-    "Summary-Avenir": "Helvetica",
-}
-_SUMMARY_FONT_MAP: Dict[str, str] = {}
-
-
-def _register_summary_measurement_fonts() -> None:
-    """Register closer metric fonts for summary layout estimation when available."""
-    if _SUMMARY_FONT_MAP:
-        return
-
-    for logical_name, candidates in _SUMMARY_FONT_CANDIDATES.items():
-        for path in candidates:
-            if not os.path.isfile(path):
-                continue
-            try:
-                if logical_name not in pdfmetrics.getRegisteredFontNames():
-                    pdfmetrics.registerFont(TTFont(logical_name, path))
-                _SUMMARY_FONT_MAP[logical_name] = logical_name
-                break
-            except Exception:
-                continue
-        else:
-            _SUMMARY_FONT_MAP[logical_name] = _SUMMARY_FONT_FALLBACKS[logical_name]
-
-
-def _summary_font(font_name: str) -> str:
-    _register_summary_measurement_fonts()
-    return _SUMMARY_FONT_MAP.get(font_name, font_name)
 
 
 def _safe_wrap_width(max_width: float) -> float:
@@ -178,6 +157,16 @@ def wrap_text(text: str, max_width: int) -> List[str]:
     return lines or [""]
 
 
+def _estimated_width(text: str, font_name: str, font_size: float) -> float:
+    """Estimated rendered width with the conservative safety factor applied.
+
+    Chromium renders the summary pages with real system fonts (Avenir Next /
+    Georgia) that run wider than the standard Helvetica / Times metrics in
+    :mod:`backend.font_metrics`, so estimates are inflated to over-predict.
+    """
+    return FM.string_width(text, font_name, font_size) * FM.SAFETY_FACTOR
+
+
 def _wrap_text_to_width(
     text: str,
     max_width: float,
@@ -189,14 +178,13 @@ def _wrap_text_to_width(
     if not text:
         return []
 
-    font_name = _summary_font(font_name)
     max_width = _safe_wrap_width(max_width)
     words = text.split()
     lines: List[str] = []
     current: List[str] = []
     for word in words:
         candidate = " ".join(current + [word]).strip()
-        if current and stringWidth(candidate, font_name, font_size) > max_width:
+        if current and _estimated_width(candidate, font_name, font_size) > max_width:
             lines.append(" ".join(current))
             current = [word]
         else:
@@ -374,19 +362,6 @@ def paginate_structured_summary(
     }
 
 
-def _draw_transcript_rules(c: canvas.Canvas) -> None:
-    """Draw vertical rules: double line on left (gutter), single on right."""
-    rule_top = PDF_PAGE_HEIGHT
-    rule_bottom = 0
-    c.setStrokeColor(colors.black)
-    c.setLineWidth(0.5)
-    # Double line on left
-    c.line(PDF_RULE_LEFT_OUTER, rule_bottom, PDF_RULE_LEFT_OUTER, rule_top)
-    c.line(PDF_RULE_LEFT_INNER, rule_bottom, PDF_RULE_LEFT_INNER, rule_top)
-    # Single line on right
-    c.line(PDF_RULE_RIGHT, rule_bottom, PDF_RULE_RIGHT, rule_top)
-
-
 def _line_cite_for_timestamp(timestamp: str, line_entries: Optional[List[dict]]) -> str:
     """Return a transcript page:line cite for the line nearest a cue timestamp."""
     if not timestamp or not line_entries:
@@ -422,7 +397,7 @@ def _line_cite_for_timestamp(timestamp: str, line_entries: Optional[List[dict]])
     return f"{int(page)}:{int(line)}"
 
 
-_LINE_CITE_RANGE_RE = re.compile(r"^\s*(\d+):(\d+)(?:\s*[-\u2013\u2014]\s*(\d+):(\d+))?\s*$")
+_LINE_CITE_RANGE_RE = re.compile(r"^\s*(\d+):(\d+)(?:\s*[-–—]\s*(\d+):(\d+))?\s*$")
 _INLINE_QUOTED_TEXT_RE = re.compile(r'"([^"\n]{1,200})"')
 _SENTENCE_END_RE = re.compile(r"[.!?](?:['\")\]]+)?\s*$")
 
@@ -431,7 +406,7 @@ def _normalize_line_cite_range(value: str) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    text = text.replace("\u2013", "-").replace("\u2014", "-")
+    text = text.replace("–", "-").replace("—", "-")
     text = re.sub(r"\s+", "", text)
     return text
 
@@ -628,47 +603,6 @@ def hydrate_review_cues(
     return hydrated
 
 
-def _draw_transcript_page(
-    c: canvas.Canvas,
-    page_entries: List[dict],
-    lines_per_page: int,
-    page_number: int,
-) -> None:
-    _draw_transcript_rules(c)
-
-    content_top = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP / 2
-    content_bottom = PDF_MARGIN_BOTTOM / 2
-    available_height = content_top - content_bottom
-    line_block_height = ((max(lines_per_page, 1) - 1) * PDF_LINE_HEIGHT) + PDF_TEXT_SIZE
-    vertical_padding = max((available_height - line_block_height) / 2.0, 0)
-    top_baseline = content_top - vertical_padding - PDF_TEXT_SIZE
-
-    # Page number at bottom center
-    pn_y = content_bottom - 0.1 * inch
-    c.setFillColor(colors.black)
-    c.setFont(PDF_TEXT_FONT, PDF_PAGE_NUMBER_SIZE)
-    c.drawCentredString(PDF_PAGE_WIDTH / 2, pn_y, str(page_number))
-
-    sorted_entries = sorted(page_entries, key=lambda e: (int(e.get("line", 0) or 0), e.get("id", "")))
-    for entry in sorted_entries:
-        try:
-            line_number = int(entry.get("line", 0) or 0)
-        except (TypeError, ValueError):
-            continue
-        if line_number <= 0 or line_number > lines_per_page:
-            continue
-        y = top_baseline - (line_number - 1) * PDF_LINE_HEIGHT
-        if y < content_bottom:
-            continue
-
-        c.setFillColor(colors.black)
-        c.setFont(PDF_TEXT_FONT, PDF_LINE_NUMBER_SIZE)
-        c.drawRightString(PDF_LINE_NUM_RIGHT, y, str(line_number))
-
-        c.setFont(PDF_TEXT_FONT, PDF_TEXT_SIZE)
-        c.drawString(PDF_TEXT_X, y, str(entry.get("rendered_text", "")))
-
-
 def _distribute_words_to_lines(
     words: Optional[List[WordTimestamp]],
     all_lines: List[str],
@@ -790,21 +724,12 @@ def compute_line_entries(
     return line_entries
 
 
-def _render_cover_pages(
+def _build_cover_context(
     title_data: dict,
     summary: Optional[str],
     line_entries: Optional[List[dict]] = None,
-) -> bytes:
-    """Render title page (+ optional AI analysis page) as PDF via WeasyPrint.
-
-    Uses an HTML/CSS template for polished, design-quality output, then
-    returns raw PDF bytes ready to be merged with the transcript pages.
-    """
-    from weasyprint import HTML
-
-    template = U.get_jinja_env().get_template("pdf_cover_template.html")
-    base_url = str(Path(__file__).parent)
-
+) -> dict:
+    """Build the Jinja context for the title sheet and summary sheet(s)."""
     case_name = U.safe_text(title_data.get("CASE_NAME"))
     file_name = U.safe_text(title_data.get("FILE_NAME"))
     call_datetime = U.safe_text(title_data.get("CALL_DATETIME"))
@@ -830,13 +755,14 @@ def _render_cover_pages(
         "title_meta": title_meta,
         "firm_name": U.safe_text(title_data.get("FIRM_OR_ORGANIZATION_NAME")),
         "has_summary": bool(summary),
+        "overflow_review_cue_pages": [],
     }
 
     # ── Summary page context ──
     if summary:
         ctx["summary_meta_file"] = U.shorten_middle(file_name)
         meta_details = [display_datetime or call_datetime]
-        ctx["summary_meta_details"] = " \u00b7 ".join(p for p in meta_details if p)
+        ctx["summary_meta_details"] = " · ".join(p for p in meta_details if p)
 
         sections = U.parse_summary_sections(summary)
         ctx["is_structured"] = sections.get("structured", False)
@@ -872,7 +798,6 @@ def _render_cover_pages(
                 body = summary.strip()
 
             ctx["raw_body"] = body
-            ctx["overflow_review_cue_pages"] = []
             raw_blocks: list = []
             for para in re.split(r'\n{2,}', body):
                 para = para.strip()
@@ -881,11 +806,11 @@ def _render_cover_pages(
                 bullets: list = []
                 texts: list = []
                 for line in (l.strip() for l in para.split("\n") if l.strip()):
-                    if re.match(r'^[-\u2022*]\s', line):
+                    if re.match(r'^[-•*]\s', line):
                         if texts:
                             raw_blocks.append({"type": "text", "text": " ".join(texts)})
                             texts = []
-                        bullets.append(re.sub(r'^[-\u2022*]\s*', '', line))
+                        bullets.append(re.sub(r'^[-•*]\s*', '', line))
                     else:
                         if bullets:
                             raw_blocks.append({"type": "bullet", "bullets": bullets})
@@ -897,8 +822,63 @@ def _render_cover_pages(
                     raw_blocks.append({"type": "text", "text": " ".join(texts)})
             ctx["raw_blocks"] = raw_blocks
 
-    html_str = template.render(**ctx)
-    return HTML(string=html_str, base_url=base_url).write_pdf()
+    return ctx
+
+
+def _build_transcript_sheets(
+    line_entries: List[dict],
+    lines_per_page: int,
+) -> List[dict]:
+    """Convert precomputed line entries into per-sheet row geometry.
+
+    Ports the ReportLab ``_draw_transcript_page`` baseline math: 25 rows at
+    exactly 25 pt pitch, vertically centered between the half-margin content
+    bounds, with the page number centered below.
+    """
+    pages: Dict[int, List[dict]] = defaultdict(list)
+    for entry in line_entries:
+        pages[int(entry.get("page", 1) or 1)].append(entry)
+
+    if not pages:
+        pages[1] = []
+
+    content_top = PDF_PAGE_HEIGHT - PDF_MARGIN_TOP / 2   # from bottom of sheet
+    content_bottom = PDF_MARGIN_BOTTOM / 2
+    available_height = content_top - content_bottom
+    line_block_height = ((max(lines_per_page, 1) - 1) * PDF_LINE_HEIGHT) + PDF_TEXT_SIZE
+    vertical_padding = max((available_height - line_block_height) / 2.0, 0)
+    top_baseline = content_top - vertical_padding - PDF_TEXT_SIZE
+
+    row_baseline_offset = _courier_baseline_in_box(PDF_LINE_HEIGHT, PDF_TEXT_SIZE)
+
+    sheets: List[dict] = []
+    for page_number in sorted(pages):
+        rows: List[dict] = []
+        sorted_entries = sorted(
+            pages[page_number],
+            key=lambda e: (int(e.get("line", 0) or 0), e.get("id", "")),
+        )
+        for entry in sorted_entries:
+            try:
+                line_number = int(entry.get("line", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if line_number <= 0 or line_number > lines_per_page:
+                continue
+            baseline = top_baseline - (line_number - 1) * PDF_LINE_HEIGHT
+            if baseline < content_bottom:
+                continue
+
+            # Convert the baseline (pt from sheet bottom) into a CSS top
+            # offset for a 25pt line box whose baseline must land there.
+            row_top = (PDF_PAGE_HEIGHT - baseline) - row_baseline_offset
+            rows.append({
+                "line": line_number,
+                "top": f"{row_top:.3f}",
+                "text": html.escape(str(entry.get("rendered_text", "")), quote=False),
+            })
+        sheets.append({"number": page_number, "rows": rows})
+    return sheets
 
 
 def create_pdf(
@@ -910,42 +890,47 @@ def create_pdf(
 ) -> bytes:
     """
     Create a PDF with:
-      Page 1: Title page        (WeasyPrint — HTML/CSS)
-      Page 2: AI summary        (WeasyPrint — HTML/CSS, if provided)
-      Pages 3+: Transcript      (ReportLab  — precise monospace layout)
+      Sheet 1: Title page
+      Sheet 2+: AI summary sheet(s) (if provided)
+      Remaining sheets: Transcript (precise monospace layout)
+
+    All sheets are rendered in a single headless-Chromium pass. The rendered
+    page count is asserted against the emitted sheet count; a mismatch raises
+    ``RuntimeError`` because every page:line citation in the product depends
+    on the transcript pagination being exactly what Python computed.
     """
-    from pypdf import PdfReader, PdfWriter
+    from pypdf import PdfReader
+
+    from .pdf_render import render_pdf
 
     line_entries = compute_line_entries(turns, audio_duration, lines_per_page)
 
-    # ── Cover pages via WeasyPrint ──
-    cover_pdf = _render_cover_pages(title_data, summary, line_entries=line_entries)
+    ctx = _build_cover_context(title_data, summary, line_entries=line_entries)
+    ctx["transcript_sheets"] = _build_transcript_sheets(line_entries, lines_per_page)
 
-    # ── Transcript pages via ReportLab ──
-    transcript_buf = io.BytesIO()
-    c = canvas.Canvas(transcript_buf, pagesize=letter, pageCompression=1)
-    pages: Dict[int, List[dict]] = defaultdict(list)
-    for entry in line_entries:
-        pages[int(entry.get("page", 1) or 1)].append(entry)
+    ctx["courier_regular_uri"] = _COURIER_REGULAR_URI
+    ctx["courier_bold_uri"] = _COURIER_BOLD_URI
 
-    if not pages:
-        pages[1] = []
+    # Transcript text geometry (pt) — Python stays the layout source of truth.
+    ctx["t_line_num_width"] = f"{PDF_LINE_NUM_RIGHT:.3f}"
+    ctx["t_text_indent"] = f"{PDF_TEXT_X - PDF_LINE_NUM_RIGHT:.3f}"
+    pn_baseline = PDF_MARGIN_BOTTOM / 2 - 0.1 * inch  # from sheet bottom
+    pn_box = _courier_baseline_in_box(PDF_LINE_HEIGHT, PDF_PAGE_NUMBER_SIZE)
+    ctx["t_pageno_top"] = f"{(PDF_PAGE_HEIGHT - pn_baseline) - pn_box:.3f}"
 
-    for page_number in sorted(pages):
-        _draw_transcript_page(c, pages[page_number], lines_per_page, page_number)
-        c.showPage()
+    summary_sheets = (1 + len(ctx.get("overflow_review_cue_pages") or [])) if ctx["has_summary"] else 0
+    expected_sheets = 1 + summary_sheets + len(ctx["transcript_sheets"])
 
-    c.save()
-    transcript_buf.seek(0)
+    template = U.get_jinja_env().get_template("transcript_pdf_template.html")
+    html_str = template.render(**ctx)
+    pdf_bytes = render_pdf(html_str)
 
-    # ── Merge with pypdf ──
-    writer = PdfWriter()
-    for page in PdfReader(io.BytesIO(cover_pdf)).pages:
-        writer.add_page(page)
-    for page in PdfReader(transcript_buf).pages:
-        writer.add_page(page)
-
-    final = io.BytesIO()
-    writer.write(final)
-    final.seek(0)
-    return final.read()
+    actual_pages = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+    if actual_pages != expected_sheets:
+        raise RuntimeError(
+            f"Transcript PDF page-count mismatch: emitted {expected_sheets} "
+            f"sheet divs but Chromium rendered {actual_pages} pages "
+            f"(file: {U.safe_text(title_data.get('FILE_NAME'))!r}). "
+            "Line citations would be unreliable; refusing to deliver."
+        )
+    return pdf_bytes

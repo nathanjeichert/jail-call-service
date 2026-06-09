@@ -467,7 +467,7 @@ async def _run_pipeline(job: Job) -> None:
 
     n_transcribe = runtime_selection.transcription_workers(total_calls)
     n_summarize = runtime_selection.summarization_workers(total_calls)
-    n_pdf = min(4, max(1, total_calls))
+    n_pdf = min(8, max(1, total_calls))
 
     # Create engine instances once per pipeline run. This avoids repeated
     # initialization and keeps local/cloud capability decisions centralized.
@@ -822,10 +822,11 @@ async def _stage_generate_delivery_assets(
         with open(os.path.join(output_dir, "case-report.pdf"), 'wb') as f:
             f.write(report_bytes)
 
-    # Run the HTML outputs in parallel, then the two WeasyPrint PDFs
-    # sequentially (WeasyPrint is not fully thread-safe across concurrent
-    # renders). This keeps the overall wall time close to the longest single
-    # output rather than the sum of all four.
+    # All four writers run in parallel: the shared Chromium PDF renderer
+    # (backend.pdf_render) is safe to call from concurrent threads and gates
+    # real render concurrency with its own semaphore, so the overall wall
+    # time is close to the longest single output rather than the sum of all
+    # four.
     asset_failures: List[str] = []
 
     async def _run(fn):
@@ -839,14 +840,12 @@ async def _stage_generate_delivery_assets(
                 "message": f"{fn.__name__} failed: {e}",
             })
 
-    # Phase 1: non-PDF outputs (safe to parallelise)
     await asyncio.gather(
         _run(write_search),
         _run(write_viewer),
+        _run(write_guide),
+        _run(write_case_report),
     )
-    # Phase 2: WeasyPrint PDFs (run sequentially to avoid thread-safety issues)
-    await _run(write_guide)
-    await _run(write_case_report)
 
     if asset_failures:
         logger.warning(

@@ -30,9 +30,9 @@
 }
 
 /* Inner pages reserve a small bottom margin so the @page footer margin
-   boxes (which is the only place WeasyPrint reliably increments
-   counter(page)) have somewhere to render. The cover overrides the
-   margin via :first below. */
+   boxes (rendered by Paged.js, which polyfills string() and counter(page))
+   have somewhere to render. The cover overrides the margin via :first
+   below. */
 @page {
     size: letter;
     margin: 0 0 0.7in 0;
@@ -66,27 +66,18 @@
     @bottom-right { content: ""; border: none; padding: 0; }
 }
 
-/* Fixed page chrome — spine and a soft bottom wash. Negative bottom on the
-   spine extends it through the @page bottom margin so it reaches the page
-   edge on inner pages. */
-.fixed-spine {
-    position: fixed;
-    left: 0;
-    top: 0;
-    bottom: -0.7in;
-    width: 0.18in;
-    background: var(--ink);
-    z-index: 50;
-}
-
-.fixed-wash {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: -0.7in;
-    height: 3.3in;
-    background: linear-gradient(180deg, rgba(247,249,249,0) 0, #f7f9f9 100%);
-    z-index: -10;
+/* Per-page chrome — black left spine and a soft bottom wash on EVERY page.
+   Paged.js does not repeat position:fixed elements on each generated page,
+   so the chrome is painted as backgrounds on the .pagedjs_page boxes
+   Paged.js emits. The page box spans the full sheet,
+   including the @page bottom margin, so the spine reaches the page edge. */
+.pagedjs_page {
+    background-image:
+        linear-gradient(90deg, #111315 0%, #111315 0.18in, transparent 0.18in, transparent 100%),
+        linear-gradient(180deg, rgba(247,249,249,0) 0%, #f7f9f9 100%);
+    background-repeat: no-repeat, no-repeat;
+    background-size: 100% 100%, 100% 3.3in;
+    background-position: left top, left bottom;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -967,9 +958,6 @@ section.chapter {
 </style>
 </head>
 <body>
-
-<div class="fixed-spine"></div>
-<div class="fixed-wash"></div>
 
 <!-- ═══════════════════════ 01 · Cover ═══════════════════════ -->
 <div class="cover">

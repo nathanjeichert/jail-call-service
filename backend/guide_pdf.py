@@ -1,5 +1,5 @@
 """
-PDF user guide generation — HTML/CSS via WeasyPrint.
+PDF user guide generation — HTML/CSS via headless Chromium (backend.pdf_render).
 
 Renders a 7-page guide that mirrors the title/summary page aesthetic
 (Avenir Next + Georgia, ink rules, teal accents, soft washes) by sharing
@@ -44,7 +44,7 @@ def _shot_url(key: str) -> Optional[str]:
 def generate_guide_pdf(case_name: str,
                        call_count: int,
                        gen_date: Optional[str] = None) -> bytes:
-    from weasyprint import HTML
+    from .pdf_render import render_pdf
 
     if not gen_date:
         gen_date = datetime.now().strftime("%B %d, %Y")
@@ -65,4 +65,6 @@ def generate_guide_pdf(case_name: str,
     template = U.get_jinja_env().get_template("guide_template.html")
     html_str = template.render(**ctx)
 
-    return HTML(string=html_str, base_url=str(Path(__file__).parent)).write_pdf()
+    # Screenshots are referenced by absolute file:// URIs (_shot_url), so no
+    # base URL is needed for resource resolution.
+    return render_pdf(html_str, paged=True)
