@@ -15,7 +15,7 @@ This project was originally a branch within the TranscribeAlpha monorepo but has
 * **Backend:** FastAPI, Python, ffmpeg-python.
 * **Transcription:** Dual-engine — AssemblyAI (cloud) or Parakeet TDT 0.6b v2 via FluidAudio CoreML (local, runs on Apple Neural Engine). Selectable per-job from the UI.
 * **Summarization:** Dual-engine — Gemini Flash (cloud) or Gemma 4 E2B via MLX (local, 4-bit quantized, ~3.6 GB RAM). Selectable per-job from the UI.
-* **Frontend:** Next.js (Tailwind + TypeScript).
+* **Frontend:** Next.js 16 / React 19 (Turbopack), Tailwind CSS 4, TypeScript 6. Node.js must be >=20.9.0 because Next 16 enforces that engine floor.
 * **Delivery Payload:** The software produces a `.zip` artifact containing:
   - Repaired and converted MP3 audio files (`audio/`).
   - Formatted transcript PDFs (`transcripts/` and `transcripts-no-summary/`).
@@ -47,6 +47,8 @@ This project was originally a branch within the TranscribeAlpha monorepo but has
 If editing the `template.html` for the viewer, note that template parameters (like `{{CALLS_JSON}}`) are pre-populated by Python string manipulation, hence why TypeScript/Javascript linting will report errors inside the HTML syntax. Ignore these syntactical lint warnings during development.
 
 If editing `backend/pdf_cover_template.html`, visually verify rendered PDF pages with Poppler (`pdftoppm`) before considering the work done. Do not commit one-off PDF mockup artifacts, local preview PDFs, or scratch scripts used only to inspect layout.
+
+**Frontend dependency notes:** Tailwind 4 uses `@import "tailwindcss";` in `frontend/src/app/globals.css` and the split PostCSS plugin `@tailwindcss/postcss` in `frontend/postcss.config.js`; do not restore the Tailwind 3 `@tailwind base/components/utilities` directives. `frontend/next.config.js` sets `turbopack.root` to the frontend directory so Next does not infer the parent home directory when other lockfiles exist outside this repo.
 
 ## Transcription Engine Architecture
 

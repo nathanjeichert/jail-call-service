@@ -1,7 +1,7 @@
 import os
 import re
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a"})
@@ -66,6 +66,8 @@ class CallStatus(str, Enum):
 
 
 class CallResult(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     index: int
     filename: str
     original_path: str
@@ -97,9 +99,6 @@ class CallResult(BaseModel):
     output_tokens: Optional[int] = None
     thinking_tokens: Optional[int] = None
 
-    class Config:
-        use_enum_values = True
-
 
 class JobStage(str, Enum):
     CREATED = "created"
@@ -114,6 +113,8 @@ class JobStage(str, Enum):
 
 
 class Job(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     id: str
     case_name: str
     input_folder: str
@@ -133,6 +134,3 @@ class Job(BaseModel):
     summarization_engine: Optional[str] = None
     auto_message_mode: Optional[str] = None  # "exclude", "label", or None (keep)
     speaker_assignment: str = DEFAULT_SPEAKER_ASSIGNMENT
-
-    class Config:
-        use_enum_values = True
