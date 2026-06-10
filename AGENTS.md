@@ -152,6 +152,21 @@ Pipeline:
 
 **When editing `case_report_template.html`:** do a dry-run job end-to-end (even a small one) and spot-check the rendered PDF — its multi-section Paged.js layout uses `.pagedjs_page` page-chrome backgrounds, `@page` margin-box footers, and cover TOC page references via `target-counter(attr(href url), page)` that can regress silently. Note that the call card (`.cc`) deliberately does NOT carry `page-break-inside: avoid`; that rule is scoped to `.cc-head` only, so long cue tables flow cleanly across page breaks instead of orphaning the entire chapter header onto its own near-empty page. The call-volume chart is inline SVG with geometry precomputed by `_build_timeline_svg`; `_build_timeline` picks day/week/month/year buckets by coverage span (deliveries range from weeks to 5+ years), so verify the chart at multiple spans after touching it.
 
+## Testing
+
+Two layers — run both with the pyenv Python (system `python3` is stale):
+
+**1. Unit / regression suite:** `python -m pytest tests/` (fast, no network). Each file guards one specific contract:
+* `test_transcript_summary_layout.py` — summary-sheet pagination, page-count budget, rendered-string regressions
+* `test_quote_line_refs.py` — line-ref → quote hydration
+* `test_case_report_links.py` — `/Launch` link rewriting, no surviving `file://` URIs
+* `test_delivery_html.py` — script-safe JSON embedding in search/viewer; no WaveSurfer / remote scripts
+* `test_guide_layout.py` — guide stays 7 pages, footer clearance (matches CSS-uppercased footer tokens)
+* `test_pdf_render.py` — the Chromium render facade
+* `test_pipeline_audio_regressions.py` — audio conversion/repair edge cases
+
+**2. Canonical manual-review package:** `python tests/make_test_package.py` builds a complete synthetic delivery (default 10 calls) at `test-output/REEVES_TEST_PACKAGE/` — scripted transcripts with word-level timestamps, structured dummy summaries covering every relevance tier plus the unstructured-fallback and skip-summary paths, real tone MP3s via ffmpeg, and case-report synthesis through a canned stub engine. It runs the REAL delivery code (`create_pdf`, the pipeline's `_stage_generate_delivery_assets`, the zip arcname convention with `--zip`) — everything except live transcription/summarization, with no API keys and no job database. **This is the final step for any significant change: build the package and review every artifact by hand.** Options: `--calls N`, `--zip`, `--no-audio`. Output is gitignored.
+
 ## Guide Assets
 
 `backend/guide_assets/` must contain `viewer_screenshot.png` and `search_screenshot.png` — the two screenshots embedded in `guide.pdf`. These are **synthetic** samples built from a fake "State v. Marcus Reeves" dataset, not from any real client job, so they can ship with every delivery without leaking case data. If you need to regenerate them (e.g., after a UI refresh):

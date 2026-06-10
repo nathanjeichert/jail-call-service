@@ -17,3 +17,6 @@ jobs/*/
 jobs/jail_calls.db
 jobs/jail_calls.db-shm
 jobs/jail_calls.db-wal
+
+# Synthetic test packages (tests/make_test_package.py)
+test-output/
