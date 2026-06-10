@@ -4,57 +4,75 @@
 <meta charset="utf-8">
 <style>
 /* ════════════════════════════════════════════════════════════════
-   Case Report — shares all design tokens with pdf_cover_template.html
-   and guide_template.html.
+   Case Report — "Record" design language, shared with the transcript
+   PDF, guide, search.html, and viewer.html.
    ════════════════════════════════════════════════════════════════ */
 
+{{ fonts_css }}
+
 :root {
-    --ink: #111315;
-    --ink-soft: #25282b;
-    --body: #3e4449;
-    --muted: #717980;
-    --quiet: #9ba3aa;
-    --rule: #d9dee2;
-    --rule-strong: #b7c0c6;
+    --ink: #16140F;
+    --ink-2: #45413A;
+    --ink-3: #807A6E;
+    --rule: rgba(22, 20, 15, 0.18);
+    --rule-faint: rgba(22, 20, 15, 0.09);
+    --cream: #FBF9F3;
+    --signal: #A8271E;
+    --signal-ink: #871F18;
+    --signal-bg: rgba(168, 39, 30, 0.07);
+    --med: #8F6400;
+    --med-bar: #C9A227;
+    --low: #76796E;
+    --low-bar: #B9BCB0;
+    --unrated-bar: #DAD7CC;
     --paper: #ffffff;
-    --wash: #f4f7f6;
-    --wash-strong: #e6eeee;
-    --teal: #00746b;
-    --teal-soft: #dcefed;
-    --green: #1f7a48;
-    --green-soft: #e0f1e7;
-    --amber: #a97813;
-    --amber-soft: #f4ead5;
-    --red: #a83242;
-    --red-soft: #f3dfe3;
+    --serif: "Fraunces", Georgia, serif;
+    --sans: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", Menlo, monospace;
 }
 
-/* Inner pages reserve a small bottom margin so the @page footer margin
-   boxes (rendered by Paged.js, which polyfills string() and counter(page))
-   have somewhere to render. The cover overrides the margin via :first
-   below. */
+/* Inner pages reserve a bottom margin so the @page footer margin boxes
+   (rendered by Paged.js, which polyfills string() and counter(page))
+   have somewhere to render. The cover overrides via :first below. */
 @page {
     size: letter;
     margin: 0 0 0.7in 0;
 
     @bottom-left {
         content: "Case Report  ·  " string(chapter-name);
-        font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
-        font-size: 7.8pt;
-        color: #717980;
-        border-top: 1px solid #111315;
-        padding: 0.12in 0 0 0.74in;
+        white-space: nowrap;
+        font-family: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 6.75pt;
+        font-weight: 600;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        color: #807A6E;
+        border-top: 1px solid #16140F;
+        padding: 9pt 0 0 46.5pt;
         margin-left: 0;
         vertical-align: top;
         text-align: left;
     }
+    @bottom-center {
+        content: "Privileged & Confidential";
+        font-family: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 6.75pt;
+        font-weight: 600;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        color: #807A6E;
+        border-top: 1px solid #16140F;
+        padding: 9pt 0 0;
+        vertical-align: top;
+        text-align: center;
+    }
     @bottom-right {
-        content: counter(page, decimal-leading-zero);
-        font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
-        font-size: 8pt;
-        color: #9ba3aa;
-        border-top: 1px solid #111315;
-        padding: 0.12in 0.62in 0 0;
+        content: counter(page, decimal-leading-zero) " / " counter(pages, decimal-leading-zero);
+        font-family: "IBM Plex Mono", Menlo, monospace;
+        font-size: 7.5pt;
+        color: #16140F;
+        border-top: 1px solid #16140F;
+        padding: 9pt 40.5pt 0 0;
         vertical-align: top;
         text-align: right;
     }
@@ -63,40 +81,35 @@
 @page :first {
     margin: 0;
     @bottom-left { content: ""; border: none; padding: 0; }
+    @bottom-center { content: ""; border: none; padding: 0; }
     @bottom-right { content: ""; border: none; padding: 0; }
 }
 
-/* Per-page chrome — black left spine and a soft bottom wash on EVERY page.
-   Paged.js does not repeat position:fixed elements on each generated page,
-   so the chrome is painted as backgrounds on the .pagedjs_page boxes
-   Paged.js emits. The page box spans the full sheet,
-   including the @page bottom margin, so the spine reaches the page edge. */
+/* Per-page chrome — the ink spine on EVERY page. Paged.js does not repeat
+   position:fixed elements on each generated page, so the spine is painted
+   as a background on the .pagedjs_page boxes Paged.js emits. The page box
+   spans the full sheet including the @page bottom margin, so the spine
+   reaches the page edge. */
 .pagedjs_page {
     background-image:
-        linear-gradient(90deg, #111315 0%, #111315 0.18in, transparent 0.18in, transparent 100%),
-        linear-gradient(180deg, rgba(247,249,249,0) 0%, #f7f9f9 100%);
-    background-repeat: no-repeat, no-repeat;
-    background-size: 100% 100%, 100% 3.3in;
-    background-position: left top, left bottom;
+        linear-gradient(90deg, #16140F 0%, #16140F 9.75pt, transparent 9.75pt, transparent 100%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    background-position: left top;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
     margin: 0;
-    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sans);
     color: var(--ink);
     background: transparent;
-    font-size: 10pt;
+    font-size: 9.4pt;
     line-height: 1.5;
 }
 
 a { color: inherit; text-decoration: none; }
-
-.label, .eyebrow, .meta-label, .footer-label, .page-num {
-    text-transform: uppercase;
-    letter-spacing: 0;
-}
 
 /* Hidden marker that supplies the running footer's section name string. */
 .chapter-marker {
@@ -110,6 +123,53 @@ a { color: inherit; text-decoration: none; }
     color: transparent;
 }
 
+/* ── shared atoms ── */
+.lbl {
+    font-size: 7.1pt;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+}
+.lbl--ink { color: var(--ink); }
+
+.band {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12pt;
+    padding: 18pt 0 7.5pt;
+    border-bottom: 1px solid var(--ink);
+}
+
+/* relevance marker — the only color in the system */
+.rv {
+    display: inline-flex;
+    align-items: center;
+    gap: 5pt;
+    font-size: 8.25pt;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.rv::before {
+    content: "";
+    width: 6pt;
+    height: 6pt;
+    border-radius: 0.75pt;
+}
+.rv--high { color: var(--signal-ink); }
+.rv--high::before { background: var(--signal); }
+.rv--medium { color: var(--med); }
+.rv--medium::before { background: transparent; box-shadow: inset 0 0 0 1.1pt var(--med); }
+.rv--low { color: var(--low); }
+.rv--low::before { background: transparent; box-shadow: inset 0 0 0 1.1pt rgba(118, 121, 110, 0.7); }
+.rv--none { color: var(--ink-3); }
+.rv--none::before { background: transparent; box-shadow: inset 0 0 0 1.1pt var(--rule); }
+
+.mono { font-family: var(--mono); }
+
 /* ════════════════════ Cover (full-bleed page 1) ════════════════════ */
 
 .cover {
@@ -118,171 +178,139 @@ a { color: inherit; text-decoration: none; }
     height: 11in;
     overflow: hidden;
     page-break-after: always;
+    padding: 0 40.5pt 0 46.5pt;
 }
 
-.cover::after {
-    content: "";
-    position: absolute;
-    right: -0.05in;
-    top: 0.7in;
-    width: 2.05in;
-    height: 8.7in;
-    background: linear-gradient(145deg, transparent 0%, transparent 45%, rgba(0,116,107,0.08) 45%, rgba(0,116,107,0.08) 51%, transparent 51%, transparent 100%);
+.rc-cap {
+    text-align: center;
+    padding-top: 78pt;
 }
-
-.cover-header {
-    position: absolute;
-    left: 0.68in; right: 0.62in; top: 0.55in;
-    height: 0.43in;
-    border-bottom: 1px solid var(--rule);
-}
-.cover-doc-type {
-    position: absolute; left: 0; bottom: 0.16in;
-    color: var(--teal);
-    font-size: 8.2pt;
-    font-weight: 800;
-}
-.cover-confidential {
-    position: absolute; right: 0; bottom: 0.16in;
-    color: var(--muted);
-    font-size: 8pt;
-}
-
-.cover-main {
-    position: absolute;
-    left: 0.68in; right: 0.62in;
-    top: 1.4in;
-}
-.cover-doclabel {
-    color: var(--muted);
-    font-size: 8pt;
+.rc-cap .eyebrow {
+    font-size: 8.25pt;
     font-weight: 700;
-    margin-bottom: 0.13in;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--signal-ink);
 }
-.cover-title {
-    margin: 0;
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 58pt;
-    font-weight: normal;
-    line-height: 0.95;
-    letter-spacing: -0.5pt;
+.rc-cap h1 {
+    margin: 19.5pt 0 0;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 42pt;
+    line-height: 1.04;
+    letter-spacing: -0.005em;
+    font-variation-settings: "opsz" 110;
+    overflow-wrap: break-word;
 }
-.cover-title .period { color: var(--teal); }
-.cover-rule {
-    width: 1.36in;
-    height: 0.045in;
-    background: var(--teal);
-    margin-top: 0.32in;
-}
-.cover-subtitle {
-    margin: 0.28in 0 0;
-    max-width: 5.1in;
-    color: var(--ink-soft);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 13pt;
-    font-style: italic;
-    line-height: 1.42;
-}
-
-.cover-case {
-    position: absolute;
-    left: 0.68in; right: 0.62in;
-    top: 5.05in;
-    border-top: 1px solid var(--ink);
-    border-bottom: 1px solid var(--rule-strong);
-    padding: 0.26in 0 0.25in;
-}
-.cover-case-label {
-    color: var(--muted);
-    font-size: 7pt;
-    font-weight: 800;
-    margin-bottom: 0.08in;
-}
-.cover-case-name {
-    margin: 0;
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 22pt;
-    font-weight: normal;
-    line-height: 1.18;
-    max-width: 6.6in;
-}
-.cover-defendant {
-    margin-top: 0.1in;
-    color: var(--muted);
-    font-size: 9pt;
-}
-.cover-defendant strong {
-    color: var(--ink);
-    font-weight: 700;
-}
-
-.title-meta {
-    position: absolute;
-    left: 0.68in; right: 0.62in;
-    top: 6.6in;
-    border-top: 1px solid var(--rule-strong);
-    border-left: 1px solid var(--rule);
-}
-.title-meta table {
-    width: 100%;
-    border-collapse: collapse;
-}
-.title-meta td {
-    width: 25%;
-    padding: 0.18in 0.18in 0.16in;
-    border-right: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
-    vertical-align: top;
-}
-.meta-label {
-    color: var(--muted);
-    font-size: 7pt;
-    font-weight: 800;
-    margin-bottom: 0.08in;
-}
-.meta-value {
-    color: var(--ink-soft);
-    font-size: 12pt;
-    font-weight: 700;
-    line-height: 1.32;
-}
-
-.cover-note {
-    position: absolute;
-    left: 0.68in; right: 0.62in;
-    bottom: 1.18in;
-    border-top: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
-    padding: 0.16in 0 0.14in 0.26in;
-    color: var(--body);
-    font-size: 9.4pt;
-    line-height: 1.5;
-}
-.cover-note::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0.21in;
-    width: 0.09in;
-    height: 0.09in;
-    background: var(--teal);
-}
-.cover-note strong {
+.rc-cap h1 .v {
     display: block;
-    color: var(--ink);
-    font-size: 10.2pt;
-    font-weight: 800;
-    margin-bottom: 0.04in;
+    font-size: 0.42em;
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-3);
+    margin: 7.5pt 0;
+}
+.rc-rule {
+    margin: 27pt auto 0;
+    width: 90pt;
+    border-top: 2.25pt solid var(--ink);
+}
+.rc-rule::after {
+    content: "";
+    display: block;
+    border-top: 0.75pt solid var(--ink);
+    margin-top: 1.5pt;
 }
 
-.cover-pagenum {
-    position: absolute;
-    right: 0.62in;
-    bottom: 0.5in;
-    color: var(--quiet);
-    font-size: 8pt;
+.rc-stats {
+    display: flex;
+    justify-content: center;
+    margin-top: 33pt;
+}
+.rc-stats .cell {
+    padding: 0 25.5pt;
+    border-left: 1px solid var(--rule);
+    text-align: center;
+}
+.rc-stats .cell:first-child { border-left: none; }
+.rc-stats .n {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 28.5pt;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    font-variation-settings: "opsz" 90;
+    white-space: nowrap;
+}
+.rc-stats .n small {
+    font-size: 0.5em;
+    font-weight: 500;
+    color: var(--ink-3);
+    letter-spacing: 0;
+}
+.rc-stats .n.sig { color: var(--signal-ink); }
+.rc-stats .lbl { margin-top: 6pt; font-size: 6.75pt; }
+
+.rc-facts {
+    margin: 39pt auto 0;
+    width: 322.5pt;
+}
+.rc-facts .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 13.5pt;
+    padding: 6pt 1.5pt;
+    border-bottom: 1px solid var(--rule-faint);
+}
+.rc-facts .k {
+    flex: none;
+    font-size: 7.1pt;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding-top: 1.5pt;
+}
+.rc-facts .w {
+    font-size: 9.4pt;
+    color: var(--ink);
+    text-align: right;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.rc-toc {
+    margin: 34.5pt auto 0;
+    width: 322.5pt;
+}
+.rc-toc .row {
+    display: flex;
+    align-items: baseline;
+    gap: 9pt;
+    padding: 4.5pt 1.5pt;
+}
+.rc-toc .n {
+    font-family: var(--mono);
+    font-size: 7.9pt;
+    color: var(--signal-ink);
+}
+.rc-toc .t {
+    font-size: 9.75pt;
+    font-weight: 600;
+    color: var(--ink);
+}
+.rc-toc .dots {
+    flex: 1;
+    border-bottom: 2px dotted var(--rule);
+    transform: translateY(-2.25pt);
+}
+.rc-toc .p {
+    font-family: var(--mono);
+    font-size: 7.9pt;
+    color: var(--ink-3);
+}
+.rc-toc .p a::after {
+    content: "p." target-counter(attr(href url), page);
 }
 
 /* ════════════════════ Chapters (flowing pages) ════════════════════ */
@@ -290,908 +318,607 @@ a { color: inherit; text-decoration: none; }
 section.chapter {
     page-break-before: always;
     /* The chapter content carries its own inset since @page margin is 0. */
-    padding: 0.85in 0.62in 0.55in 0.68in;
+    padding: 0 40.5pt 12pt 46.5pt;
 }
 
-.chapter-header {
-    border-bottom: 1px solid var(--ink);
-    padding-bottom: 0.10in;
-    margin-bottom: 0.18in;
-}
-.chapter-eyebrow {
-    color: var(--teal);
-    font-size: 8pt;
-    font-weight: 800;
+.chap { padding-top: 22.5pt; }
+.chap .eyebrow {
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
-    margin-bottom: 0.06in;
+    color: var(--signal-ink);
 }
-.chapter-title {
-    margin: 0;
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 24pt;
-    font-weight: normal;
-    line-height: 1;
-}
-.chapter-meta {
-    margin-top: 0.05in;
-    color: var(--muted);
-    font-size: 8.5pt;
-}
-.chapter-meta strong { color: var(--ink); font-weight: 800; }
-
-.lede {
-    margin: 0 0 0.18in;
-    max-width: 6.7in;
-    color: var(--body);
-    font-size: 10pt;
-    line-height: 1.5;
-}
-.lede strong { color: var(--ink); font-weight: 700; }
-
-/* ── Section heading rule (used inside chapters) ── */
-.section-heading {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0.04in 0 0.10in;
-}
-.section-heading td.h-text {
-    width: 1px;
-    white-space: nowrap;
-    color: var(--teal);
-    font-size: 8.2pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    padding: 0 0.18in 0 0;
-    vertical-align: middle;
-}
-.section-heading td.h-rule {
-    border-bottom: 1px solid var(--rule);
-    height: 0;
-    vertical-align: middle;
-}
-
-/* ════════════════════ At a glance ════════════════════ */
-
-.hero-grid {
-    width: 100%;
-    border-collapse: collapse;
-    border-top: 1px solid var(--ink);
-    border-left: 1px solid var(--rule);
-    margin-bottom: 0.18in;
-}
-.hero-grid td {
-    width: 25%;
-    border-right: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
-    padding: 0.16in 0.18in 0.18in;
-    vertical-align: top;
-}
-.hero-label {
-    color: var(--muted);
-    font-size: 7pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    margin-bottom: 0.08in;
-}
-.hero-value {
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 26pt;
-    font-weight: normal;
-    line-height: 0.95;
-}
-/* Total Audio can hit "XXX h XX min" — cap it so the whole value fits
-   on a single line at any delivery size under ~999 hours. */
-.hero-value.hero-value-duration {
-    font-size: 18pt;
-    white-space: nowrap;
-}
-.hero-suffix {
-    margin-top: 0.06in;
-    color: var(--muted);
-    font-size: 8pt;
-    line-height: 1.35;
-}
-.hero-grid .hero-cell-accent .hero-value { color: var(--teal); }
-
-.dist-card {
-    border: 1px solid var(--rule-strong);
-    background: var(--wash);
-    padding: 0.16in 0.22in 0.16in 0.32in;
+.chap h2 {
+    margin: 7.5pt 0 0;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 25.5pt;
+    line-height: 1.05;
+    font-variation-settings: "opsz" 70;
+    padding-bottom: 12pt;
+    border-bottom: 2.25pt solid var(--ink);
     position: relative;
-    margin-bottom: 0.18in;
 }
-.dist-card::before {
+.chap h2::after {
     content: "";
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 0.05in;
-    background: var(--teal);
-}
-.dist-card-label {
-    color: var(--teal);
-    font-size: 7pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    margin-bottom: 0.16in;
-}
-
-.rel-bar {
-    width: 100%;
-    border-collapse: collapse;
-    height: 0.42in;
-}
-.rel-bar td {
-    height: 0.42in;
-    color: #fff;
-    font-size: 9pt;
-    font-weight: 800;
-    text-align: center;
-    vertical-align: middle;
-    padding: 0 0.06in;
-    border-right: 1px solid #fff;
-}
-.rel-bar td:last-child { border-right: none; }
-.rel-bar td.rel-high   { background: var(--red); }
-.rel-bar td.rel-medium { background: var(--amber); }
-.rel-bar td.rel-low    { background: var(--green); }
-.rel-bar td.rel-unknown{ background: var(--quiet); }
-.rel-bar td .pct       { font-family: Georgia, "Times New Roman", serif; font-weight: normal; font-size: 13pt; display: block; }
-
-/* ── Activity timeline ── */
-.timeline-card {
-    border: 1px solid var(--rule-strong);
-    background: var(--paper);
-    padding: 0.14in 0.22in 0.14in 0.32in;
-    position: relative;
-    margin-bottom: 0.18in;
-}
-.timeline-card::before {
-    content: "";
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 0.05in;
-    background: var(--teal);
-}
-.timeline-card-head {
-    margin-bottom: 0.08in;
-    height: 0.13in;
-    position: relative;
-}
-.timeline-card-label {
-    color: var(--teal);
-    font-size: 7pt;
-    font-weight: 800;
-    text-transform: uppercase;
     position: absolute;
     left: 0;
-    top: 0;
-}
-.timeline-card-meta {
-    color: var(--muted);
-    font-size: 7.4pt;
-    text-transform: uppercase;
-    font-weight: 700;
-    letter-spacing: 0.2pt;
-    position: absolute;
     right: 0;
-    top: 0;
+    bottom: -4.5pt;
+    border-top: 0.75pt solid var(--ink);
 }
-
-.timeline-bars {
-    position: relative;
-    width: 100%;
-    height: 0.85in;
-    border-bottom: 1px solid var(--rule);
-}
-.timeline-bars .tick {
-    position: absolute;
-    bottom: 0;
-    height: 0.85in;
-    text-align: center;
-}
-.timeline-bars .bar {
-    position: absolute;
-    bottom: 0;
-    left: 14%;
-    right: 14%;
-    background: var(--teal);
-}
-
-.timeline-axis {
-    position: relative;
-    margin-top: 0.06in;
-    height: 0.14in;
-    color: var(--muted);
-    font-size: 7.4pt;
-}
-.timeline-axis .ax-left { position: absolute; left: 0; top: 0; }
-.timeline-axis .ax-right { position: absolute; right: 0; top: 0; }
-.timeline-axis .ax-mid {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    margin-left: -0.6in;
-    width: 1.2in;
-    text-align: center;
-    color: var(--quiet);
-}
-
-/* ── Highlights row (bottom of At a Glance) ── */
-.highlights-grid {
-    width: 100%;
-    border-collapse: collapse;
-    border-top: 1px solid var(--ink);
-    border-left: 1px solid var(--rule);
-    margin-top: 0.06in;
-}
-.highlights-grid td {
-    width: 25%;
-    border-right: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
-    padding: 0.16in 0.18in 0.18in;
-    vertical-align: top;
-}
-.hl-label {
-    color: var(--muted);
-    font-size: 7pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    margin-bottom: 0.08in;
-}
-.hl-value {
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 14pt;
-    line-height: 1.16;
-}
-.hl-suffix {
-    margin-top: 0.05in;
-    color: var(--muted);
-    font-size: 7.8pt;
-    line-height: 1.35;
-}
-
-/* ── Inferred caller identity (under phone number) ── */
-.caller-inferred {
-    margin-top: 0.04in;
-    color: var(--muted);
-    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif;
-    font-style: italic;
-    font-size: 8.2pt;
+.chap .chapmeta {
+    float: right;
+    font-family: var(--mono);
+    font-size: 7.9pt;
     font-weight: 400;
-    line-height: 1.32;
-    white-space: normal;
-}
-.caller-inferred .approx {
-    color: var(--teal);
-    font-style: normal;
-    font-weight: 800;
-    margin-right: 0.04in;
-}
-.caller-inferred .conf {
-    display: inline-block;
-    margin-left: 0.06in;
-    padding: 0 0.05in;
-    border: 1px solid var(--rule-strong);
-    color: var(--quiet);
-    font-style: normal;
-    font-size: 6.6pt;
-    font-weight: 800;
-    letter-spacing: 0.2pt;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
-    vertical-align: 1pt;
+    color: var(--ink-3);
+    padding-top: 13.5pt;
 }
-.caller-inferred .conf.low { color: var(--quiet); border-color: var(--rule-strong); }
-.caller-inferred .conf.medium { color: var(--amber); border-color: var(--amber); }
-.caller-inferred .conf.high { display: none; } /* high confidence is the default; no badge needed */
 
-/* ════════════════════ Top findings ════════════════════ */
+/* ════════════════════ At a Glance ════════════════════ */
 
-.finding {
-    border-top: 1px solid var(--rule);
-    padding: 0.18in 0;
-    page-break-inside: avoid;
-    position: relative;
-}
-.finding:first-of-type { border-top: 1px solid var(--ink); }
-.finding:last-of-type { border-bottom: 1px solid var(--rule); }
-
-.finding-table {
+.ag-hero {
     width: 100%;
     border-collapse: collapse;
+    border: 1px solid var(--ink);
+    margin-top: 22.5pt;
 }
-.finding-table td {
+.ag-hero td {
+    width: 25%;
+    border-left: 1px solid var(--rule);
+    padding: 13.5pt 13.5pt 10.5pt;
     vertical-align: top;
 }
-.finding-num {
-    width: 0.78in;
-    color: var(--teal);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 26pt;
-    line-height: 0.85;
-    padding-top: 0.025in;
-}
-.finding-body {
-    padding-left: 0.06in;
-}
-.finding-headline {
-    margin: 0 0 0.08in;
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 14pt;
-    font-weight: normal;
-    line-height: 1.18;
-}
-.finding-detail {
-    color: var(--body);
-    font-size: 9.6pt;
-    line-height: 1.5;
-    margin: 0 0 0.1in;
-}
-.finding-cite {
-    color: var(--muted);
-    font-size: 8pt;
-}
-.finding-cite a {
-    color: var(--teal);
-    font-weight: 700;
-}
-.finding-cite .file {
-    font-family: "Courier New", Courier, monospace;
-    color: var(--ink-soft);
-}
-.finding-cite .ts {
-    color: var(--teal);
-    font-weight: 800;
-}
-.finding-cite .pdf {
-    color: var(--quiet);
-    font-weight: 700;
-    margin-left: 0.08in;
-}
-
-.empty-card {
-    border: 1px solid var(--rule);
-    background: var(--wash);
-    padding: 0.3in 0.34in;
-    color: var(--body);
-    font-size: 9.5pt;
-    line-height: 1.5;
-}
-.empty-card strong {
-    display: block;
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 13pt;
-    font-weight: normal;
-    margin-bottom: 0.06in;
-}
-
-/* ════════════════════ High relevance call cards ════════════════════ */
-
-.call-card {
-    border: 1px solid var(--rule-strong);
-    background: var(--paper);
-    padding: 0;
-    margin-bottom: 0.22in;
-}
-/* Keep the card header (pill + filename + meta) together so a page break
-   never lands between the pill and its call title, but allow the cue
-   table below to split cleanly across pages for long call cards. */
-.call-card-head { page-break-inside: avoid; page-break-after: avoid; }
-
-.call-card-head {
-    position: relative;
-    background: var(--wash);
-    border-bottom: 1px solid var(--rule);
-    padding: 0.16in 0.22in 0.16in 1.5in;
-    min-height: 0.78in;
-}
-.call-card-head .pill {
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 1.3in;
-    color: #fff;
-    padding: 0.16in 0.16in;
-}
-.call-card.rel-high   .pill { background: var(--red); }
-.call-card.rel-medium .pill { background: var(--amber); }
-.call-card .pill .label {
-    font-size: 7pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    margin-bottom: 0.05in;
-}
-.call-card .pill .value {
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 17pt;
+.ag-hero td:first-child { border-left: none; }
+.ag-hero td.sig { background: var(--signal-bg); }
+.ag-hero .n {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 25.5pt;
     line-height: 1;
+    font-variant-numeric: tabular-nums;
+    font-variation-settings: "opsz" 80;
+    white-space: nowrap;
 }
-.call-card .pill .sub {
-    margin-top: 0.06in;
-    font-size: 7.4pt;
+.ag-hero .n small { font-size: 0.5em; font-weight: 500; color: var(--ink-3); }
+.ag-hero td.sig .n { color: var(--signal-ink); }
+.ag-hero .lbl { margin-top: 5.25pt; font-size: 6.75pt; }
+
+.ag-sec { margin-top: 22.5pt; }
+.ag-sec h3 {
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12pt;
+    font-size: 7.9pt;
     font-weight: 700;
-    color: rgba(255,255,255,0.78);
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-}
-
-.call-head-title {
-    margin: 0;
     color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 13pt;
-    font-weight: normal;
-    line-height: 1.18;
-}
-.call-head-title a { color: var(--ink); }
-.call-head-title a:hover { color: var(--teal); }
-
-.call-head-meta {
-    margin-top: 0.05in;
-    color: var(--muted);
-    font-size: 8.2pt;
-    line-height: 1.4;
-}
-.call-head-meta strong { color: var(--ink); font-weight: 800; }
-.call-head-meta .sep { color: var(--quiet); margin: 0 0.08in; }
-
-.call-head-links {
-    margin-top: 0.06in;
-    font-size: 7.6pt;
-    text-transform: uppercase;
-    letter-spacing: 0.3pt;
-}
-.call-head-links a {
-    color: var(--teal);
-    font-weight: 800;
-    margin-right: 0.18in;
-}
-.call-head-links a::before {
-    content: "›  ";
-    color: var(--quiet);
-}
-
-.call-body {
-    padding: 0.16in 0.22in 0.18in;
-}
-.call-brief {
-    color: var(--ink-soft);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 11pt;
-    font-style: italic;
-    line-height: 1.42;
-    margin: 0 0 0.15in;
-}
-.call-speakers {
-    color: var(--muted);
-    font-size: 8.4pt;
-    margin: -0.1in 0 0.15in;
-}
-.call-speakers strong { color: var(--ink); font-weight: 700; }
-
-.cue-table {
-    width: 100%;
-    border-collapse: collapse;
-    border-top: 1px solid var(--rule);
-}
-.cue-table tr {
-    page-break-inside: avoid;
-}
-.cue-table td {
-    vertical-align: top;
-    padding: 0.085in 0;
+    padding-bottom: 5.25pt;
     border-bottom: 1px solid var(--rule);
 }
-.cue-time {
-    width: 0.74in;
-    color: var(--teal);
-    font-size: 9pt;
-    font-weight: 800;
-    padding-right: 0.1in;
-    padding-top: 0.025in;
-}
-.cue-time a { color: var(--teal); }
-.cue-text {
-    padding-left: 0.05in;
-}
-.cue-speaker {
-    color: var(--muted);
-    font-size: 7.4pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    margin-bottom: 0.025in;
-}
-.cue-quote {
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 9.6pt;
-    line-height: 1.32;
-    margin-bottom: 0.025in;
-}
-.cue-note {
-    color: var(--body);
-    font-size: 8.6pt;
-    line-height: 1.4;
-}
-
-/* ════════════════════ Medium relevance compact rows ════════════════════ */
-
-.med-table {
-    width: 100%;
-    border-collapse: collapse;
-    border-top: 1px solid var(--ink);
-}
-.med-table tr {
-    border-bottom: 1px solid var(--rule);
-    page-break-inside: avoid;
-}
-.med-table td {
-    vertical-align: top;
-    padding: 0.13in 0.06in 0.14in 0;
-}
-.med-num {
-    width: 0.42in;
-    color: var(--quiet);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 13pt;
-    line-height: 0.85;
-    padding-top: 0.04in;
-}
-.med-main { padding-right: 0.16in; }
-.med-name {
-    margin: 0;
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 11.5pt;
-    font-weight: normal;
-    line-height: 1.18;
-}
-.med-name a { color: var(--ink); }
-.med-name a:hover { color: var(--teal); }
-.med-meta {
-    margin-top: 0.04in;
-    color: var(--muted);
-    font-size: 8pt;
-}
-.med-meta .sep { color: var(--quiet); margin: 0 0.08in; }
-.med-meta strong { color: var(--ink); font-weight: 700; }
-.med-brief {
-    margin-top: 0.05in;
-    color: var(--body);
-    font-size: 8.8pt;
-    line-height: 1.42;
-}
-.med-side {
-    width: 1.0in;
-    text-align: right;
-    color: var(--muted);
+.ag-sec h3 .m {
+    font-family: var(--mono);
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    color: var(--ink-3);
     font-size: 7.5pt;
-    text-transform: uppercase;
-    font-weight: 800;
-    padding-top: 0.06in;
 }
-.med-side a { color: var(--teal); }
 
-/* ════════════════════ Frequent callers ════════════════════ */
+.ag-chart { margin-top: 10.5pt; }
+.ag-chart svg { display: block; width: 100%; }
 
-.callers-table {
+.ag-dist { margin-top: 10.5pt; }
+.ag-dist .bar { display: flex; height: 22.5pt; }
+.ag-dist .bar i { display: block; height: 100%; }
+.ag-dist .bar .h { background: var(--signal); }
+.ag-dist .bar .m { background: var(--med-bar); }
+.ag-dist .bar .l { background: var(--low-bar); }
+.ag-dist .bar .u { background: var(--unrated-bar); }
+.ag-dist .legend { display: flex; gap: 19.5pt; margin-top: 7.5pt; flex-wrap: wrap; }
+.ag-dist .legend .rv b { font-size: 9.75pt; margin-right: 1.5pt; }
+.ag-dist .legend .pct {
+    font-family: var(--mono);
+    font-size: 7.9pt;
+    color: var(--ink-3);
+    margin-left: 3.75pt;
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
+.ag-rows { margin-top: 9pt; }
+.ag-rows .row {
+    display: flex;
+    align-items: baseline;
+    gap: 9pt;
+    padding: 6pt 1.5pt;
+}
+.ag-rows .k { font-size: 9.4pt; font-weight: 600; white-space: nowrap; }
+.ag-rows .dots {
+    flex: 1;
+    border-bottom: 2px dotted var(--rule);
+    transform: translateY(-2.25pt);
+}
+.ag-rows .w { font-family: var(--mono); font-size: 9pt; text-align: right; }
+.ag-rows .w em {
+    font-family: var(--sans);
+    font-style: normal;
+    color: var(--ink-3);
+    font-size: 8.6pt;
+}
+
+/* ════════════════════ Top Findings ════════════════════ */
+
+.fd {
+    display: grid;
+    grid-template-columns: 63pt 1fr;
+    gap: 0 16.5pt;
+    padding: 19.5pt 0 18pt;
+    border-bottom: 1px solid var(--rule);
+    page-break-inside: avoid;
+}
+.fd .num {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 40.5pt;
+    line-height: 0.9;
+    color: var(--ink);
+    font-variation-settings: "opsz" 110;
+    font-variant-numeric: tabular-nums;
+}
+.fd h3 {
+    margin: 0;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 15.4pt;
+    line-height: 1.2;
+    font-variation-settings: "opsz" 40;
+}
+.fd p {
+    margin: 6.75pt 0 0;
+    font-size: 9.75pt;
+    line-height: 1.6;
+    color: var(--ink-2);
+}
+.fd .cite {
+    margin-top: 9pt;
+    display: flex;
+    align-items: center;
+    gap: 10.5pt;
+    font-family: var(--mono);
+    font-size: 7.9pt;
+    color: var(--ink-3);
+}
+.fd .cite .call { color: var(--ink); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.fd .cite .ts { color: var(--signal-ink); font-weight: 600; }
+.fd .cite a {
+    font-family: var(--sans);
+    font-size: 7.1pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink);
+    border: 1px solid var(--ink);
+    padding: 3pt 6.75pt;
+    white-space: nowrap;
+}
+.fd .cite a:first-of-type { margin-left: auto; }
+
+.empty {
+    margin-top: 19.5pt;
+    border: 1px solid var(--rule);
+    background: var(--cream);
+    padding: 16.5pt 18pt;
+    color: var(--ink-2);
+    font-size: 9.4pt;
+    line-height: 1.5;
+}
+.empty strong {
+    display: block;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 12pt;
+    color: var(--ink);
+    margin-bottom: 3.75pt;
+    font-variation-settings: "opsz" 30;
+}
+
+/* ════════════════════ High-relevance call cards ════════════════════ */
+
+.cc {
+    margin-top: 19.5pt;
+    border: 1px solid var(--ink);
+    background: var(--paper);
+}
+/* Keep the card header together so a page break never lands between the
+   relevance marker and its call title, but allow the cue table below to
+   split cleanly across pages for long call cards. */
+.cc-head { page-break-inside: avoid; page-break-after: avoid; }
+
+.cc-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12pt;
+    padding: 10.5pt 15pt 9pt;
+    border-bottom: 1px solid var(--ink);
+    background: var(--cream);
+}
+.cc-head .rv { font-size: 7.5pt; }
+.cc-head .who {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 13.5pt;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.cc-head .when {
+    font-family: var(--mono);
+    font-size: 8.25pt;
+    color: var(--ink-3);
+    margin-left: auto;
+    text-align: right;
+    text-transform: uppercase;
+}
+
+.cc-body { padding: 12pt 15pt 13.5pt; }
+.cc-brief {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 10.1pt;
+    line-height: 1.55;
+    font-variation-settings: "opsz" 18;
+}
+.cc-speakers {
+    margin-top: 6pt;
+    font-size: 8.6pt;
+    color: var(--ink-2);
+    line-height: 1.45;
+}
+.cc-speakers b { color: var(--ink); font-weight: 600; }
+
+.cc-cues {
     width: 100%;
     border-collapse: collapse;
+    margin-top: 10.5pt;
+}
+.cc-cues tr { page-break-inside: avoid; }
+.cc-cues td {
+    padding: 6pt 0 5.25pt;
+    border-top: 1px solid var(--rule-faint);
+    vertical-align: baseline;
+}
+.cc-cues .ts {
+    font-family: var(--mono);
+    font-size: 8.6pt;
+    font-weight: 600;
+    color: var(--signal-ink);
+    width: 42pt;
+    white-space: nowrap;
+}
+.cc-cues .ts a { color: var(--signal-ink); }
+.cc-cues .q {
+    font-size: 9.4pt;
+    color: var(--ink-2);
+    line-height: 1.5;
+    padding-right: 10.5pt;
+}
+.cc-cues .q b { color: var(--ink); font-weight: 600; }
+.cc-cues .q i { font-family: var(--serif); font-variation-settings: "opsz" 18; }
+.cc-cues .cite {
+    font-family: var(--mono);
+    font-size: 7.5pt;
+    color: var(--ink-3);
+    text-align: right;
+    white-space: nowrap;
+    width: 78pt;
+}
+
+.cc-foot {
+    display: flex;
+    gap: 16.5pt;
+    padding: 7.5pt 15pt;
+    border-top: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: 7.5pt;
+    color: var(--ink-3);
+}
+.cc-foot a { color: var(--ink); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+
+/* ════════════════════ Medium-relevance compact rows ════════════════════ */
+
+.med {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 19.5pt;
     border-top: 1px solid var(--ink);
 }
-.callers-table thead th {
-    text-align: left;
-    padding: 0.1in 0.08in 0.1in 0;
-    color: var(--muted);
-    font-size: 7pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    border-bottom: 1px solid var(--rule);
+.med tr {
+    border-bottom: 1px solid var(--rule-faint);
+    page-break-inside: avoid;
 }
-.callers-table thead th.right { text-align: right; }
-.callers-table tbody tr {
-    border-bottom: 1px solid var(--rule);
+.med td {
+    vertical-align: baseline;
+    padding: 8.25pt 0 7.5pt;
 }
-.callers-table tbody td {
-    padding: 0.12in 0.08in 0.13in 0;
-    vertical-align: middle;
-    color: var(--body);
-    font-size: 9.2pt;
+.med .d {
+    font-family: var(--mono);
+    font-size: 8.25pt;
+    color: var(--ink-2);
+    width: 84pt;
+    white-space: nowrap;
+    padding-right: 12pt;
 }
-.callers-table .rank {
-    width: 0.38in;
-    color: var(--quiet);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 13pt;
-}
-.callers-table .num {
-    color: var(--ink);
-    font-family: "Courier New", Courier, monospace;
-    font-size: 9pt;
-    font-weight: 700;
-}
-.callers-table .count {
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 14pt;
+.med .dur {
+    font-family: var(--mono);
+    font-size: 8.25pt;
+    color: var(--ink-3);
     text-align: right;
-    width: 0.7in;
-    padding-right: 0.18in;
+    width: 42pt;
+    padding-right: 12pt;
 }
-.callers-table .duration {
+.med .p { width: 120pt; padding-right: 12pt; }
+.med .p b { display: block; font-size: 9.4pt; font-weight: 600; }
+.med .p span {
+    font-family: var(--mono);
+    font-size: 7.1pt;
+    color: var(--ink-3);
+    overflow-wrap: anywhere;
+}
+.med .s { font-size: 9pt; color: var(--ink-2); line-height: 1.45; padding-right: 12pt; }
+.med .s .nn { font-family: var(--mono); font-size: 7.5pt; color: var(--ink-3); white-space: nowrap; }
+.med .go {
+    font-family: var(--mono);
+    font-size: 7.5pt;
+    color: var(--ink-3);
     text-align: right;
-    color: var(--ink-soft);
-    font-weight: 700;
-    width: 1.0in;
+    white-space: nowrap;
+    width: 60pt;
 }
-.callers-table .range {
-    text-align: right;
-    color: var(--muted);
-    font-size: 8.4pt;
-    width: 1.7in;
-}
-.callers-table .pill-cell {
-    text-align: right;
-    width: 0.95in;
-    padding-right: 0;
-}
-.rel-mini {
-    display: inline-block;
-    color: #fff;
-    font-size: 7pt;
-    font-weight: 800;
-    text-transform: uppercase;
-    padding: 0.04in 0.1in;
-    border-radius: 0.02in;
-}
-.rel-mini.rel-high   { background: var(--red); }
-.rel-mini.rel-medium { background: var(--amber); }
-.rel-mini.rel-low    { background: var(--green); }
-.rel-mini.rel-none   { background: var(--quiet); }
+.med .go a { color: var(--ink); font-weight: 500; }
 
-/* tiny utilities */
-.muted { color: var(--muted); }
-.mono  { font-family: "Courier New", Courier, monospace; }
-.nowrap { white-space: nowrap; }
+/* ════════════════════ Caller statistics ════════════════════ */
+
+.ks {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 19.5pt;
+}
+.ks th {
+    font-size: 6.75pt;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    text-align: left;
+    padding: 0 0 6pt;
+    border-bottom: 1px solid var(--ink);
+}
+.ks th.num { text-align: right; }
+.ks tr { page-break-inside: avoid; }
+.ks td {
+    padding: 9pt 0 8.25pt;
+    border-bottom: 1px solid var(--rule-faint);
+    vertical-align: baseline;
+}
+.ks td.num {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 9pt;
+    padding-left: 12pt;
+    white-space: nowrap;
+}
+.ks td.num.range { font-size: 7.9pt; color: var(--ink-2); }
+.ks .who {
+    font-family: var(--mono);
+    font-size: 9.4pt;
+    font-weight: 600;
+    color: var(--ink);
+}
+.ks .inf {
+    font-size: 9pt;
+    color: var(--ink-2);
+    line-height: 1.45;
+    padding-right: 12pt;
+}
+.ks .inf .conf {
+    font-family: var(--mono);
+    font-size: 6.75pt;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    border: 1px solid var(--rule);
+    padding: 0.75pt 3.75pt;
+    margin-left: 4.5pt;
+    white-space: nowrap;
+}
+.ks .rv { font-size: 7.1pt; }
+
+.trunc-note {
+    margin-top: 12pt;
+    font-family: var(--mono);
+    font-size: 7.5pt;
+    color: var(--ink-3);
+}
 </style>
 </head>
 <body>
 
-<!-- ═══════════════════════ 01 · Cover ═══════════════════════ -->
+<!-- ═══════════════════════ Cover ═══════════════════════ -->
 <div class="cover">
     <span class="chapter-marker">Cover</span>
-    <div class="cover-header">
-        <div class="cover-doc-type">Jail Call Service</div>
-        <div class="cover-confidential">Confidential &middot; Counsel Use</div>
+    <div class="band">
+        <span class="lbl lbl--ink">Privileged &amp; Confidential · Attorney Work Product</span>
+        <span class="lbl">Case Report</span>
     </div>
 
-    <div class="cover-main">
-        <div class="cover-doclabel">Document</div>
-        <h1 class="cover-title">Case Report<span class="period">.</span></h1>
-        <div class="cover-rule"></div>
-        <p class="cover-subtitle">Top findings, high-relevance calls, and frequent-caller statistics, synthesized from the per-call AI analysis.</p>
-    </div>
-
-    <div class="cover-case">
-        <div class="cover-case-label">Prepared For</div>
-        <h2 class="cover-case-name">{{ case_name }}</h2>
-        {% if defendant_name %}
-        <div class="cover-defendant">Defendant: <strong>{{ defendant_name }}</strong></div>
+    <div class="rc-cap">
+        <div class="eyebrow">Recorded-Call Review</div>
+        {% if case_caption %}
+        <h1>{{ case_caption.left }}<span class="v">— against —</span>{{ case_caption.right }}</h1>
+        {% else %}
+        <h1>{{ case_name }}</h1>
         {% endif %}
+        <div class="rc-rule"></div>
     </div>
 
-    <div class="title-meta">
-        <table>
-            <tr>
-                <td>
-                    <div class="meta-label">Generated</div>
-                    <div class="meta-value">{{ gen_date }}</div>
-                </td>
-                <td>
-                    <div class="meta-label">Total Calls</div>
-                    <div class="meta-value">{{ glance.total_calls }}</div>
-                </td>
-                <td>
-                    <div class="meta-label">High Relevance</div>
-                    <div class="meta-value">{{ high_count }}</div>
-                </td>
-                <td>
-                    <div class="meta-label">Date Range</div>
-                    <div class="meta-value">{{ glance.date_range }}</div>
-                </td>
-            </tr>
-        </table>
+    <div class="rc-stats">
+        <div class="cell"><div class="n">{{ glance.total_calls }}</div><div class="lbl">Call{{ "s" if glance.total_calls != 1 else "" }}</div></div>
+        <div class="cell"><div class="n">{{ glance.total_duration_stat }}</div><div class="lbl">Audio</div></div>
+        <div class="cell"><div class="n sig">{{ high_count }}</div><div class="lbl">High Relevance</div></div>
+        <div class="cell"><div class="n">{{ glance.unique_callers }}</div><div class="lbl">Number{{ "s" if glance.unique_callers != 1 else "" }}</div></div>
     </div>
 
-    <div class="cover-note">
-        <strong>How to read this report.</strong>
-        Top findings synthesized by AI appear first, followed by detailed cards for every high-relevance call, a compact list of medium-relevance calls, and frequent-caller statistics. Every filename and timestamp is a link into the call viewer or the individual transcript PDF. See <span class="mono" style="color: var(--ink); font-weight: 700;">guide.pdf</span> for methodology and caveats.
+    <div class="rc-facts">
+        {% if defendant_name %}
+        <div class="row"><span class="k">Defendant</span><span class="w">{{ defendant_name }}</span></div>
+        {% endif %}
+        <div class="row"><span class="k">Coverage</span><span class="w">{{ glance.date_range }}</span></div>
+        <div class="row"><span class="k">Review Cues</span><span class="w">{{ glance.total_notes }} across {{ glance.calls_with_notes }} call{{ "s" if glance.calls_with_notes != 1 else "" }}</span></div>
+        <div class="row"><span class="k">Generated</span><span class="w">{{ gen_date }}</span></div>
+    </div>
+
+    <div class="rc-toc">
+        <div class="row"><span class="n">01</span><span class="t">At a Glance</span><span class="dots"></span><span class="p"><a href="#sec-glance"></a></span></div>
+        <div class="row"><span class="n">02</span><span class="t">Top Findings</span><span class="dots"></span><span class="p"><a href="#sec-findings"></a></span></div>
+        <div class="row"><span class="n">03</span><span class="t">High-Relevance Calls</span><span class="dots"></span><span class="p"><a href="#sec-high"></a></span></div>
+        <div class="row"><span class="n">04</span><span class="t">Medium-Relevance Calls</span><span class="dots"></span><span class="p"><a href="#sec-medium"></a></span></div>
+        <div class="row"><span class="n">05</span><span class="t">Caller Statistics</span><span class="dots"></span><span class="p"><a href="#sec-callers"></a></span></div>
     </div>
 </div>
 
 
-<!-- ═══════════════════════ 02 · At a Glance ═══════════════════════ -->
-<section class="chapter">
-    <header class="chapter-header">
-        <div class="chapter-eyebrow">Section One</div>
+<!-- ═══════════════════════ 01 · At a Glance ═══════════════════════ -->
+<section class="chapter" id="sec-glance">
+    <div class="band">
+        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
+        <span class="lbl">{{ case_name_short }}</span>
+    </div>
+    <header class="chap">
+        <div class="eyebrow">Section 01</div>
         <span class="chapter-marker">At a Glance</span>
-        <h2 class="chapter-title">At a Glance</h2>
-        <div class="chapter-meta">
-            <strong>{{ glance.total_calls }}</strong> call{{ "s" if glance.total_calls != 1 else "" }} processed &middot; <strong>{{ glance.unique_callers }}</strong> unique outside number{{ "s" if glance.unique_callers != 1 else "" }} &middot; {{ glance.date_range }}
-        </div>
+        <h2>At a Glance<span class="chapmeta">{{ glance.total_calls }} CALLS · {{ glance.date_range }}</span></h2>
     </header>
 
-    <p class="lede">
-        Top-line metrics for the entire delivery. Detailed per-call records appear on the pages that follow.
-    </p>
-
-    <table class="hero-grid">
+    <table class="ag-hero">
         <tr>
             <td>
-                <div class="hero-label">Total Calls</div>
-                <div class="hero-value">{{ glance.total_calls }}</div>
-                <div class="hero-suffix">processed and summarized</div>
+                <div class="n">{{ glance.total_calls }}</div>
+                <div class="lbl">Total Calls</div>
             </td>
-            <td class="hero-cell-accent">
-                <div class="hero-label">High Relevance</div>
-                <div class="hero-value">{{ high_count }}</div>
-                <div class="hero-suffix">flagged for priority review</div>
+            <td class="sig">
+                <div class="n">{{ high_count }}</div>
+                <div class="lbl">High Relevance</div>
             </td>
             <td>
-                <div class="hero-label">Total Audio</div>
-                <div class="hero-value hero-value-duration">{{ glance.total_duration_display }}</div>
-                <div class="hero-suffix">{{ glance.avg_duration_display }} average</div>
+                <div class="n">{{ glance.avg_duration_display }}</div>
+                <div class="lbl">Average Length</div>
             </td>
             <td>
-                <div class="hero-label">Notes Flagged</div>
-                <div class="hero-value">{{ glance.total_notes }}</div>
-                <div class="hero-suffix">across {{ glance.calls_with_notes }} call{{ "s" if glance.calls_with_notes != 1 else "" }}</div>
+                <div class="n">{{ glance.total_notes }}</div>
+                <div class="lbl">Review Cues</div>
             </td>
         </tr>
     </table>
 
     {% if timeline %}
-    <table class="section-heading"><tr><td class="h-text">Activity Over Time</td><td class="h-rule"></td></tr></table>
-
-    <div class="timeline-card">
-        <div class="timeline-card-head">
-            <div class="timeline-card-label">Calls Per {{ timeline.granularity|capitalize }}</div>
-            <div class="timeline-card-meta">{{ timeline.tick_count }} {{ timeline.granularity_plural }} &middot; peak {{ timeline.max_count }}</div>
-        </div>
-
-        <div class="timeline-bars">
-            {% for b in timeline.buckets %}
-            <div class="tick" style="left: {{ '%.4f' % b.left_pct }}%; width: {{ '%.4f' % timeline.tick_width_pct }}%;">
-                {% if b.count > 0 %}
-                <div class="bar" style="height: {{ '%.3f' % b.height_in }}in;"></div>
+    <div class="ag-sec">
+        <h3>Call Volume by {{ timeline.unit_name }} <span class="m">PEAK — {{ timeline.max_count }} CALL{{ "S" if timeline.max_count != 1 else "" }}, {{ timeline.peak_label }}</span></h3>
+        <div class="ag-chart">
+            <svg viewBox="0 0 {{ timeline.svg.width }} {{ timeline.svg.height }}" aria-hidden="true">
+                <line x1="0" y1="{{ timeline.svg.axis_y }}" x2="{{ timeline.svg.width }}" y2="{{ timeline.svg.axis_y }}" stroke="#16140F" stroke-width="1"/>
+                {% if timeline.svg.grid %}
+                <line x1="0" y1="{{ timeline.svg.grid.y }}" x2="{{ timeline.svg.width }}" y2="{{ timeline.svg.grid.y }}" stroke="rgba(22,20,15,.12)" stroke-width="1" stroke-dasharray="2 3"/>
+                <text x="0" y="{{ timeline.svg.grid.y - 4 }}" font-family="IBM Plex Mono" font-size="9" fill="#807A6E">{{ timeline.svg.grid.label }}</text>
                 {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-
-        <div class="timeline-axis">
-            <span class="ax-left">{{ timeline.start_label }}</span>
-            {% if timeline.show_mid_label %}<span class="ax-mid">{{ timeline.mid_label }}</span>{% endif %}
-            <span class="ax-right">{{ timeline.end_label }}</span>
+                {% for bar in timeline.svg.bars %}
+                <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.w }}" height="{{ bar.h }}" fill="{{ '#A8271E' if bar.peak else '#16140F' }}"/>
+                {% endfor %}
+                <text x="{{ timeline.svg.peak.x }}" y="{{ timeline.svg.peak.y }}" font-family="IBM Plex Mono" font-size="9.5" font-weight="600" fill="#871F18" text-anchor="middle">{{ timeline.svg.peak.count }}</text>
+                {% for label in timeline.svg.labels %}
+                <text x="{{ label.x }}" y="{{ timeline.svg.label_y }}" font-family="IBM Plex Mono" font-size="8.5" {% if label.peak %}fill="#871F18" font-weight="600"{% else %}fill="#807A6E"{% endif %} text-anchor="middle">{{ label.text }}</text>
+                {% endfor %}
+            </svg>
         </div>
     </div>
     {% endif %}
 
-    <table class="section-heading"><tr><td class="h-text">Relevance Distribution</td><td class="h-rule"></td></tr></table>
-
-    <div class="dist-card">
-        <div class="dist-card-label">All {{ glance.total_calls }} Calls</div>
-
-        {% if glance.total_calls > 0 %}
-        <table class="rel-bar">
-            <tr>
-                {% if glance.rel_counts.HIGH > 0 %}
-                <td class="rel-high" style="width: {{ '%.2f' % glance.rel_percents.HIGH }}%;">
-                    {% if glance.rel_percents.HIGH >= 8 %}HIGH<span class="pct">{{ glance.rel_counts.HIGH }}</span>{% endif %}
-                </td>
+    <div class="ag-sec">
+        <h3>Relevance Distribution <span class="m">ALL {{ glance.total_calls }} CALLS</span></h3>
+        <div class="ag-dist">
+            {% if glance.total_calls > 0 %}
+            <div class="bar">
+                {% if glance.rel_counts.HIGH %}<i class="h" style="width: {{ '%.2f' % glance.rel_percents.HIGH }}%"></i>{% endif %}
+                {% if glance.rel_counts.MEDIUM %}<i class="m" style="width: {{ '%.2f' % glance.rel_percents.MEDIUM }}%"></i>{% endif %}
+                {% if glance.rel_counts.LOW %}<i class="l" style="width: {{ '%.2f' % glance.rel_percents.LOW }}%"></i>{% endif %}
+                {% if glance.rel_counts.UNKNOWN %}<i class="u" style="width: {{ '%.2f' % glance.rel_percents.UNKNOWN }}%"></i>{% endif %}
+            </div>
+            <div class="legend">
+                <span class="rv rv--high"><b>{{ glance.rel_counts.HIGH }}</b> High<span class="pct">{{ '%.1f' % glance.rel_percents.HIGH }}%</span></span>
+                <span class="rv rv--medium"><b>{{ glance.rel_counts.MEDIUM }}</b> Medium<span class="pct">{{ '%.1f' % glance.rel_percents.MEDIUM }}%</span></span>
+                <span class="rv rv--low"><b>{{ glance.rel_counts.LOW }}</b> Low<span class="pct">{{ '%.1f' % glance.rel_percents.LOW }}%</span></span>
+                {% if glance.rel_counts.UNKNOWN %}
+                <span class="rv rv--none"><b>{{ glance.rel_counts.UNKNOWN }}</b> Unrated<span class="pct">{{ '%.1f' % glance.rel_percents.UNKNOWN }}%</span></span>
                 {% endif %}
-                {% if glance.rel_counts.MEDIUM > 0 %}
-                <td class="rel-medium" style="width: {{ '%.2f' % glance.rel_percents.MEDIUM }}%;">
-                    {% if glance.rel_percents.MEDIUM >= 8 %}MEDIUM<span class="pct">{{ glance.rel_counts.MEDIUM }}</span>{% endif %}
-                </td>
-                {% endif %}
-                {% if glance.rel_counts.LOW > 0 %}
-                <td class="rel-low" style="width: {{ '%.2f' % glance.rel_percents.LOW }}%;">
-                    {% if glance.rel_percents.LOW >= 8 %}LOW<span class="pct">{{ glance.rel_counts.LOW }}</span>{% endif %}
-                </td>
-                {% endif %}
-                {% if glance.rel_counts.UNKNOWN > 0 %}
-                <td class="rel-unknown" style="width: {{ '%.2f' % glance.rel_percents.UNKNOWN }}%;">
-                    {% if glance.rel_percents.UNKNOWN >= 8 %}UNRATED<span class="pct">{{ glance.rel_counts.UNKNOWN }}</span>{% endif %}
-                </td>
-                {% endif %}
-            </tr>
-        </table>
-        {% else %}
-        <p class="muted" style="margin: 0; font-size: 9pt;">No completed calls.</p>
-        {% endif %}
+            </div>
+            {% endif %}
+        </div>
     </div>
 
-    <table class="section-heading"><tr><td class="h-text">Highlights</td><td class="h-rule"></td></tr></table>
-
-    <table class="highlights-grid">
-        <tr>
-            <td>
-                <div class="hl-label">Most Active Day</div>
-                <div class="hl-value">{{ glance.most_active_day_display }}</div>
-                <div class="hl-suffix">{{ glance.most_active_day_count }} call{{ "s" if glance.most_active_day_count != 1 else "" }}</div>
-            </td>
-            <td>
-                <div class="hl-label">Longest Call</div>
-                <div class="hl-value">{{ glance.longest_call_display }}</div>
-                <div class="hl-suffix">with {{ glance.longest_call_party }}</div>
-            </td>
-            <td>
-                <div class="hl-label">Date Range</div>
-                <div class="hl-value">{{ glance.date_range }}</div>
-                <div class="hl-suffix">{{ glance.unique_callers }} unique caller{{ "s" if glance.unique_callers != 1 else "" }}</div>
-            </td>
-            <td>
-                <div class="hl-label">Avg Duration</div>
-                <div class="hl-value">{{ glance.avg_duration_display }}</div>
-                <div class="hl-suffix">per call</div>
-            </td>
-        </tr>
-    </table>
+    <div class="ag-sec">
+        <h3>Highlights</h3>
+        <div class="ag-rows">
+            <div class="row"><span class="k">Most active day</span><span class="dots"></span><span class="w">{{ glance.most_active_day_display }} <em>· {{ glance.most_active_day_count }} call{{ "s" if glance.most_active_day_count != 1 else "" }}</em></span></div>
+            <div class="row"><span class="k">Longest call</span><span class="dots"></span><span class="w">{{ glance.longest_call_display }} <em>· {{ glance.longest_call_party }}</em></span></div>
+            {% if top_callers %}
+            <div class="row"><span class="k">Most frequent caller</span><span class="dots"></span><span class="w">{{ top_callers[0].display }} <em>· {{ top_callers[0].count }} call{{ "s" if top_callers[0].count != 1 else "" }}</em></span></div>
+            {% endif %}
+            <div class="row"><span class="k">Calls with review cues</span><span class="dots"></span><span class="w">{{ glance.calls_with_notes }} of {{ glance.total_calls }}</span></div>
+        </div>
+    </div>
 </section>
 
 
-<!-- ═══════════════════════ 03 · Top Findings ═══════════════════════ -->
-<section class="chapter">
-    <header class="chapter-header">
-        <div class="chapter-eyebrow">Section Two</div>
+<!-- ═══════════════════════ 02 · Top Findings ═══════════════════════ -->
+<section class="chapter" id="sec-findings">
+    <div class="band">
+        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
+        <span class="lbl">{{ case_name_short }}</span>
+    </div>
+    <header class="chap">
+        <div class="eyebrow">Section 02</div>
         <span class="chapter-marker">Top Findings</span>
-        <h2 class="chapter-title">Top Findings</h2>
-        <div class="chapter-meta">
-            {% if findings %}
-            <strong>{{ findings|length }}</strong> finding{{ "s" if findings|length != 1 else "" }} &middot; synthesized from {{ synthesis_input_count }} call{{ "s" if synthesis_input_count != 1 else "" }}{% if synthesis_used_medium %} (HIGH + top MEDIUM){% else %} (HIGH only){% endif %}
-            {% else %}
-            no calls met the threshold for synthesis
-            {% endif %}
-        </div>
+        <h2>Top Findings{% if findings %}<span class="chapmeta">{{ findings|length }} FINDING{{ "S" if findings|length != 1 else "" }} · FROM {{ synthesis_input_count }} CALL{{ "S" if synthesis_input_count != 1 else "" }}</span>{% endif %}</h2>
     </header>
 
     {% if findings %}
-    <p class="lede">
-        The most consequential moments across the delivery, drawn from the per-call AI notes and ranked in priority order. Each citation is a link into the call viewer at the exact timestamp.
-    </p>
-
     {% for f in findings %}
-    <div class="finding">
-        <table class="finding-table">
-            <tr>
-                <td class="finding-num">{{ "%02d"|format(loop.index) }}</td>
-                <td class="finding-body">
-                    <h3 class="finding-headline">{{ f.headline }}</h3>
-                    <p class="finding-detail">{{ f.detail }}</p>
-                    <div class="finding-cite">
-                        <a href="{{ f.viewer_link }}">
-                            <span class="file">{{ f.call_filename }}</span>{% if f.timestamp %} &middot; <span class="ts">{{ f.timestamp }}</span>{% endif %} &middot; {{ f.call_date }}
-                        </a>
-                        <a class="pdf" href="{{ f.pdf_link }}">PDF&nbsp;&rsaquo;</a>
-                    </div>
-                </td>
-            </tr>
-        </table>
+    <div class="fd">
+        <div class="num">{{ "%02d"|format(loop.index) }}</div>
+        <div>
+            <h3>{{ f.headline }}</h3>
+            <p>{{ f.detail }}</p>
+            <div class="cite">
+                <span class="call">{{ f.call_filename }}</span><span>{{ f.call_date }}</span>{% if f.timestamp %}<span class="ts">{{ f.timestamp }}</span>{% endif %}
+                <a href="{{ f.viewer_link }}">Viewer →</a><a href="{{ f.pdf_link }}">PDF</a>
+            </div>
+        </div>
     </div>
     {% endfor %}
 
     {% else %}
-    <div class="empty-card">
+    <div class="empty">
         <strong>No top findings to surface.</strong>
         {% if synthesis_state == "no_input" %}
-        Every call in this delivery was rated LOW relevance by the per-call analysis &mdash; no high or medium calls were available to synthesize. The frequent-caller statistics and <span class="mono">search.html</span> remain the best entry points for review.
+        Every call in this delivery was rated LOW relevance by the per-call analysis; no high- or medium-relevance calls were available to synthesize.
         {% elif synthesis_state == "synth_unavailable" %}
-        The synthesis step could not reach the AI engine. The high-relevance and medium-relevance call cards in the following sections still contain the per-call AI analysis.
+        The synthesis step could not reach the analysis engine. The per-call analysis in the following sections is unaffected.
         {% elif synthesis_state == "parse_failed" %}
-        The synthesis step ran but its output could not be parsed into structured findings. The high-relevance call cards on the following pages still contain the per-call AI notes.
+        The synthesis output could not be parsed into structured findings. The per-call analysis in the following sections is unaffected.
         {% else %}
         See the high-relevance call cards in the following section.
         {% endif %}
@@ -1200,108 +927,93 @@ section.chapter {
 </section>
 
 
-<!-- ═══════════════════════ 04 · High Relevance Calls ═══════════════════════ -->
-<section class="chapter">
-    <header class="chapter-header">
-        <div class="chapter-eyebrow">Section Three</div>
-        <span class="chapter-marker">High Relevance Calls</span>
-        <h2 class="chapter-title">High Relevance Calls</h2>
-        <div class="chapter-meta">
-            <strong>{{ high_count }}</strong> call{{ "s" if high_count != 1 else "" }} flagged HIGH by per-call analysis
-        </div>
+<!-- ═══════════════════════ 03 · High-Relevance Calls ═══════════════════════ -->
+<section class="chapter" id="sec-high">
+    <div class="band">
+        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
+        <span class="lbl">{{ case_name_short }}</span>
+    </div>
+    <header class="chap">
+        <div class="eyebrow">Section 03</div>
+        <span class="chapter-marker">High-Relevance Calls</span>
+        <h2>High-Relevance Calls<span class="chapmeta">{{ high_count }} CALL{{ "S" if high_count != 1 else "" }} FLAGGED HIGH</span></h2>
     </header>
 
     {% if high_cards %}
     {% for c in high_cards %}
-    <div class="call-card rel-high">
-        <div class="call-card-head">
-            <div class="pill">
-                <div class="label">Relevance</div>
-                <div class="value">High</div>
-            </div>
-            <h3 class="call-head-title"><a href="{{ c.viewer_link }}">{{ c.filename }}</a></h3>
-            <div class="call-head-meta">
-                <strong>{{ c.datetime }}</strong>
-                <span class="sep">·</span> {{ c.duration }}
-                <span class="sep">·</span> {{ c.party }}
-            </div>
-            <div class="call-head-links">
-                <a href="{{ c.viewer_link }}">Open in viewer</a>
-                <a href="{{ c.pdf_link }}">Transcript PDF</a>
-            </div>
+    <div class="cc">
+        <div class="cc-head">
+            <span class="rv rv--high">High</span>
+            <span class="who">{{ c.party }}</span>
+            <span class="when">CALL {{ "%03d"|format(c.call_index) }} · {{ c.datetime }} · {{ c.duration }}</span>
         </div>
-        <div class="call-body">
+        <div class="cc-body">
             {% if c.brief %}
-            <p class="call-brief">{{ c.brief }}</p>
+            <p class="cc-brief">{{ c.brief }}</p>
             {% endif %}
             {% if c.speakers %}
-            <div class="call-speakers"><strong>Outside party:</strong> {{ c.speakers }}</div>
+            <div class="cc-speakers"><b>Outside party</b> — {{ c.speakers }}</div>
             {% endif %}
 
             {% if c.has_cues %}
-            <table class="cue-table">
+            <table class="cc-cues">
                 {% for cue in c.cues %}
                 <tr>
-                    <td class="cue-time">
+                    <td class="ts">
                         {% if cue.timestamp %}
-                        <a href="{{ cue.viewer_link }}">{{ cue.timestamp }}</a>
+                        <a href="{{ cue.viewer_link }}">{{ cue.timestamp|replace("[", "")|replace("]", "") }}</a>
                         {% endif %}
                     </td>
-                    <td class="cue-text">
-                        {% if cue.speaker %}<div class="cue-speaker">{{ cue.speaker }}</div>{% endif %}
-                        {% if cue.quote %}<div class="cue-quote">&ldquo;{{ cue.quote }}&rdquo;</div>{% endif %}
-                        {% if cue.note %}<div class="cue-note">{{ cue.note }}</div>{% endif %}
-                    </td>
+                    <td class="q">{% if cue.note %}<b>{{ cue.note }}</b>{% endif %}{% if cue.note and cue.quote %} — {% endif %}{% if cue.quote %}<i>&ldquo;{{ cue.quote }}&rdquo;</i>{% endif %}</td>
+                    <td class="cite">{% if cue.line_cite %}TR. {{ cue.line_cite }}{% endif %}</td>
                 </tr>
                 {% endfor %}
             </table>
             {% endif %}
         </div>
+        <div class="cc-foot">
+            <a href="{{ c.viewer_link }}">{{ c.viewer_link }}</a>
+            <a href="{{ c.pdf_link }}">{{ c.pdf_link }}</a>
+        </div>
     </div>
     {% endfor %}
 
     {% else %}
-    <div class="empty-card">
+    <div class="empty">
         <strong>No high-relevance calls.</strong>
-        The per-call analysis did not flag any calls as HIGH. {{ medium_count }} medium-relevance call{{ "s are" if medium_count != 1 else " is" }} listed in the following section, and {{ low_count }} low-relevance call{{ "s remain" if low_count != 1 else " remains" }} available in <span class="mono">search.html</span>.
+        The per-call analysis did not flag any calls as HIGH. {{ medium_count }} medium-relevance call{{ "s are" if medium_count != 1 else " is" }} listed in the following section; the full set is searchable in <span class="mono">search.html</span>.
     </div>
     {% endif %}
 </section>
 
 
-<!-- ═══════════════════════ 05 · Medium Relevance Calls ═══════════════════════ -->
-<section class="chapter">
-    <header class="chapter-header">
-        <div class="chapter-eyebrow">Section Four</div>
-        <span class="chapter-marker">Medium Relevance Calls</span>
-        <h2 class="chapter-title">Medium Relevance Calls</h2>
-        <div class="chapter-meta">
-            <strong>{{ medium_count }}</strong> call{{ "s" if medium_count != 1 else "" }} flagged MEDIUM by per-call analysis
-        </div>
+<!-- ═══════════════════════ 04 · Medium-Relevance Calls ═══════════════════════ -->
+<section class="chapter" id="sec-medium">
+    <div class="band">
+        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
+        <span class="lbl">{{ case_name_short }}</span>
+    </div>
+    <header class="chap">
+        <div class="eyebrow">Section 04</div>
+        <span class="chapter-marker">Medium-Relevance Calls</span>
+        <h2>Medium-Relevance Calls<span class="chapmeta">{{ medium_count }} CALL{{ "S" if medium_count != 1 else "" }} FLAGGED MEDIUM</span></h2>
     </header>
 
     {% if medium_rows %}
-    <table class="med-table">
+    <table class="med">
         {% for r in medium_rows %}
         <tr>
-            <td class="med-num">{{ "%02d"|format(loop.index) }}</td>
-            <td class="med-main">
-                <h4 class="med-name"><a href="{{ r.viewer_link }}">{{ r.filename }}</a></h4>
-                <div class="med-meta">
-                    <strong>{{ r.datetime }}</strong>
-                    <span class="sep">·</span> {{ r.duration }}
-                    <span class="sep">·</span> {{ r.party }}
-                    {% if r.cue_count %}<span class="sep">·</span> {{ r.cue_count }} note{{ "s" if r.cue_count != 1 else "" }}{% endif %}
-                </div>
-                {% if r.brief %}<div class="med-brief">{{ r.brief }}</div>{% endif %}
-            </td>
-            <td class="med-side"><a href="{{ r.pdf_link }}">Transcript&nbsp;PDF&nbsp;&rsaquo;</a></td>
+            <td class="d">{{ r.datetime }}</td>
+            <td class="dur">{{ r.duration }}</td>
+            <td class="p"><b><a href="{{ r.viewer_link }}">{{ r.party }}</a></b><span>{{ r.filename }}</span></td>
+            <td class="s">{{ r.brief }}{% if r.cue_count %} <span class="nn">· {{ r.cue_count }} CUE{{ "S" if r.cue_count != 1 else "" }}</span>{% endif %}</td>
+            <td class="go"><a href="{{ r.pdf_link }}">PDF →</a></td>
         </tr>
         {% endfor %}
     </table>
 
     {% else %}
-    <div class="empty-card">
+    <div class="empty">
         <strong>No medium-relevance calls.</strong>
         The per-call analysis did not flag any calls in this category.
     </div>
@@ -1309,64 +1021,50 @@ section.chapter {
 </section>
 
 
-<!-- ═══════════════════════ 06 · Frequent Callers ═══════════════════════ -->
-<section class="chapter">
-    <header class="chapter-header">
-        <div class="chapter-eyebrow">Section Five</div>
-        <span class="chapter-marker">Frequent Callers</span>
-        <h2 class="chapter-title">Frequent Callers</h2>
-        <div class="chapter-meta">
-            <strong>{{ total_caller_count }}</strong> unique outside number{{ "s" if total_caller_count != 1 else "" }} &middot; ranked by call volume
-        </div>
+<!-- ═══════════════════════ 05 · Caller Statistics ═══════════════════════ -->
+<section class="chapter" id="sec-callers">
+    <div class="band">
+        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
+        <span class="lbl">{{ case_name_short }}</span>
+    </div>
+    <header class="chap">
+        <div class="eyebrow">Section 05</div>
+        <span class="chapter-marker">Caller Statistics</span>
+        <h2>Caller Statistics<span class="chapmeta">{{ total_caller_count }} OUTSIDE NUMBER{{ "S" if total_caller_count != 1 else "" }} · BY VOLUME</span></h2>
     </header>
 
     {% if top_callers %}
-    <p class="lede">
-        Outside party numbers ranked by call volume. The identity of the callers and their relationship to defendant is an AI-generated hypothesis, and should be confirmed by manual review.
-    </p>
-
-    <table class="callers-table">
+    <table class="ks">
         <thead>
             <tr>
-                <th></th>
-                <th>Outside Number</th>
-                <th class="right">Calls</th>
-                <th class="right">Total Duration</th>
-                <th class="right">Date Range</th>
-                <th class="right">Top Relevance</th>
+                <th style="width: 120pt;">Outside Number</th>
+                <th>Inferred Identity</th>
+                <th class="num" style="width: 40pt;">Calls</th>
+                <th class="num" style="width: 64pt;">Duration</th>
+                <th class="num" style="width: 90pt;">Active</th>
+                <th class="num" style="width: 52pt;">Top Rel.</th>
             </tr>
         </thead>
         <tbody>
             {% for caller in top_callers %}
             <tr>
-                <td class="rank">{{ "%02d"|format(loop.index) }}</td>
-                <td class="num">
-                    {{ caller.display }}
-                    {% if caller.inferred %}
-                    <div class="caller-inferred">
-                        <span class="approx">&asymp;</span>{{ caller.inferred }}{% if caller.confidence_class %}<span class="conf {{ caller.confidence_class }}">{{ caller.confidence }} CONF</span>{% endif %}
-                    </div>
-                    {% endif %}
-                </td>
-                <td class="count">{{ caller.count }}</td>
-                <td class="duration">{{ caller.total_duration_display }}</td>
-                <td class="range">{{ caller.date_range }}</td>
-                <td class="pill-cell">
-                    <span class="rel-mini rel-{{ caller.max_relevance_class }}">{{ caller.max_relevance }}</span>
-                </td>
+                <td class="who">{{ caller.display }}</td>
+                <td class="inf">{% if caller.inferred %}{{ caller.inferred }}{% if caller.confidence %}<span class="conf">{{ caller.confidence }} CONF</span>{% endif %}{% else %}—{% endif %}</td>
+                <td class="num">{{ caller.count }}</td>
+                <td class="num">{{ caller.total_duration_display }}</td>
+                <td class="num range">{{ caller.date_range }}</td>
+                <td class="num">{% if caller.max_relevance_class != "none" %}<span class="rv rv--{{ caller.max_relevance_class }}">{{ caller.max_relevance|capitalize }}</span>{% else %}—{% endif %}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
     {% if total_caller_count > top_callers|length %}
-    <p class="muted" style="font-size: 8.4pt; margin-top: 0.18in;">
-        Showing the top {{ top_callers|length }} of {{ total_caller_count }} unique outside numbers. Use <span class="mono">search.html</span> to browse the full set by outside number.
-    </p>
+    <p class="trunc-note">SHOWING TOP {{ top_callers|length }} OF {{ total_caller_count }} NUMBERS · FULL SET IN SEARCH.HTML</p>
     {% endif %}
 
     {% else %}
-    <div class="empty-card">
+    <div class="empty">
         <strong>No caller statistics available.</strong>
         Outside-party phone numbers were not present in the source metadata for these calls.
     </div>

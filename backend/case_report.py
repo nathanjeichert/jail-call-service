@@ -28,6 +28,7 @@ from tenacity import retry, stop_after_attempt, wait_random_exponential
 
 from . import config as cfg
 from . import pdf_utils as U
+from .design_fonts import pdf_font_css
 from .gemini_structured import CaseReportResponse
 from .models import CallResult, Job, call_stem
 from .summarization.base import SummarizationEngine
@@ -270,6 +271,22 @@ def _parse_call_date(call: CallResult) -> Optional[date]:
         return datetime.strptime(call.call_date.strip()[:10], "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def _format_date_range(parsed_dates: List[date]) -> str:
+    """Display form of a date span: ``Mar 3 – May 28, 2026`` (or with both
+    years when the span crosses a year boundary)."""
+    if not parsed_dates:
+        return "—"
+    start, end = parsed_dates[0], parsed_dates[-1]
+    if start == end:
+        return U.format_date_short(start)
+    if start.year == end.year:
+        return (
+            f"{start.strftime('%b')} {start.day} – "
+            f"{end.strftime('%b')} {end.day}, {end.year}"
+        )
+    return f"{U.format_date_short(start)} – {U.format_date_short(end)}"
 
 
 # ────────────────────────── relevance bucketing ──────────────────────────
@@ -548,6 +565,18 @@ def _parse_identities(text: str) -> Dict[str, Dict[str, str]]:
     return results
 
 
+def _format_caller_range(parsed_dates: List[date]) -> str:
+    """Compact active-period display for the caller-stats table."""
+    if not parsed_dates:
+        return "—"
+    start, end = parsed_dates[0], parsed_dates[-1]
+    if start == end:
+        return f"{start.strftime('%b')} {start.day}"
+    if start.year == end.year:
+        return f"{start.strftime('%b')} {start.day} – {end.strftime('%b')} {end.day}"
+    return f"{start.strftime('%b')} {start.year} – {end.strftime('%b')} {end.year}"
+
+
 # ────────────────────────── caller stats ──────────────────────────
 
 def _build_caller_stats(
@@ -577,11 +606,10 @@ def _build_caller_stats(
                 max_rel = r
                 break
 
-        dates = sorted([c.call_date for c in calls if c.call_date])
-        if dates:
-            date_range = dates[0] if dates[0] == dates[-1] else f"{dates[0]} – {dates[-1]}"
-        else:
-            date_range = "—"
+        parsed_dates = sorted(
+            d for d in (_parse_call_date(c) for c in calls) if d is not None
+        )
+        date_range = _format_caller_range(parsed_dates)
 
         sample = calls[0]
         display = sample.outside_number_fmt or number
@@ -617,12 +645,19 @@ def _build_caller_stats(
 
 # ────────────────────────── timeline ──────────────────────────
 
-def _build_timeline(done_calls: List[CallResult]) -> Optional[Dict[str, Any]]:
-    """Build a daily/weekly/monthly call volume timeline.
+def _next_month(d: date) -> date:
+    return date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
 
-    Returns None if there are no dated calls. Otherwise returns a dict with
-    `buckets` (list of {label, count, height_pct}), tick width pct, span
-    metadata, and axis labels suitable for the template.
+
+def _build_timeline(done_calls: List[CallResult]) -> Optional[Dict[str, Any]]:
+    """Build a call-volume timeline at a span-appropriate granularity.
+
+    The coverage window of a delivery is unpredictable — weeks, months, or
+    five-plus years — so the bucket unit adapts: days up to ~2 months, weeks
+    up to ~13 months, calendar months up to ~5 years, calendar years beyond
+    that. Returns None if there are no dated calls; otherwise a dict with
+    bucket counts, axis labels, peak metadata, and precomputed SVG bar
+    geometry for the template's inline chart.
     """
     date_counts: Counter = Counter()
     for call in done_calls:
@@ -638,83 +673,162 @@ def _build_timeline(done_calls: List[CallResult]) -> Optional[Dict[str, Any]]:
     end = sorted_dates[-1]
     span_days = (end - start).days + 1
 
-    # Pick granularity
     if span_days <= 60:
         granularity = "day"
-        bin_days = 1
-    elif span_days <= 365:
+    elif span_days <= 392:
         granularity = "week"
-        bin_days = 7
-    else:
+    elif span_days <= 1860:
         granularity = "month"
-        bin_days = 30
+    else:
+        granularity = "year"
 
-    # Build buckets — each bucket is a contiguous span of bin_days days,
-    # closed on the left and open on the right (except the last one).
+    # Build contiguous buckets. Weeks run in 7-day spans from the first call
+    # date; months and years are calendar-aligned so their labels are exact.
     buckets: List[Dict[str, Any]] = []
-    cursor = start
-    while cursor <= end:
-        bucket_end = cursor + timedelta(days=bin_days - 1)
-        if bucket_end > end:
-            bucket_end = end
-        count = sum(
-            cnt for d, cnt in date_counts.items()
-            if cursor <= d <= bucket_end
+    if granularity in ("day", "week"):
+        bin_days = 1 if granularity == "day" else 7
+        cursor = start
+        while cursor <= end:
+            bucket_end = min(cursor + timedelta(days=bin_days - 1), end)
+            buckets.append({"start": cursor, "end": bucket_end})
+            cursor = bucket_end + timedelta(days=1)
+    elif granularity == "month":
+        cursor = date(start.year, start.month, 1)
+        while cursor <= end:
+            nxt = _next_month(cursor)
+            buckets.append({"start": cursor, "end": nxt - timedelta(days=1)})
+            cursor = nxt
+    else:
+        for year in range(start.year, end.year + 1):
+            buckets.append({"start": date(year, 1, 1), "end": date(year, 12, 31)})
+
+    for b in buckets:
+        b["count"] = sum(
+            cnt for d, cnt in date_counts.items() if b["start"] <= d <= b["end"]
         )
-        buckets.append({
-            "start": cursor,
-            "end": bucket_end,
-            "count": count,
-        })
-        cursor = bucket_end + timedelta(days=1)
+        s = b["start"]
+        if granularity in ("day", "week"):
+            b["label"] = f"{s.month}/{s.day}"
+        elif granularity == "month":
+            b["label"] = f"{s.strftime('%b')} ’{s.strftime('%y')}"
+        else:
+            b["label"] = str(s.year)
 
     max_count = max((b["count"] for b in buckets), default=1) or 1
+    peak_index = next(i for i, b in enumerate(buckets) if b["count"] == max_count)
+    peak = buckets[peak_index]
+    if granularity == "day":
+        peak_label = U.format_date_short(peak["start"]).upper()
+    elif granularity == "week":
+        peak_label = "WEEK OF " + U.format_date_short(peak["start"]).upper()
+    elif granularity == "month":
+        peak_label = peak["start"].strftime("%B %Y").upper()
+    else:
+        peak_label = str(peak["start"].year)
 
-    # Bar heights in inches, computed here so the template can use absolute
-    # units rather than relying on percent heights propagating through
-    # nested elements.
-    BAR_AREA_IN = 0.85
-    MIN_BAR_IN = 0.13
-    for b in buckets:
-        if b["count"] > 0:
-            raw = b["count"] / max_count * BAR_AREA_IN
-            b["height_in"] = max(MIN_BAR_IN, raw)
-        else:
-            b["height_in"] = 0.0
-        if granularity == "day":
-            b["label"] = b["start"].strftime("%b %-d")
-        elif granularity == "week":
-            b["label"] = "Wk of " + b["start"].strftime("%b %-d")
-        else:
-            b["label"] = b["start"].strftime("%b %Y")
-
-    tick_width_pct = 100.0 / max(len(buckets), 1)
-    # Pre-compute the left offset of each tick so the template can use
-    # absolute positioning rather than relying on inline-block layout.
-    for i, b in enumerate(buckets):
-        b["left_pct"] = i * tick_width_pct
-
-    # Mid-axis label: choose the bucket closest to the middle
-    mid_bucket = buckets[len(buckets) // 2] if buckets else None
-    mid_label = mid_bucket["label"] if mid_bucket else ""
+    unit_names = {"day": "Day", "week": "Week", "month": "Month", "year": "Year"}
 
     return {
         "buckets": buckets,
-        "tick_width_pct": tick_width_pct,
         "max_count": max_count,
         "granularity": granularity,
-        "granularity_plural": (
-            "days" if granularity == "day"
-            else "weeks" if granularity == "week"
-            else "months"
-        ),
+        "unit_name": unit_names[granularity],
         "tick_count": len(buckets),
         "span_days": span_days,
         "start_label": U.format_date_short(start),
         "end_label": U.format_date_short(end),
-        "mid_label": mid_label,
-        "show_mid_label": len(buckets) >= 5,
+        "peak_label": peak_label,
+        "svg": _build_timeline_svg(buckets, max_count, peak_index),
     }
+
+
+def _build_timeline_svg(
+    buckets: List[Dict[str, Any]],
+    max_count: int,
+    peak_index: int,
+) -> Dict[str, Any]:
+    """Precompute inline-SVG bar-chart geometry for the timeline.
+
+    Hand-rolled SVG (no chart library) prints crisply under Paged.js and
+    needs nothing at view time. Coordinates are in a fixed 692×150 viewBox;
+    the template stretches it to the content width.
+    """
+    width, height = 692.0, 150.0
+    axis_y, top = 130.0, 14.0
+    plot_h = axis_y - top
+
+    n = len(buckets)
+    slot = width / n
+    bar_w = round(min(34.0, slot * 0.66), 2)
+
+    bars = []
+    for i, b in enumerate(buckets):
+        if b["count"] <= 0:
+            continue
+        h = max(2.0, b["count"] / max_count * plot_h)
+        x = i * slot + (slot - bar_w) / 2.0
+        bars.append({
+            "x": round(x, 2),
+            "y": round(axis_y - h, 2),
+            "w": bar_w,
+            "h": round(h, 2),
+            "peak": i == peak_index,
+            "cx": round(x + bar_w / 2.0, 2),
+        })
+
+    # Sparse axis labels: at most ~12, always including the peak bucket.
+    step = max(1, -(-n // 12))
+    label_indexes = set(range(0, n, step))
+    label_indexes.add(peak_index)
+    peak_x = peak_index * slot + slot / 2.0
+    labels = []
+    for i in sorted(label_indexes):
+        x = i * slot + slot / 2.0
+        if i != peak_index and abs(x - peak_x) < 40.0:
+            continue
+        labels.append({
+            # Clamp so centered text never clips at the viewBox edges.
+            "x": round(min(max(x, 20.0), width - 20.0), 2),
+            "text": buckets[i]["label"],
+            "peak": i == peak_index,
+        })
+
+    # One dashed reference line at a round count value.
+    grid = None
+    if max_count >= 4:
+        target = max_count * 0.55
+        value = 1
+        for candidate in (1, 2, 5, 10, 20, 50, 100, 200, 500, 1000):
+            if candidate <= target:
+                value = candidate
+        grid = {
+            "y": round(axis_y - (value / max_count * plot_h), 2),
+            "label": value,
+        }
+
+    peak_bar = next(bar for bar in bars if bar["peak"])
+    return {
+        "width": width,
+        "height": height,
+        "axis_y": axis_y,
+        "label_y": 144,
+        "bars": bars,
+        "labels": labels,
+        "grid": grid,
+        "peak": {"x": peak_bar["cx"], "y": round(peak_bar["y"] - 6.0, 2), "count": max_count},
+    }
+
+
+def _format_duration_stat(seconds: float) -> str:
+    """Compact numeral form for stat strips: ``51h 24m`` / ``43m`` / ``50s``."""
+    secs = int(seconds or 0)
+    h, rem = divmod(secs, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m" if m else f"{h}h"
+    if m:
+        return f"{m}m"
+    return f"{s}s"
 
 
 # ────────────────────────── at-a-glance ──────────────────────────
@@ -736,11 +850,10 @@ def _build_at_a_glance(
     total_dur = sum((c.duration_seconds or 0) for c in done_calls)
     avg_dur = (total_dur / total) if total else 0
 
-    dates = sorted([c.call_date for c in done_calls if c.call_date])
-    if dates:
-        date_range = dates[0] if dates[0] == dates[-1] else f"{dates[0]} – {dates[-1]}"
-    else:
-        date_range = "—"
+    parsed_dates = sorted(
+        d for d in (_parse_call_date(c) for c in done_calls) if d is not None
+    )
+    date_range = _format_date_range(parsed_dates)
 
     unique_numbers = len({(c.outside_number or "").strip() for c in done_calls if c.outside_number})
 
@@ -779,6 +892,7 @@ def _build_at_a_glance(
         "rel_percents": rel_percents,
         "total_duration_sec": total_dur,
         "total_duration_display": U.format_duration_long(total_dur),
+        "total_duration_stat": _format_duration_stat(total_dur),
         "avg_duration_display": _format_duration(avg_dur),
         "date_range": date_range,
         "unique_callers": unique_numbers,
@@ -811,6 +925,7 @@ def _build_call_card(entry: Dict[str, Any]) -> Dict[str, Any]:
             "speaker": cue.get("speaker", ""),
             "quote": cue.get("quote", ""),
             "note": cue.get("note", ""),
+            "line_cite": cue.get("line_cite", ""),
             "viewer_link": _viewer_link(call, cue.get("timestamp", "")),
         })
 
@@ -972,9 +1087,22 @@ def generate_case_report_pdf(
             "pdf_link": _transcript_pdf_link(call),
         })
 
+    # Court-caption style cover title when the case name parses as
+    # "<party> v. <party>"; otherwise the case name renders on one line.
+    caption_match = re.match(
+        r"^(.{2,80}?)\s+vs?\.?\s+(.{2,80})$", case_name, re.IGNORECASE
+    )
+    case_caption = (
+        {"left": caption_match.group(1).strip(), "right": caption_match.group(2).strip()}
+        if caption_match
+        else None
+    )
+
     ctx = {
+        "fonts_css": pdf_font_css(),
         "case_name": case_name,
         "case_name_short": U.shorten(case_name, 38),
+        "case_caption": case_caption,
         "defendant_name": defendant_name,
         "gen_date": gen_date,
         "glance": glance,

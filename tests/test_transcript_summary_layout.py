@@ -203,15 +203,14 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
         summary_more_text = "\n".join((reader.pages[i].extract_text() or "") for i in range(2, 4))
 
         self.assertIn("DURATION", cover_text)
-        self.assertNotIn("16:30", summary1_text)
-        self.assertIn("IDENTITY OF OUTSIDE PARTY", summary1_text)
+        # The summary meta line carries file · time-of-day · duration.
+        self.assertIn("16:30", summary1_text)
+        self.assertIn("OUTSIDE PARTY", summary1_text)
         self.assertIn("BRIEF SUMMARY", summary1_text)
-        self.assertNotIn("IDENTITY OF OUTSIDE PARTY", summary_more_text)
         self.assertNotIn("BRIEF SUMMARY", summary_more_text)
         self.assertIn("[MM:SS]", summary1_text)
-        self.assertIn("Page:Line", summary1_text)
+        self.assertIn("TR. PAGE:LINE", summary1_text)
         self.assertNotIn("EACH NOTE SHOWS", summary1_text)
-        self.assertNotIn("Notes, continued", summary_more_text)
         self.assertNotIn("CONTINUED FROM PAGE 02", summary_more_text)
         self.assertNotIn("02 / 03", summary_more_text)
 
@@ -221,7 +220,7 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
         ]
         combined_summary_text = summary1_text + "\n" + summary_more_text
         for timestamp in timestamps:
-            self.assertIn(timestamp, combined_summary_text)
+            self.assertIn(timestamp.strip("[]"), combined_summary_text)
 
     def test_pdf_allows_third_summary_page_for_dense_high_call(self):
         turns, line_entries, summary = self._build_summary_fixture(21)
@@ -249,7 +248,8 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
             cue["timestamp"]
             for cue in hydrate_review_cues(parse_summary_sections(rendered_summary).get("review_cue_items"), line_entries)
         ]
-        self.assertIn(timestamps[-1], third_summary_text)
+        # The template renders cue timestamps without their brackets.
+        self.assertIn(timestamps[-1].strip("[]"), third_summary_text)
 
     def test_parser_ignores_section_words_inside_note_bodies(self):
         summary_text = (

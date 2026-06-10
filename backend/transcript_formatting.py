@@ -18,11 +18,11 @@ import html
 import io
 import re
 from collections import defaultdict
-from pathlib import Path
 from typing import Dict, List, Optional
 
 from . import font_metrics as FM
 from . import pdf_utils as U
+from .design_fonts import pdf_font_css
 from .models import TranscriptTurn, WordTimestamp
 
 # Text layout constants
@@ -41,10 +41,6 @@ PDF_TEXT_SIZE = 12
 PDF_LINE_NUMBER_SIZE = 10
 PDF_PAGE_NUMBER_SIZE = 10
 
-# Embedded monospace font for the transcript sheets (@font-face file:// URIs)
-_FONTS_DIR = Path(__file__).parent / "fonts"
-_COURIER_REGULAR_URI = (_FONTS_DIR / "CourierPrime-Regular.ttf").as_uri()
-_COURIER_BOLD_URI = (_FONTS_DIR / "CourierPrime-Bold.ttf").as_uri()
 
 # Vertical rule positions
 PDF_LINE_NUM_RIGHT = 0.78 * inch      # right edge of line numbers
@@ -86,46 +82,46 @@ def _courier_baseline_in_box(box_height: float, font_size: float) -> float:
     return ((box_height - content) / 2.0) + (font_size * _COURIER_ASCENT_EM)
 
 
-SUMMARY_LEFT = 0.68 * inch
-SUMMARY_RIGHT = 0.62 * inch
+# Cover / summary sheet geometry ("Record" design language). The mockup
+# sheets are 816px wide (96px/in); multiply mockup px by 0.75 for pt.
+SUMMARY_LEFT = 46.5
+SUMMARY_RIGHT = 40.5
 SUMMARY_WIDTH = PDF_PAGE_WIDTH - SUMMARY_LEFT - SUMMARY_RIGHT
-SUMMARY_CONTENT_TOP = 1.55 * inch
-SUMMARY_CONTENT_BOTTOM = 0.74 * inch
+SUMMARY_CONTENT_TOP = 116.0
+SUMMARY_CONTENT_BOTTOM = 56.0
 SUMMARY_CONTENT_HEIGHT = PDF_PAGE_HEIGHT - SUMMARY_CONTENT_TOP - SUMMARY_CONTENT_BOTTOM
-SUMMARY_ASSESSMENT_HEIGHT = 0.74 * inch
-SUMMARY_SECTION_GAP = 0.14 * inch
-SUMMARY_CARD_GAP = 0.16 * inch
-SUMMARY_CARD_PADDING_X = 0.18 * inch
-SUMMARY_CARD_PADDING_Y = 0.16 * inch
-SUMMARY_CONTEXT_TWO_COL_GAP = 0.18 * inch
-SUMMARY_NOTES_HEADING_HEIGHT = 0.0
-SUMMARY_NOTES_KEY_HEIGHT = 0.50 * inch
-SUMMARY_NOTES_TABLE_BOTTOM = 0.08 * inch
-SUMMARY_NO_NOTES_HEIGHT = 0.82 * inch
-SUMMARY_CUE_TIME_WIDTH = 1.02 * inch
-SUMMARY_CUE_TEXT_PAD_LEFT = 0.13 * inch
-SUMMARY_CUE_TIME_TEXT_WIDTH = SUMMARY_CUE_TIME_WIDTH - 0.06 * inch
-SUMMARY_CUE_TEXT_WIDTH = SUMMARY_WIDTH - SUMMARY_CUE_TIME_WIDTH - SUMMARY_CUE_TEXT_PAD_LEFT
+SUMMARY_ASSESSMENT_HEIGHT = 36.0
+SUMMARY_SECTION_GAP = 18.0
+SUMMARY_CARD_GAP = 14.0
+SUMMARY_CONTEXT_TWO_COL_GAP = 16.5
+SUMMARY_CARD_TITLE_BLOCK = 20.0   # context-card h4 + rule + gap below
+SUMMARY_NOTES_HEADING_HEIGHT = 22.0
+SUMMARY_NOTES_TABLE_BOTTOM = 6.0
+SUMMARY_NO_NOTES_HEIGHT = 56.0
+SUMMARY_CUE_TIME_WIDTH = 42.0
+SUMMARY_CUE_CITE_WIDTH = 72.0
+SUMMARY_CUE_GRID_GAP = 12.0
+SUMMARY_CUE_TEXT_WIDTH = (
+    SUMMARY_WIDTH
+    - SUMMARY_CUE_TIME_WIDTH
+    - SUMMARY_CUE_CITE_WIDTH
+    - 2 * SUMMARY_CUE_GRID_GAP
+)
+SUMMARY_CUE_ROW_PADDING = 18.75
 SUMMARY_WRAP_WIDTH_RESERVE = 0.03 * inch
 SUMMARY_QUOTE_GLYPHS = "“”"
 
-SUMMARY_CARD_TITLE_LINE_HEIGHT = 10.0
-SUMMARY_CARD_BODY_FONT = "Summary-Avenir"
-SUMMARY_CARD_BODY_SIZE = 9.1
-SUMMARY_CARD_BODY_LINE_HEIGHT = 13.5
-SUMMARY_SPEAKER_LINE_HEIGHT = 9.0
-SUMMARY_QUOTE_FONT = "Summary-Georgia"
-SUMMARY_QUOTE_SIZE = 10.4
-SUMMARY_QUOTE_LINE_HEIGHT = 13.7
-SUMMARY_NOTE_FONT = "Summary-Avenir"
-SUMMARY_NOTE_SIZE = 8.75
-SUMMARY_NOTE_LINE_HEIGHT = 12.1
-SUMMARY_TIMESTAMP_FONT = "Helvetica-Bold"
-SUMMARY_TIMESTAMP_SIZE = 9.7
-SUMMARY_TIMESTAMP_LINE_HEIGHT = 10.9
-SUMMARY_LINE_CITE_FONT = "Helvetica-Bold"
-SUMMARY_LINE_CITE_SIZE = 8.0
-SUMMARY_LINE_CITE_LINE_HEIGHT = 9.0
+SUMMARY_CARD_BODY_FONT = "Fraunces"
+SUMMARY_CARD_BODY_SIZE = 9.75
+SUMMARY_CARD_BODY_LINE_HEIGHT = 15.6
+SUMMARY_QUOTE_FONT = "Fraunces Italic"
+SUMMARY_QUOTE_SIZE = 9.4
+SUMMARY_QUOTE_LINE_HEIGHT = 14.1
+SUMMARY_QUOTE_TOP_GAP = 3.0
+SUMMARY_NOTE_FONT = "Public Sans SemiBold"
+SUMMARY_NOTE_SIZE = 9.4
+SUMMARY_NOTE_LINE_HEIGHT = 13.6
+SUMMARY_MONO_LINE_HEIGHT = 10.8   # cue timestamp / cite, single line
 
 # Re-export public symbols that other modules depend on
 timestamp_to_seconds = U.timestamp_to_seconds
@@ -208,21 +204,14 @@ def _estimate_context_card_height(text: str, inner_width: float) -> float:
         ),
         1,
     )
-    return (
-        (2 * SUMMARY_CARD_PADDING_Y)
-        + SUMMARY_CARD_TITLE_LINE_HEIGHT
-        + 0.08 * inch
-        + (body_lines * SUMMARY_CARD_BODY_LINE_HEIGHT)
-    )
+    return SUMMARY_CARD_TITLE_BLOCK + (body_lines * SUMMARY_CARD_BODY_LINE_HEIGHT)
 
 
 def _choose_context_layout(speakers: str, call_summary: str) -> str:
     has_speakers = bool(speakers)
     has_summary = bool(call_summary)
     if has_speakers and has_summary:
-        two_col_inner_width = (
-            (SUMMARY_WIDTH - SUMMARY_CONTEXT_TWO_COL_GAP) / 2.0
-        ) - (2 * SUMMARY_CARD_PADDING_X)
+        two_col_inner_width = (SUMMARY_WIDTH - SUMMARY_CONTEXT_TWO_COL_GAP) / 2.0
         speaker_height = _estimate_context_card_height(speakers, two_col_inner_width)
         summary_height = _estimate_context_card_height(call_summary, two_col_inner_width)
         if max(speaker_height, summary_height) <= 2.2 * inch:
@@ -238,24 +227,20 @@ def _estimate_context_height(layout: str, speakers: str, call_summary: str) -> f
         return 0.0
 
     if layout == "single":
-        inner_width = SUMMARY_WIDTH - (2 * SUMMARY_CARD_PADDING_X)
         text = speakers or call_summary
-        return _estimate_context_card_height(text, inner_width)
+        return _estimate_context_card_height(text, SUMMARY_WIDTH)
 
     if layout == "stacked":
-        inner_width = SUMMARY_WIDTH - (2 * SUMMARY_CARD_PADDING_X)
         total = 0.0
         if speakers:
-            total += _estimate_context_card_height(speakers, inner_width)
+            total += _estimate_context_card_height(speakers, SUMMARY_WIDTH)
         if call_summary:
             if total:
                 total += SUMMARY_CARD_GAP
-            total += _estimate_context_card_height(call_summary, inner_width)
+            total += _estimate_context_card_height(call_summary, SUMMARY_WIDTH)
         return total
 
-    two_col_inner_width = (
-        (SUMMARY_WIDTH - SUMMARY_CONTEXT_TWO_COL_GAP) / 2.0
-    ) - (2 * SUMMARY_CARD_PADDING_X)
+    two_col_inner_width = (SUMMARY_WIDTH - SUMMARY_CONTEXT_TWO_COL_GAP) / 2.0
     return max(
         _estimate_context_card_height(speakers, two_col_inner_width),
         _estimate_context_card_height(call_summary, two_col_inner_width),
@@ -263,43 +248,8 @@ def _estimate_context_height(layout: str, speakers: str, call_summary: str) -> f
 
 
 def _estimate_cue_height(cue: dict) -> float:
-    timestamp_lines = max(
-        len(
-            _wrap_text_to_width(
-                cue.get("timestamp", ""),
-                SUMMARY_CUE_TIME_TEXT_WIDTH,
-                font_name=SUMMARY_TIMESTAMP_FONT,
-                font_size=SUMMARY_TIMESTAMP_SIZE,
-            )
-        ),
-        1,
-    )
-    time_height = timestamp_lines * SUMMARY_TIMESTAMP_LINE_HEIGHT
-    if cue.get("line_cite"):
-        line_cite_lines = len(
-            _wrap_text_to_width(
-                cue.get("line_cite", ""),
-                SUMMARY_CUE_TIME_TEXT_WIDTH,
-                font_name=SUMMARY_LINE_CITE_FONT,
-                font_size=SUMMARY_LINE_CITE_SIZE,
-            )
-        )
-        time_height += (0.055 * inch) + (line_cite_lines * SUMMARY_LINE_CITE_LINE_HEIGHT)
-
+    """Estimated rendered height of one note row (time | body | cite grid)."""
     text_height = 0.0
-    if cue.get("speaker"):
-        text_height += SUMMARY_SPEAKER_LINE_HEIGHT + 0.03 * inch
-    if cue.get("quote"):
-        quote_text = f"{SUMMARY_QUOTE_GLYPHS[0]}{cue.get('quote', '')}{SUMMARY_QUOTE_GLYPHS[1]}"
-        quote_lines = len(
-            _wrap_text_to_width(
-                quote_text,
-                SUMMARY_CUE_TEXT_WIDTH,
-                font_name=SUMMARY_QUOTE_FONT,
-                font_size=SUMMARY_QUOTE_SIZE,
-            )
-        )
-        text_height += (quote_lines * SUMMARY_QUOTE_LINE_HEIGHT) + 0.035 * inch
     if cue.get("note"):
         note_lines = len(
             _wrap_text_to_width(
@@ -310,9 +260,24 @@ def _estimate_cue_height(cue: dict) -> float:
             )
         )
         text_height += note_lines * SUMMARY_NOTE_LINE_HEIGHT
+    if cue.get("quote"):
+        # The speaker prefix renders in small sans caps ahead of the serif
+        # quote; measuring the whole line as serif italic over-predicts,
+        # which is the safe direction.
+        prefix = f"{cue.get('speaker', '')} — " if cue.get("speaker") else ""
+        quote_text = f"{prefix}{SUMMARY_QUOTE_GLYPHS[0]}{cue.get('quote', '')}{SUMMARY_QUOTE_GLYPHS[1]}"
+        quote_lines = len(
+            _wrap_text_to_width(
+                quote_text,
+                SUMMARY_CUE_TEXT_WIDTH,
+                font_name=SUMMARY_QUOTE_FONT,
+                font_size=SUMMARY_QUOTE_SIZE,
+            )
+        )
+        text_height += SUMMARY_QUOTE_TOP_GAP + (quote_lines * SUMMARY_QUOTE_LINE_HEIGHT)
 
-    content_height = max(time_height, text_height, SUMMARY_NOTE_LINE_HEIGHT)
-    return content_height + (0.21 * inch)
+    content_height = max(SUMMARY_MONO_LINE_HEIGHT, text_height, SUMMARY_NOTE_LINE_HEIGHT)
+    return content_height + SUMMARY_CUE_ROW_PADDING
 
 
 def paginate_structured_summary(
@@ -330,11 +295,13 @@ def paginate_structured_summary(
         page1_budget -= context_height + SUMMARY_SECTION_GAP
     page1_budget -= SUMMARY_NOTES_HEADING_HEIGHT
     if review_cues:
-        page1_budget -= SUMMARY_NOTES_KEY_HEIGHT + SUMMARY_NOTES_TABLE_BOTTOM
+        page1_budget -= SUMMARY_NOTES_TABLE_BOTTOM
     else:
         page1_budget -= SUMMARY_NO_NOTES_HEIGHT
 
-    overflow_budget = SUMMARY_CONTENT_HEIGHT - SUMMARY_NOTES_TABLE_BOTTOM
+    overflow_budget = (
+        SUMMARY_CONTENT_HEIGHT - SUMMARY_NOTES_HEADING_HEIGHT - SUMMARY_NOTES_TABLE_BOTTOM
+    )
     page_budgets = [max(page1_budget, 0.0)]
     pages: List[List[dict]] = [[]]
 
@@ -737,13 +704,26 @@ def _build_cover_context(
     file_duration = U.safe_text(title_data.get("FILE_DURATION"))
     inmate_name = U.safe_text(title_data.get("INMATE_NAME"))
     outside_number = U.safe_text(title_data.get("OUTSIDE_NUMBER_FMT"))
+    firm_name = U.safe_text(title_data.get("FIRM_OR_ORGANIZATION_NAME"))
 
-    title_meta = [
-        ("Defendant", inmate_name),
-        ("Outside Number", outside_number),
-        ("Case", case_name),
+    # Cover title: "Call of April 14, 2026" with the time as a separate fact.
+    parsed_dt = U.parse_call_datetime(call_datetime)
+    if parsed_dt is not None:
+        cover_title = f"Call of {parsed_dt.strftime('%B')} {parsed_dt.day}, {parsed_dt.year}"
+        has_time = len(call_datetime.strip()) > 10
+        cover_time = parsed_dt.strftime("%I:%M %p").lstrip("0") if has_time else ""
+    else:
+        cover_title = display_datetime or call_datetime or "Recorded Call"
+        cover_time = ""
+
+    cover_facts = [
+        {"label": "Case", "value": case_name},
+        {"label": "Defendant", "value": inmate_name},
+        {"label": "Outside Number", "value": outside_number, "mono": True},
+        {"label": "Recorded", "value": cover_time},
+        {"label": "Source File", "value": file_name, "mono": True},
+        {"label": "Prepared For", "value": firm_name},
     ]
-    title_meta = [{"label": label, "value": value} for label, value in title_meta if value]
 
     ctx: dict = {
         "case_name": case_name,
@@ -752,16 +732,19 @@ def _build_cover_context(
         "file_duration": file_duration,
         "inmate_name": inmate_name,
         "outside_number": outside_number,
-        "title_meta": title_meta,
-        "firm_name": U.safe_text(title_data.get("FIRM_OR_ORGANIZATION_NAME")),
+        "cover_title": cover_title,
+        "cover_facts": [f for f in cover_facts if f["value"]],
+        "firm_name": firm_name,
         "has_summary": bool(summary),
         "overflow_review_cue_pages": [],
     }
 
     # ── Summary page context ──
     if summary:
-        ctx["summary_meta_file"] = U.shorten_middle(file_name)
-        meta_details = [display_datetime or call_datetime]
+        # The sheet title already carries the date; the meta line adds the
+        # source file, time of day, and duration.
+        ctx["summary_meta_file"] = U.shorten_middle(file_name, 34)
+        meta_details = [cover_time, file_duration]
         ctx["summary_meta_details"] = " · ".join(p for p in meta_details if p)
 
         sections = U.parse_summary_sections(summary)
@@ -908,8 +891,21 @@ def create_pdf(
     ctx = _build_cover_context(title_data, summary, line_entries=line_entries)
     ctx["transcript_sheets"] = _build_transcript_sheets(line_entries, lines_per_page)
 
-    ctx["courier_regular_uri"] = _COURIER_REGULAR_URI
-    ctx["courier_bold_uri"] = _COURIER_BOLD_URI
+    ctx["fonts_css"] = pdf_font_css(
+        ("Fraunces", "Public Sans", "IBM Plex Mono", "Courier Prime")
+    )
+
+    cover_stats = []
+    if ctx["file_duration"]:
+        cover_stats.append({"n": ctx["file_duration"], "lbl": "Duration"})
+    sheet_count = len(ctx["transcript_sheets"])
+    cover_stats.append({
+        "n": str(sheet_count),
+        "lbl": "Transcript Page" if sheet_count == 1 else "Transcript Pages",
+    })
+    if ctx["has_summary"] and ctx.get("is_structured"):
+        cover_stats.append({"n": str(ctx.get("cue_count", 0)), "lbl": "Review Cues"})
+    ctx["cover_stats"] = cover_stats
 
     # Transcript text geometry (pt) — Python stays the layout source of truth.
     ctx["t_line_num_width"] = f"{PDF_LINE_NUM_RIGHT:.3f}"

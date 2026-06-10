@@ -19,9 +19,11 @@ def _page_text_entries(page):
 
 
 def _footer_clearance(page, footer_section: str, page_num: str):
+    # Footer text is CSS-uppercased; Chromium bakes the transform into the
+    # extracted text, so tokens are matched in their rendered uppercase form.
     entries = _page_text_entries(page)
-    footer_y = max(y for text, y in entries if text == "User Guide")
-    footer_tokens = {"User Guide", "·", footer_section, page_num}
+    footer_y = max(y for text, y in entries if text == "USER GUIDE")
+    footer_tokens = {"USER GUIDE", "·", footer_section, page_num}
     content_y = max(y for text, y in entries if text not in footer_tokens)
     return footer_y - content_y
 
@@ -38,10 +40,10 @@ class GuideLayoutTests(unittest.TestCase):
 
         self.assertEqual(len(reader.pages), 7)
         self.assertGreaterEqual(
-            _footer_clearance(reader.pages[2], "Using the Call Viewer", "03"),
+            _footer_clearance(reader.pages[2], "USING THE CALL VIEWER", "03"),
             8.0,
         )
         self.assertGreaterEqual(
-            _footer_clearance(reader.pages[3], "Using the Search Page", "04"),
+            _footer_clearance(reader.pages[3], "USING THE SEARCH PAGE", "04"),
             8.0,
         )

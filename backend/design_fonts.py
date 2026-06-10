@@ -1,0 +1,93 @@
+"""Embedded font assets for the delivery artifacts.
+
+All client-facing artifacts share one type system (SIL OFL 1.1, license
+texts alongside the font files in ``backend/fonts/``):
+
+* **Fraunces** (variable, wght 100–900 + opsz 9–144, roman + italic) —
+  display serif for document titles and large numerals. The optical-size
+  axis matters: large headings use the high-contrast display cut.
+* **Public Sans** (variable, wght 100–900, roman + italic) — UI and data
+  face for tables, labels, and body copy.
+* **IBM Plex Mono** (static 400/600) — timestamps, phone numbers, and
+  page:line cites.
+* **Courier Prime** (TTF) — transcript sheets only; metric-locked, the
+  62-char line geometry in ``transcript_formatting.py`` depends on it.
+
+Two delivery mechanisms, because the artifacts have different constraints:
+
+* PDFs are rendered by local headless Chromium, so ``pdf_font_css`` points
+  ``@font-face`` at ``file://`` URIs (same pattern the transcript template
+  has always used for Courier Prime).
+* ``search.html`` / ``viewer.html`` must stay single-file and work from
+  ``file://`` on locked-down machines with no network, so
+  ``embedded_font_css`` inlines the woff2 binaries as base64 data URIs.
+"""
+
+import base64
+from functools import lru_cache
+from pathlib import Path
+from typing import Iterable, List, Tuple
+
+FONTS_DIR = Path(__file__).parent / "fonts"
+
+# (css family name, css font-weight value, style, file name)
+_FACES: List[Tuple[str, str, str, str]] = [
+    ("Fraunces", "100 900", "normal", "Fraunces-VF.woff2"),
+    ("Fraunces", "100 900", "italic", "Fraunces-Italic-VF.woff2"),
+    ("Public Sans", "100 900", "normal", "PublicSans-VF.woff2"),
+    ("Public Sans", "100 900", "italic", "PublicSans-Italic-VF.woff2"),
+    ("IBM Plex Mono", "400", "normal", "IBMPlexMono-Regular.woff2"),
+    ("IBM Plex Mono", "600", "normal", "IBMPlexMono-SemiBold.woff2"),
+    ("Courier Prime", "400", "normal", "CourierPrime-Regular.ttf"),
+    ("Courier Prime", "700", "normal", "CourierPrime-Bold.ttf"),
+]
+
+DEFAULT_FAMILIES = ("Fraunces", "Public Sans", "IBM Plex Mono")
+
+
+def _format_for(file_name: str) -> str:
+    return "woff2" if file_name.endswith(".woff2") else "truetype"
+
+
+def _face_rule(family: str, weight: str, style: str, src: str) -> str:
+    return (
+        "@font-face {\n"
+        f'    font-family: "{family}";\n'
+        f"    src: {src};\n"
+        f"    font-weight: {weight};\n"
+        f"    font-style: {style};\n"
+        "}"
+    )
+
+
+def _selected(families: Iterable[str]) -> List[Tuple[str, str, str, str]]:
+    wanted = set(families)
+    return [face for face in _FACES if face[0] in wanted]
+
+
+def pdf_font_css(families: Iterable[str] = DEFAULT_FAMILIES) -> str:
+    """``@font-face`` rules pointing at local font files, for PDF templates."""
+    rules = []
+    for family, weight, style, file_name in _selected(families):
+        uri = (FONTS_DIR / file_name).as_uri()
+        rules.append(
+            _face_rule(family, weight, style, f'url("{uri}") format("{_format_for(file_name)}")')
+        )
+    return "\n".join(rules)
+
+
+@lru_cache(maxsize=None)
+def _data_uri(file_name: str) -> str:
+    data = (FONTS_DIR / file_name).read_bytes()
+    mime = "font/woff2" if file_name.endswith(".woff2") else "font/ttf"
+    return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+
+
+def embedded_font_css(families: Iterable[str] = DEFAULT_FAMILIES) -> str:
+    """``@font-face`` rules with base64 data URIs, for self-contained HTML."""
+    rules = []
+    for family, weight, style, file_name in _selected(families):
+        rules.append(
+            _face_rule(family, weight, style, f'url("{_data_uri(file_name)}") format("{_format_for(file_name)}")')
+        )
+    return "\n".join(rules)

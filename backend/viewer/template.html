@@ -7,6 +7,8 @@
   <link rel="icon" href="data:,">
   <title>{{CASE_NAME}} – Call Viewer</title>
   <style>
+{{FONTS_CSS}}
+
     *,
     *::before,
     *::after {
@@ -14,109 +16,192 @@
     }
 
     :root {
-      --sidebar-calls-width: 260px;
-      --sidebar-trans-width: 360px;
-      --accent: #1B2D4A;
-      --accent-hover: #253D5E;
-      --bg: #FCFAF5;
-      --bg-card: #ffffff;
-      --border: #E0DACE;
-      --text: #1A211A;
-      --text-muted: #6B736B;
-      --text-faint: #9BA09B;
-      --highlight: #E8DFB8;
-      --active-line: rgba(184, 160, 106, 0.15);
-      --gold: #B8A06A;
+      --rail-calls-w: 264px;
+      --rail-side-w: 304px;
+      --rail-collapsed-w: 38px;
+      --paper: #F5F2EA;
+      --cream: #FBF9F3;
+      --sheet: #FFFFFF;
+      --ink: #16140F;
+      --ink-2: #45413A;
+      --ink-3: #807A6E;
+      --rule: rgba(22, 20, 15, .18);
+      --rule-faint: rgba(22, 20, 15, .09);
+      --signal: #A8271E;
+      --signal-ink: #871F18;
+      --signal-bg: rgba(168, 39, 30, .07);
+      --med: #8F6400;
+      --low: #76796E;
+      --mark: #F4E9C8;
+      --serif: "Fraunces", Georgia, serif;
+      --sans: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --mono: "IBM Plex Mono", Menlo, Consolas, monospace;
     }
 
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--bg);
-      color: var(--text);
+      font-family: var(--sans);
+      background: var(--paper);
+      color: var(--ink);
       overflow: hidden;
+      height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::selection { background: var(--ink); color: var(--paper); }
+
+    .lbl {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+    }
+    .lbl--ink { color: var(--ink); }
+
+    .rv {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .rv::before { content: ""; width: 7px; height: 7px; border-radius: 1px; flex: none; }
+    .rv--HIGH { color: var(--signal-ink); }
+    .rv--HIGH::before { background: var(--signal); }
+    .rv--MEDIUM { color: var(--med); }
+    .rv--MEDIUM::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--med); }
+    .rv--LOW { color: var(--low); }
+    .rv--LOW::before { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(118, 121, 110, .7); }
+    .rv--none { color: var(--ink-3); }
+    .rv--none::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rule); }
+
+    /* ── Top band ── */
+    .band {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 8px 20px;
+      border-bottom: 1px solid var(--rule);
+      background: var(--paper);
+    }
+    .band .sep { color: var(--ink-3); font-weight: 500; margin: 0 6px; }
+
+    .frame {
+      display: flex;
+      flex-direction: column;
       height: 100vh;
     }
 
     .app {
+      flex: 1;
       display: flex;
-      height: 100vh;
+      min-height: 0;
     }
 
-    /* ── Call list sidebar ── */
-    .calls-sidebar {
-      width: var(--sidebar-calls-width);
-      background: linear-gradient(180deg, #1B2D4A 0%, #253D5E 100%);
+    /* ── Call list rail ── */
+    .rail-calls {
+      width: var(--rail-calls-w);
+      background: var(--cream);
+      border-right: 1px solid var(--rule);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
       overflow: hidden;
     }
+    .rail-calls.collapsed { width: var(--rail-collapsed-w); }
+    .rail-calls.collapsed .rail-calls-head .lbl--ink,
+    .rail-calls.collapsed .rail-calls-head .sub,
+    .rail-calls.collapsed .calls-list { display: none; }
 
-    .calls-header {
-      padding: 16px;
-      color: #fff;
+    .rail-calls-head {
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--rule);
+      position: relative;
+    }
+    .rail-calls-head .sub {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--ink-3);
+    }
+    .rail-toggle {
+      position: absolute;
+      top: 10px;
+      right: 8px;
+      width: 22px;
+      height: 22px;
+      border: 1px solid var(--rule);
+      background: transparent;
+      color: var(--ink-3);
+      cursor: pointer;
       font-size: 13px;
-      font-weight: 600;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      line-height: 1;
+      padding: 0;
+      font-family: inherit;
     }
-
-    .calls-header span {
-      display: block;
-      font-size: 11px;
-      font-weight: 400;
-      color: rgba(255, 255, 255, 0.5);
-      margin-top: 2px;
+    .rail-toggle:hover { color: var(--ink); border-color: var(--ink); }
+    .rail-calls.collapsed .rail-calls-head { border-bottom: none; padding: 10px 0; }
+    .rail-calls.collapsed .rail-toggle { position: static; display: block; margin: 0 auto; }
+    .rail-strip {
+      display: none;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      margin: 14px auto 0;
+      cursor: pointer;
     }
+    .rail-calls.collapsed .rail-strip { display: block; }
 
     .calls-list {
       flex: 1;
       overflow-y: auto;
-      padding: 8px;
     }
-
-    .calls-list::-webkit-scrollbar {
-      width: 4px;
-    }
-
-    .calls-list::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 2px;
-    }
+    .calls-list::-webkit-scrollbar { width: 8px; }
+    .calls-list::-webkit-scrollbar-thumb { background: var(--rule); }
 
     .call-item {
-      padding: 10px 12px;
-      border-radius: 6px;
+      padding: 11px 16px 10px;
+      border-bottom: 1px solid var(--rule-faint);
       cursor: pointer;
-      margin-bottom: 2px;
-      color: rgba(255, 255, 255, 0.75);
-      font-size: 12px;
-      transition: all 0.12s;
+      position: relative;
     }
-
-    .call-item:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
+    .call-item:hover { background: rgba(255, 255, 255, .7); }
+    .call-item.active { background: var(--sheet); }
+    .call-item.active::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: var(--signal);
     }
-
-    .call-item.active {
-      background: rgba(255, 255, 255, 0.18);
-      color: #fff;
-      font-weight: 500;
-      border-left: 2px solid var(--gold);
+    .call-item .l1 {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--ink-3);
+      letter-spacing: .02em;
+      text-transform: uppercase;
     }
-
-    .call-item-name {
+    .call-item .l1 .d { color: var(--ink-2); font-weight: 500; }
+    .call-item .l2 {
+      margin-top: 3px;
+      font-size: 13px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-
-    .call-item-dur {
-      font-size: 10px;
-      color: rgba(255, 255, 255, 0.4);
-      margin-top: 2px;
-    }
+    .call-item .l3 { margin-top: 4px; }
+    .call-item .l3 .rv { font-size: 9px; }
 
     /* ── Main area ── */
     .main {
@@ -127,99 +212,142 @@
     }
 
     .main-header {
-      background: var(--bg-card);
-      border-bottom: 1px solid var(--border);
-      padding: 10px 16px;
+      padding: 14px 22px 0;
+      background: var(--paper);
+    }
+    .main-header .over {
       display: flex;
       align-items: center;
-      gap: 10px;
-    }
-
-    .main-title {
-      font-size: 13px;
-      font-weight: 500;
-      flex: 1;
+      gap: 14px;
       min-width: 0;
     }
-
-    .main-title-filename {
+    .main-header .over .file {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--ink-3);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .main-header h2 {
+      margin: 5px 0 0;
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: 23px;
+      line-height: 1.1;
+      font-variation-settings: "opsz" 50;
+      font-variant-numeric: tabular-nums;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-
-    .main-meta {
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-top: 2px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .main-dur {
+    .main-header h2 .dash { font-weight: 300; color: var(--ink-3); margin: 0 .18em; }
+    .main-header h2 .dt { font-style: italic; font-weight: 400; color: var(--ink-2); }
+    .main-header .meta {
+      margin-top: 4px;
       font-size: 12px;
-      color: var(--text-muted);
-      flex-shrink: 0;
+      color: var(--ink-3);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
+    .main-header .meta .sep { margin: 0 7px; }
 
-    /* ── Player ── */
-    .player-area {
-      background: linear-gradient(135deg, #1B2D4A, #253D5E);
-      padding: 14px 16px;
+    /* ── Transport ── */
+    .transport {
       display: flex;
       align-items: center;
       gap: 12px;
+      padding: 12px 22px 14px;
+      border-bottom: 1px solid var(--rule);
+      background: var(--paper);
     }
 
     .play-btn {
-      background: none;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--paper);
       border: none;
       cursor: pointer;
-      color: #fff;
-      width: 40px;
-      height: 40px;
-      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: background 0.12s;
+      flex: none;
     }
+    .play-btn:hover { background: #000; }
+    .play-btn svg { width: 18px; height: 18px; fill: currentColor; }
 
-    .play-btn:hover {
-      background: rgba(255, 255, 255, 0.12);
+    .skip-btn {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-2);
+      border: 1px solid var(--rule);
+      background: var(--cream);
+      padding: 7px 10px;
+      cursor: pointer;
+      white-space: nowrap;
     }
-
-    .play-btn svg {
-      width: 22px;
-      height: 22px;
-      fill: currentColor;
-    }
+    .skip-btn:hover { border-color: var(--ink); color: var(--ink); }
 
     .time-label {
-      font-size: 12px;
-      color: rgba(255, 255, 255, 0.7);
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 600;
       font-variant-numeric: tabular-nums;
-      min-width: 42px;
+      min-width: 52px;
+      letter-spacing: .01em;
+    }
+    .time-label.total {
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--ink-3);
+      text-align: right;
     }
 
-    .progress-wrap {
+    /* scrub rail with cue ticks */
+    .scrub {
       flex: 1;
       position: relative;
-      height: 6px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 3px;
+      height: 34px;
       cursor: pointer;
     }
-
+    .scrub-rail {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 15px;
+      height: 4px;
+      background: var(--rule);
+    }
     .progress-fill {
-      height: 100%;
-      background: #fff;
-      border-radius: 3px;
+      position: absolute;
+      left: 0;
+      top: 15px;
+      height: 4px;
+      background: var(--signal);
       width: 0;
       pointer-events: none;
     }
-
+    .playhead {
+      position: absolute;
+      top: 6px;
+      width: 2px;
+      height: 22px;
+      background: var(--ink);
+      transform: translateX(-1px);
+      pointer-events: none;
+    }
+    .cue-tick {
+      position: absolute;
+      top: 9px;
+      width: 0;
+      height: 16px;
+      border-left: 1px dashed rgba(168, 39, 30, .65);
+      pointer-events: none;
+    }
     .progress-input {
       position: absolute;
       inset: 0;
@@ -235,57 +363,55 @@
       align-items: center;
       gap: 6px;
     }
-
-    .vol-icon {
-      color: rgba(255, 255, 255, 0.7);
-    }
-
-    .vol-icon svg {
-      width: 16px;
-      height: 16px;
-      fill: currentColor;
-    }
-
+    .vol-icon { color: var(--ink-3); display: flex; }
+    .vol-icon svg { width: 15px; height: 15px; fill: currentColor; }
     .vol-slider {
-      width: 70px;
-      height: 4px;
+      width: 64px;
+      height: 3px;
       -webkit-appearance: none;
       appearance: none;
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 2px;
+      background: var(--rule);
       cursor: pointer;
     }
-
     .vol-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 12px;
-      height: 12px;
-      background: #fff;
+      width: 11px;
+      height: 11px;
+      background: var(--ink);
       border-radius: 50%;
     }
 
     .speed-btn {
-      background: rgba(255, 255, 255, 0.1);
-      border: none;
-      color: rgba(255, 255, 255, 0.8);
-      padding: 4px 8px;
-      border-radius: 4px;
+      font-family: var(--mono);
       font-size: 11px;
+      color: var(--ink-2);
+      border: 1px solid var(--rule);
+      background: var(--cream);
+      padding: 7px 10px;
       cursor: pointer;
     }
+    .speed-btn:hover { border-color: var(--ink); color: var(--ink); }
+    .speed-btn.modified { border-color: var(--signal-ink); color: var(--signal-ink); }
 
-    .speed-btn:hover {
-      background: rgba(255, 255, 255, 0.2);
+    .present-btn {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      border: 1px solid var(--ink);
+      background: transparent;
+      color: var(--ink);
+      padding: 8px 12px;
+      cursor: pointer;
+      white-space: nowrap;
     }
-
-    .speed-btn.modified {
-      background: rgba(184, 160, 106, 0.3);
-      color: #E8DFB8;
-    }
+    .present-btn:hover { background: var(--ink); color: var(--paper); }
+    body.present .present-btn { background: var(--ink); color: var(--paper); }
 
     .kb-hint {
-      font-size: 10px;
-      color: rgba(255, 255, 255, 0.35);
+      font-family: var(--mono);
+      font-size: 9.5px;
+      color: var(--ink-3);
       white-space: nowrap;
       user-select: none;
     }
@@ -302,500 +428,496 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      background: var(--bg);
-      border-left: 1px solid var(--border);
+      background: var(--paper);
       min-width: 0;
     }
 
     .trans-header {
-      padding: 10px 16px;
-      background: var(--bg-card);
-      border-bottom: 1px solid var(--border);
+      padding: 10px 22px;
+      border-bottom: 1px solid var(--rule);
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       flex-wrap: wrap;
       row-gap: 8px;
+      background: var(--paper);
     }
 
     .search-input {
       flex: 1;
-      min-width: 220px;
-      padding: 7px 12px;
+      min-width: 200px;
+      padding: 8px 12px;
       font-size: 13px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
+      font-family: inherit;
+      border: 1px solid var(--rule);
       outline: none;
-      background: var(--bg);
-      color: var(--text);
+      background: var(--cream);
+      color: var(--ink);
     }
-
-    .search-input:focus {
-      border-color: var(--gold);
-      box-shadow: 0 0 0 2px rgba(184, 160, 106, 0.15);
-    }
+    .search-input:focus { border-color: var(--ink); }
+    .search-input::placeholder { color: var(--ink-3); }
 
     .search-clear {
       background: none;
       border: none;
       cursor: pointer;
-      color: var(--text-faint);
+      color: var(--ink-3);
       padding: 4px;
-      border-radius: 4px;
       display: none;
+      font-size: 13px;
     }
-
-    .search-clear:hover {
-      color: var(--text);
-    }
-
-    .page-nav {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+    .search-clear:hover { color: var(--ink); }
 
     .trans-tools {
       margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .page-nav { display: flex; align-items: center; gap: 8px; }
+    .page-info {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-3);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      white-space: nowrap;
+    }
+    .page-btn {
+      background: transparent;
+      border: 1px solid var(--rule);
+      color: var(--ink-2);
+      width: 26px;
+      height: 26px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    .page-btn:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); }
+    .page-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .page-btn svg { width: 13px; height: 13px; fill: currentColor; }
+
+    .follow-controls {
       display: flex;
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
       justify-content: flex-end;
     }
-
-    .page-info {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .page-btn {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.12s;
-    }
-
-    .page-btn:hover:not(:disabled) {
-      border-color: var(--accent);
-      color: var(--text);
-    }
-
-    .page-btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    .page-btn svg {
-      width: 14px;
-      height: 14px;
-      fill: currentColor;
-    }
-
-    .trans-scroll {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    .trans-page {
-      width: min(8.5in, 100%);
-      background: var(--bg-card);
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-      padding: 0.33in;
-      position: relative;
-      display: none;
-      margin-bottom: 16px;
-    }
-
-    .trans-page::before,
-    .trans-page::after {
-      content: '';
-      position: absolute;
-      inset: 0.33in;
-      border: 1px solid #e2e8f0;
-      pointer-events: none;
-    }
-
-    .trans-page::after {
-      inset: calc(0.33in + 4px);
-    }
-
-    .trans-page.active {
-      display: block;
-    }
-
-    /* When search is active, show all pages so matches on any page are visible. */
-    .trans-scroll.searching .trans-page {
-      display: block;
-    }
-    .trans-scroll.searching .trans-page.no-match {
-      display: none;
-    }
-
-    .trans-line {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 12pt;
-      line-height: 2.0;
-      white-space: pre-wrap;
-      cursor: pointer;
-      border-radius: 2px;
-      display: flex;
-      gap: 8px;
-      padding: 0 2px;
-      transition: background 0.1s;
-    }
-
-    .trans-line:hover {
-      background: rgba(0, 0, 0, 0.03);
-    }
-
-    .trans-line.active {
-      background: var(--active-line);
-    }
-
-    .trans-line mark {
-      background: var(--highlight);
-      border-radius: 2px;
-      padding: 0 1px;
-    }
-
-    .line-num {
-      color: var(--text-faint);
-      font-size: 10pt;
-      min-width: 24px;
-      text-align: right;
-      user-select: none;
-    }
-
-    .line-text {
-      flex: 1;
-    }
-
-    .word-ts {
-      cursor: pointer;
-      border-radius: 2px;
-      padding: 0 0.5px;
-      transition: background 0.1s, color 0.1s;
-    }
-
-    .word-ts:hover {
-      background: var(--highlight);
-    }
-
-    .word-ts.active-word {
-      background: rgba(184, 160, 106, 0.35);
-      color: var(--accent);
-    }
-
-    .follow-controls {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
     .follow-state {
       display: inline-flex;
       align-items: center;
       gap: 7px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--text-muted);
-      font-size: 11px;
-      letter-spacing: 0.02em;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
       white-space: nowrap;
     }
-
     .follow-state::before {
       content: '';
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: var(--text-faint);
+      background: var(--ink-3);
       flex-shrink: 0;
     }
-
-    .follow-state.following {
-      border-color: rgba(184, 160, 106, 0.45);
-      background: rgba(184, 160, 106, 0.12);
-      color: var(--accent);
-    }
-
-    .follow-state.following::before {
-      background: var(--gold);
-      box-shadow: 0 0 0 3px rgba(184, 160, 106, 0.16);
-    }
-
+    .follow-state.following { color: var(--signal-ink); }
+    .follow-state.following::before { background: var(--signal); }
     .follow-meta {
-      font-size: 11px;
-      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--ink-3);
       white-space: nowrap;
     }
-
     .follow-btn {
-      background: var(--accent);
-      border: none;
-      color: #fff;
-      padding: 6px 12px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
+      background: transparent;
+      border: 1px solid var(--ink);
+      color: var(--ink);
+      padding: 6px 11px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
       cursor: pointer;
-      transition: background 0.12s, transform 0.12s;
       white-space: nowrap;
     }
+    .follow-btn:hover { background: var(--ink); color: var(--paper); }
+    .follow-btn[hidden] { display: none; }
 
-    .follow-btn:hover {
-      background: var(--accent-hover);
+    .trans-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
+    .trans-scroll::-webkit-scrollbar { width: 10px; }
+    .trans-scroll::-webkit-scrollbar-thumb { background: var(--rule); }
 
-    .follow-btn:active {
-      transform: translateY(1px);
-    }
-
-    .follow-btn[hidden] {
+    /* Printed-transcript sheet — mirrors the deposition-format PDF so the
+       on-screen page can be presented alongside the audio. */
+    .trans-page {
+      width: min(8.5in, 100%);
+      background: var(--sheet);
+      box-shadow: 0 18px 40px rgba(22, 20, 15, .16), 0 2px 6px rgba(22, 20, 15, .08);
+      padding: 0.42in 0.45in;
+      position: relative;
       display: none;
+      margin-bottom: 22px;
+    }
+    .trans-page::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0.30in;
+      border-left: 1px solid var(--ink);
+      pointer-events: none;
+    }
+    .trans-page::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: calc(0.30in + 4px);
+      border-left: 1px solid var(--ink);
+      pointer-events: none;
+    }
+    .trans-page .pageno {
+      position: absolute;
+      bottom: 0.12in;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-family: "Courier Prime", "Courier New", Courier, monospace;
+      font-size: 10pt;
+      color: var(--ink-2);
+    }
+    .trans-page.active { display: block; }
+
+    /* When search is active, show all pages so matches on any page are visible. */
+    .trans-scroll.searching .trans-page { display: block; }
+    .trans-scroll.searching .trans-page.no-match { display: none; }
+
+    .trans-line {
+      font-family: "Courier Prime", "Courier New", Courier, monospace;
+      font-size: 12pt;
+      line-height: 2.0;
+      white-space: pre-wrap;
+      cursor: pointer;
+      display: flex;
+      gap: 10px;
+      padding: 0 2px;
+    }
+    .trans-line:hover { background: var(--cream); }
+    .trans-line.active {
+      background: var(--signal-bg);
+      box-shadow: inset 2px 0 0 var(--signal);
+    }
+    .trans-line mark {
+      background: var(--mark);
+      padding: 0 1px;
+      color: var(--ink);
+      font-weight: inherit;
     }
 
-    /* ── Summary pane ── */
-    .summary-pane {
-      width: 320px;
-      background: var(--bg-card);
-      border-left: 1px solid var(--border);
+    .line-num {
+      color: var(--ink-3);
+      font-size: 10pt;
+      min-width: 26px;
+      text-align: right;
+      user-select: none;
+      flex: none;
+    }
+
+    .line-text { flex: 1; }
+
+    .word-ts {
+      cursor: pointer;
+      padding: 0 0.5px;
+    }
+    .word-ts:hover { background: var(--mark); }
+    .word-ts.active-word {
+      background: var(--mark);
+      box-shadow: inset 0 -2px 0 var(--signal);
+    }
+
+    /* ── Analysis rail ── */
+    .rail-side {
+      width: var(--rail-side-w);
+      background: var(--cream);
+      border-left: 1px solid var(--rule);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
-      transition: width 0.2s ease;
+      transition: width 0.15s ease;
+      overflow: hidden;
     }
+    .rail-side.collapsed { width: var(--rail-collapsed-w); }
+    .rail-side.collapsed .side-head .lbl--ink,
+    .rail-side.collapsed .side-body,
+    .rail-side.collapsed .side-note { display: none; }
 
-    .summary-pane.collapsed {
-      width: 36px;
-    }
-
-    .summary-pane.collapsed .summary-header-title,
-    .summary-pane.collapsed .summary-body {
-      display: none;
-    }
-
-    .summary-header {
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--border);
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-muted);
+    .side-head {
+      padding: 13px 16px 11px;
+      border-bottom: 1px solid var(--rule);
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
     }
-
-    .summary-pane.collapsed .summary-header {
-      padding: 10px 6px;
-      justify-content: center;
+    .rail-side.collapsed .side-head {
       border-bottom: none;
+      padding: 10px 0;
+      justify-content: center;
+    }
+    .side-strip {
+      display: none;
       writing-mode: vertical-rl;
       transform: rotate(180deg);
-      height: 100%;
+      margin: 14px auto 0;
       cursor: pointer;
     }
+    .rail-side.collapsed .side-strip { display: block; }
 
-    .summary-header-title {
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      font-size: 11px;
-    }
-
-    .summary-collapse-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      width: 22px;
-      height: 22px;
-      border-radius: 4px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      line-height: 1;
-      padding: 0;
-      font-family: inherit;
-      flex-shrink: 0;
-    }
-    .summary-collapse-btn:hover {
-      background: var(--bg-alt);
-      color: var(--text);
-      border-color: var(--text-muted);
-    }
-    .summary-pane.collapsed .summary-collapse-btn {
-      display: none;
-    }
-
-    .summary-body {
+    .side-body {
       flex: 1;
       overflow-y: auto;
-      padding: 14px;
-      font-size: 13px;
-      line-height: 1.7;
-      color: var(--text);
+    }
+    .side-body::-webkit-scrollbar { width: 8px; }
+    .side-body::-webkit-scrollbar-thumb { background: var(--rule); }
+
+    .side-sec {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--rule-faint);
+    }
+    .side-sec h4 {
+      margin: 0 0 8px;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+    }
+    .side-sec .brief {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 13.5px;
+      line-height: 1.55;
+      font-variation-settings: "opsz" 18;
+    }
+    .side-sec .idp {
+      margin: 0;
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: var(--ink-2);
+    }
+    .side-sec .raw {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--ink-2);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .side-empty { color: var(--ink-3); font-style: italic; font-size: 12.5px; }
+
+    .side-cue {
+      display: flex;
+      gap: 10px;
+      padding: 8px 0 7px;
+      border-bottom: 1px solid var(--rule-faint);
+      cursor: pointer;
+    }
+    .side-cue:last-child { border-bottom: none; }
+    .side-cue:hover .n { color: var(--ink); }
+    .side-cue .t {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--signal-ink);
+      white-space: nowrap;
+    }
+    .side-cue .n {
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--ink-2);
+    }
+    .side-cue.now {
+      margin: 0 -16px;
+      padding-left: 13px;
+      padding-right: 16px;
+      background: var(--signal-bg);
+      border-left: 3px solid var(--signal);
     }
 
-    .summary-empty {
-      color: var(--text-faint);
-      font-style: italic;
+    .side-note {
+      padding: 12px 16px 14px;
+      border-top: 1px solid var(--rule);
+      font-size: 10.5px;
+      line-height: 1.5;
+      color: var(--ink-3);
     }
+
+    /* ── Present mode: audio + printed transcript only ── */
+    body.present .band,
+    body.present .rail-calls,
+    body.present .rail-side,
+    body.present .search-input,
+    body.present .search-clear,
+    body.present .kb-hint {
+      display: none;
+    }
+    body.present .trans-scroll { padding: 30px; }
+    body.present .main-header h2 { font-size: 28px; }
 
     .toast {
       position: fixed;
       bottom: 24px;
       left: 50%;
       transform: translateX(-50%) translateY(100px);
-      background: #1B2D4A;
-      color: #fff;
+      background: var(--ink);
+      color: var(--paper);
       padding: 10px 20px;
-      border-radius: 8px;
       font-size: 13px;
       z-index: 1000;
       opacity: 0;
       transition: all 0.3s ease;
       pointer-events: none;
     }
-
     .toast.visible {
       transform: translateX(-50%) translateY(0);
       opacity: 1;
     }
-
-    .toast.error {
-      background: #991b1b;
-    }
+    .toast.error { background: var(--signal-ink); }
 
     .loading-overlay {
       position: absolute;
       inset: 0;
-      background: rgba(241, 245, 249, 0.85);
+      background: rgba(245, 242, 234, 0.85);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 10;
       font-size: 13px;
-      color: var(--text-muted);
+      color: var(--ink-3);
     }
-
     .loading-overlay.hidden { display: none; }
   </style>
 </head>
 
 <body>
-  <div class="app">
-
-    <!-- Call list -->
-    <div class="calls-sidebar">
-      <div class="calls-header">
-        {{CASE_NAME}}
-        <span id="callCount">Loading…</span>
-      </div>
-      <div class="calls-list" id="callsList"></div>
+  <div class="frame">
+    <div class="band">
+      <span class="lbl lbl--ink">Privileged &amp; Confidential<span class="sep">·</span>Attorney Work Product</span>
+      <span class="lbl">Call Viewer</span>
     </div>
 
-    <!-- Main -->
-    <div class="main">
-      <div class="main-header">
-        <div class="main-title" id="mainTitle">
-          <div class="main-title-filename" id="mainTitleFilename">Select a call</div>
-          <div class="main-meta" id="mainMeta"></div>
+    <div class="app">
+
+      <!-- Call list -->
+      <div class="rail-calls" id="railCalls">
+        <div class="rail-calls-head">
+          <span class="lbl lbl--ink">{{CASE_NAME}}</span>
+          <div class="sub" id="callCount">Loading…</div>
+          <button class="rail-toggle" id="callsToggle" title="Collapse call list">&#8249;</button>
+          <span class="rail-strip lbl" id="callsStrip">Calls</span>
         </div>
-        <div class="main-dur" id="mainDur"></div>
+        <div class="calls-list" id="callsList"></div>
       </div>
 
-      <!-- Audio player -->
-      <div class="player-area">
-        <!-- Play/Pause -->
-        <button class="play-btn" id="playBtn" onclick="togglePlay()">
-          <svg id="playIcon" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </button>
-        <!-- Skip back -->
-        <button class="play-btn" onclick="skipBy(-5)" title="Back 5s">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path
-              d="M12.5 3C8.4 3 4.9 5.1 3 8.3V5H1v7h7v-2H4.5C5.9 7.3 8.9 5 12.5 5c3.9 0 7 3.1 7 7s-3.1 7-7 7c-2.6 0-4.8-1.4-6.1-3.5L4.7 16.7C6.4 19.3 9.2 21 12.5 21c5 0 9-4 9-9s-4-9-9-9zm-.5 5v5l4 2.5.75-1.23-3.25-2.02V8H12z" />
-          </svg>
-        </button>
-        <div class="time-label" id="timeCurrent">0:00</div>
-        <div class="progress-wrap" id="progressWrap">
-          <div class="progress-fill" id="progressFill"></div>
-          <input type="range" class="progress-input" id="progressInput" min="0" max="1000" value="0">
+      <!-- Main -->
+      <div class="main">
+        <div class="main-header">
+          <div class="over">
+            <span class="lbl" id="callPos"></span>
+            <span class="file" id="mainTitleFilename">Select a call</span>
+          </div>
+          <h2 id="mainTitle"></h2>
+          <div class="meta" id="mainMeta"></div>
         </div>
-        <div class="time-label" id="timeDuration" style="text-align:right">0:00</div>
-        <!-- Volume -->
-        <div class="vol-wrap">
-          <span class="vol-icon"><svg viewBox="0 0 24 24">
-              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
-            </svg></span>
-          <input type="range" class="vol-slider" id="volSlider" min="0" max="100" value="80">
+
+        <!-- Audio transport -->
+        <div class="transport">
+          <button class="play-btn" id="playBtn" onclick="togglePlay()">
+            <svg id="playIcon" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </button>
+          <button class="skip-btn" onclick="skipBy(-15)" title="Back 15s">−15s</button>
+          <button class="skip-btn" onclick="skipBy(15)" title="Forward 15s">+15s</button>
+          <div class="time-label" id="timeCurrent">0:00</div>
+          <div class="scrub" id="progressWrap">
+            <div class="scrub-rail"></div>
+            <div class="progress-fill" id="progressFill"></div>
+            <div id="cueTicks"></div>
+            <div class="playhead" id="playhead" style="left:0%"></div>
+            <input type="range" class="progress-input" id="progressInput" min="0" max="1000" value="0">
+          </div>
+          <div class="time-label total" id="timeDuration">0:00</div>
+          <div class="vol-wrap">
+            <span class="vol-icon"><svg viewBox="0 0 24 24">
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+              </svg></span>
+            <input type="range" class="vol-slider" id="volSlider" min="0" max="100" value="80">
+          </div>
+          <button class="speed-btn" id="speedBtn" onclick="cycleSpeed()" title="Playback speed (click to cycle)">1×</button>
+          <button class="present-btn" id="presentBtn" title="Audio + transcript only (P)">Present</button>
+          <span class="kb-hint">SPACE play · ←→ skip · ↑↓ page · P present</span>
         </div>
-        <button class="speed-btn" id="speedBtn" onclick="cycleSpeed()" title="Playback speed (click to cycle)">1×</button>
-        <span class="kb-hint">Space: play · ←→: skip · ↑↓: page</span>
-      </div>
 
-      <audio id="audio" style="display:none"></audio>
+        <audio id="audio" style="display:none"></audio>
 
-      <!-- Content split -->
-      <div class="content-area" style="position:relative">
-        <div class="loading-overlay hidden" id="loadingOverlay">Loading audio…</div>
-        <!-- Transcript -->
-        <div class="transcript-pane">
-          <div class="trans-header">
-            <input type="text" class="search-input" id="searchInput" placeholder="Search transcript…">
-            <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
-            <div class="trans-tools">
-              <div class="page-nav">
-                <button class="page-btn" id="prevBtn" onclick="goPage(-1)" disabled>
-                  <svg viewBox="0 0 24 24">
-                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
-                  </svg>
-                </button>
-                <span class="page-info" id="pageInfo">–</span>
-                <button class="page-btn" id="nextBtn" onclick="goPage(1)" disabled>
-                  <svg viewBox="0 0 24 24">
-                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
-                  </svg>
-                </button>
-              </div>
-              <div class="follow-controls">
-                <span class="follow-state following" id="followState">Following playback</span>
-                <span class="follow-meta" id="followMeta">Playback position updates here</span>
-                <button class="follow-btn" id="followResumeBtn" type="button" hidden>Return to playback</button>
+        <!-- Content split -->
+        <div class="content-area" style="position:relative">
+          <div class="loading-overlay hidden" id="loadingOverlay">Loading audio…</div>
+          <!-- Transcript -->
+          <div class="transcript-pane">
+            <div class="trans-header">
+              <input type="text" class="search-input" id="searchInput" placeholder="Search this transcript…">
+              <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
+              <div class="trans-tools">
+                <div class="page-nav">
+                  <button class="page-btn" id="prevBtn" onclick="goPage(-1)" disabled>
+                    <svg viewBox="0 0 24 24">
+                      <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                    </svg>
+                  </button>
+                  <span class="page-info" id="pageInfo">–</span>
+                  <button class="page-btn" id="nextBtn" onclick="goPage(1)" disabled>
+                    <svg viewBox="0 0 24 24">
+                      <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+                    </svg>
+                  </button>
+                </div>
+                <div class="follow-controls">
+                  <span class="follow-state following" id="followState">Following audio</span>
+                  <span class="follow-meta" id="followMeta"></span>
+                  <button class="follow-btn" id="followResumeBtn" type="button" hidden>Return to playback</button>
+                </div>
               </div>
             </div>
+            <div class="trans-scroll" id="transScroll"></div>
           </div>
-          <div class="trans-scroll" id="transScroll"></div>
-        </div>
 
-        <!-- Summary -->
-        <div class="summary-pane" id="summaryPane">
-          <div class="summary-header" id="summaryHeader">
-            <span class="summary-header-title">AI Summary</span>
-            <button class="summary-collapse-btn" id="summaryCollapseBtn" title="Collapse summary">&#8250;</button>
+          <!-- Analysis rail -->
+          <div class="rail-side" id="summaryPane">
+            <div class="side-head" id="summaryHeader">
+              <span class="lbl lbl--ink">Analysis</span>
+              <button class="rail-toggle" id="summaryCollapseBtn" title="Collapse analysis">&#8250;</button>
+            </div>
+            <span class="side-strip lbl" id="sideStrip">Analysis</span>
+            <div class="side-body" id="summaryBody"><div class="side-sec"><span class="side-empty">No call selected.</span></div></div>
+            <div class="side-note">AI-generated analysis. Verify against the source recording before quotation or use in court.</div>
           </div>
-          <div class="summary-body" id="summaryBody"><span class="summary-empty">No call selected.</span></div>
         </div>
       </div>
     </div>
@@ -820,8 +942,11 @@
     const timeDuration = document.getElementById('timeDuration');
     const progressFill = document.getElementById('progressFill');
     const progressInput = document.getElementById('progressInput');
+    const playheadEl = document.getElementById('playhead');
+    const cueTicksEl = document.getElementById('cueTicks');
     const volSlider = document.getElementById('volSlider');
     const speedBtn = document.getElementById('speedBtn');
+    const presentBtn = document.getElementById('presentBtn');
     const searchInput = document.getElementById('searchInput');
     const searchClear = document.getElementById('searchClear');
     const transScroll = document.getElementById('transScroll');
@@ -829,15 +954,20 @@
     const summaryPane = document.getElementById('summaryPane');
     const summaryHeader = document.getElementById('summaryHeader');
     const summaryCollapseBtn = document.getElementById('summaryCollapseBtn');
+    const sideStrip = document.getElementById('sideStrip');
+    const railCalls = document.getElementById('railCalls');
+    const callsToggle = document.getElementById('callsToggle');
+    const callsStrip = document.getElementById('callsStrip');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
     const pageInfo = document.getElementById('pageInfo');
     const followState = document.getElementById('followState');
     const followMeta = document.getElementById('followMeta');
     const followResumeBtn = document.getElementById('followResumeBtn');
+    const callPos = document.getElementById('callPos');
+    const mainTitle = document.getElementById('mainTitle');
     const mainTitleFilename = document.getElementById('mainTitleFilename');
     const mainMeta = document.getElementById('mainMeta');
-    const mainDur = document.getElementById('mainDur');
     const callsList = document.getElementById('callsList');
     const callCount = document.getElementById('callCount');
     const loadingOverlay = document.getElementById('loadingOverlay');
@@ -871,13 +1001,13 @@
 
     function updateFollowUi() {
       followState.classList.toggle('following', followPlayback);
-      followState.textContent = followPlayback ? 'Following playback' : 'Browsing transcript';
+      followState.textContent = followPlayback ? 'Following audio' : 'Browsing';
       if (lineEntries.length) {
-        const bits = [`Now playing ${formatTime(activePlaybackTime || 0)}`];
-        if (activePlaybackPage) bits.push(`p. ${activePlaybackPage}`);
-        followMeta.textContent = bits.join(' • ');
+        const bits = [formatTime(activePlaybackTime || 0)];
+        if (activePlaybackPage) bits.push('p.' + activePlaybackPage);
+        followMeta.textContent = bits.join(' · ');
       } else {
-        followMeta.textContent = 'Playback position updates here';
+        followMeta.textContent = '';
       }
       followResumeBtn.hidden = followPlayback;
     }
@@ -898,6 +1028,27 @@
       syncActiveLines(ws.getCurrentTime(), { forceReveal: true });
     }
 
+    // ── Date / relevance display helpers ──
+    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    function fmtDateParts(dt) {  // "YYYY-MM-DD[ HH:MM]"
+      if (!dt) return null;
+      const m = String(dt).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+      if (!m) return null;
+      const long = MONTHS[+m[2] - 1] + ' ' + (+m[3]) + ', ' + m[1];
+      const short = MONTHS[+m[2] - 1].slice(0, 3).toUpperCase() + ' ' + String(m[3]).padStart(2, '0');
+      let time = '';
+      if (m[4] != null) {
+        let h = +m[4]; const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+        time = h + ':' + m[5] + ' ' + ap;
+      }
+      return { long, short, time };
+    }
+    function relMark(rel, extra) {
+      const cls = rel ? 'rv--' + rel : 'rv--none';
+      const txt = rel ? rel.charAt(0) + rel.slice(1).toLowerCase() : '—';
+      return '<span class="rv ' + cls + '">' + esc(txt) + (extra ? esc(extra) : '') + '</span>';
+    }
+
     // ── Init call list ──
     callCount.textContent = CALLS.length + ' call' + (CALLS.length === 1 ? '' : 's');
 
@@ -905,9 +1056,14 @@
       const item = document.createElement('div');
       item.className = 'call-item';
       item.dataset.idx = i;
+      item.title = call.filename;
+      const dp = fmtDateParts(call.datetime);
+      const when = dp ? dp.short + (dp.time ? ' · ' + dp.time : '') : '—';
+      const cueBit = (call.cues && call.cues.length) ? ' · ' + call.cues.length + ' cue' + (call.cues.length === 1 ? '' : 's') : '';
       item.innerHTML = `
-    <div class="call-item-name">${esc(call.filename)}</div>
-    <div class="call-item-dur">${formatDur(call.duration)}</div>
+    <div class="l1"><span class="d">${esc(when)}</span><span>${formatDur(call.duration)}</span></div>
+    <div class="l2">${esc(call.outside || call.filename)}</div>
+    <div class="l3">${relMark(call.relevance, cueBit)}</div>
   `;
       item.addEventListener('click', () => loadCall(i));
       callsList.appendChild(item);
@@ -923,27 +1079,23 @@
       });
 
       // Update header
+      callPos.textContent = 'Call ' + String(idx + 1).padStart(3, '0') + ' of ' + CALLS.length;
       mainTitleFilename.textContent = call.filename;
-      const metaParts = [call.datetime, call.inmate, call.facility, call.outcome].filter(Boolean);
-      mainMeta.textContent = metaParts.join(' · ');
-      mainDur.textContent = formatDur(call.duration);
+      const dp = fmtDateParts(call.datetime);
+      mainTitle.innerHTML = esc(call.outside || call.filename)
+        + (dp ? '<span class="dash">—</span><span class="dt">' + esc(dp.long) + '</span>' : '');
+      const metaParts = [dp && dp.time, formatDur(call.duration), call.inmate, call.facility, call.outcome].filter(Boolean);
+      mainMeta.innerHTML = metaParts.map(esc).join('<span class="sep">·</span>');
 
       // Update audio
       loadingOverlay.classList.remove('hidden');
       ws.stop();
       resetProgressUI(call.duration || 0);
       loadAudioForCall(call);
+      renderCueTicks(call);
 
-      // Update summary
-      if (call.summary) {
-        summaryBody.textContent = '';
-        call.summary.split('\n').forEach((line, i, arr) => {
-          summaryBody.appendChild(document.createTextNode(line));
-          if (i < arr.length - 1) summaryBody.appendChild(document.createElement('br'));
-        });
-      } else {
-        summaryBody.innerHTML = '<span class="summary-empty">No summary available.</span>';
-      }
+      // Update analysis rail
+      renderAnalysis(call);
 
       // Build line entries
       lineEntries = call.lines || [];
@@ -957,6 +1109,68 @@
       searchInput.value = '';
       searchClear.style.display = 'none';
       goToPage(1, { source: 'load' });
+    }
+
+    // ── Analysis rail ──
+    function renderAnalysis(call) {
+      const parts = [];
+      if (call.structured) {
+        if (call.relevance) {
+          parts.push('<div class="side-sec">' + relMark(call.relevance, ' relevance') + '</div>');
+        }
+        if (call.brief) {
+          parts.push('<div class="side-sec"><h4>Summary</h4><p class="brief">' + esc(call.brief) + '</p></div>');
+        }
+        if (call.identity) {
+          parts.push('<div class="side-sec"><h4>Outside Party</h4><p class="idp">' + esc(call.identity) + '</p></div>');
+        }
+        const cues = call.cues || [];
+        if (cues.length) {
+          const rows = cues.map((cue, i) =>
+            '<div class="side-cue" data-cue-t="' + cue.t + '" data-cue-i="' + i + '">'
+            + '<span class="t">' + esc(cue.ts) + '</span>'
+            + '<span class="n">' + esc(cue.note || cue.quote || '') + '</span>'
+            + '</div>'
+          ).join('');
+          parts.push('<div class="side-sec"><h4>Review Cues — ' + cues.length + '</h4>' + rows + '</div>');
+        } else {
+          parts.push('<div class="side-sec"><h4>Review Cues</h4><span class="side-empty">None flagged.</span></div>');
+        }
+      } else if (call.summary) {
+        parts.push('<div class="side-sec"><h4>Summary</h4><p class="raw">' + esc(call.summary) + '</p></div>');
+      } else {
+        parts.push('<div class="side-sec"><span class="side-empty">No analysis available.</span></div>');
+      }
+      summaryBody.innerHTML = parts.join('');
+      summaryBody.querySelectorAll('.side-cue').forEach(el => {
+        el.addEventListener('click', () => seekTo(parseFloat(el.dataset.cueT) || 0));
+      });
+    }
+
+    function renderCueTicks(call) {
+      cueTicksEl.innerHTML = '';
+      const dur = call.duration || 0;
+      if (!dur) return;
+      (call.cues || []).forEach(cue => {
+        const tick = document.createElement('div');
+        tick.className = 'cue-tick';
+        tick.style.left = Math.max(0, Math.min(100, cue.t / dur * 100)) + '%';
+        cueTicksEl.appendChild(tick);
+      });
+    }
+
+    function syncActiveCue(t) {
+      const call = CALLS[currentCallIdx];
+      if (!call || !call.cues || !call.cues.length) return;
+      let activeIdx = -1;
+      for (let i = 0; i < call.cues.length; i++) {
+        const start = call.cues[i].t;
+        const end = (i + 1 < call.cues.length) ? call.cues[i + 1].t : start + 45;
+        if (t >= start && t < Math.min(end, start + 45)) { activeIdx = i; break; }
+      }
+      summaryBody.querySelectorAll('.side-cue').forEach(el => {
+        el.classList.toggle('now', parseInt(el.dataset.cueI, 10) === activeIdx);
+      });
     }
 
     // ── Transcript rendering ──
@@ -1021,6 +1235,11 @@
           pageEl.appendChild(div);
         });
 
+        const pageNoEl = document.createElement('div');
+        pageNoEl.className = 'pageno';
+        pageNoEl.textContent = p;
+        pageEl.appendChild(pageNoEl);
+
         if (q && !pageHasMatch) pageEl.classList.add('no-match');
         transScroll.appendChild(pageEl);
       }
@@ -1078,13 +1297,14 @@
       pauseFollowPlayback();
     }, { passive: true });
 
-    // ── Summary panel collapse ──
+    // ── Rail collapse (both sides) ──
     function toggleSummaryPane() {
       const collapsed = summaryPane.classList.toggle('collapsed');
       summaryCollapseBtn.innerHTML = collapsed ? '&#8249;' : '&#8250;';
       try { localStorage.setItem('jcs_summary_collapsed', collapsed ? '1' : '0'); } catch (e) {}
     }
     summaryCollapseBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSummaryPane(); });
+    sideStrip.addEventListener('click', toggleSummaryPane);
     summaryHeader.addEventListener('click', () => {
       if (summaryPane.classList.contains('collapsed')) toggleSummaryPane();
     });
@@ -1094,6 +1314,28 @@
         summaryCollapseBtn.innerHTML = '&#8249;';
       }
     } catch (e) {}
+
+    function toggleCallsRail() {
+      const collapsed = railCalls.classList.toggle('collapsed');
+      callsToggle.innerHTML = collapsed ? '&#8250;' : '&#8249;';
+      try { localStorage.setItem('jcs_calls_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+    }
+    callsToggle.addEventListener('click', toggleCallsRail);
+    callsStrip.addEventListener('click', toggleCallsRail);
+    try {
+      if (localStorage.getItem('jcs_calls_collapsed') === '1') {
+        railCalls.classList.add('collapsed');
+        callsToggle.innerHTML = '&#8250;';
+      }
+    } catch (e) {}
+
+    // ── Present mode: strip the chrome, keep audio + printed transcript ──
+    function togglePresent(force) {
+      const on = typeof force === 'boolean' ? force : !document.body.classList.contains('present');
+      document.body.classList.toggle('present', on);
+      presentBtn.textContent = on ? 'Exit' : 'Present';
+    }
+    presentBtn.addEventListener('click', () => togglePresent());
 
     // ── Audio Setup ──
     const audioEl = document.getElementById('audio');
@@ -1140,6 +1382,7 @@
       timeCurrent.textContent = formatTime(t);
       if (!isScrubbing) syncProgressUI(t, ws.getDuration());
       syncActiveLines(t);
+      syncActiveCue(t);
     }
 
     function onPlayerReady() {
@@ -1221,6 +1464,7 @@
       const ratio = total > 0 ? Math.max(0, Math.min(1, safeTime / total)) : 0;
       progressInput.value = String(Math.round(ratio * 1000));
       progressFill.style.width = `${ratio * 100}%`;
+      playheadEl.style.left = `${ratio * 100}%`;
     }
 
     function resetProgressUI(duration) {
@@ -1337,12 +1581,17 @@
 
     // ── Keyboard shortcuts ──
     document.addEventListener('keydown', e => {
-      if (e.target === searchInput) return;
+      if (e.target === searchInput) {
+        if (e.key === 'Escape') { searchInput.blur(); }
+        return;
+      }
       if (e.key === ' ') { e.preventDefault(); togglePlay(); }
       if (e.key === 'ArrowLeft') skipBy(-5);
       if (e.key === 'ArrowRight') skipBy(5);
       if (e.key === 'ArrowUp') { e.preventDefault(); goPage(-1); }
       if (e.key === 'ArrowDown') { e.preventDefault(); goPage(1); }
+      if (e.key === 'p' || e.key === 'P') togglePresent();
+      if (e.key === 'Escape') togglePresent(false);
     });
 
     // Load first call or requested call from URL

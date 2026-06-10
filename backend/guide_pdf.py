@@ -1,17 +1,17 @@
 """
 PDF user guide generation — HTML/CSS via headless Chromium (backend.pdf_render).
 
-Renders a 7-page guide that mirrors the title/summary page aesthetic
-(Avenir Next + Georgia, ink rules, teal accents, soft washes) by sharing
-the same design language as ``pdf_cover_template.html``:
+Renders a 7-page guide in the shared "Record" design language (Fraunces /
+Public Sans / IBM Plex Mono, ink spine, one signal color), as explicit
+fixed-size sheets like the transcript PDF:
 
-  Page 1: Cover (case name, date, call count)
-  Page 2: What's in This Package (folder tree + descriptions)
+  Page 1: Cover (case name, date, call count, offline note)
+  Page 2: Contents of This Delivery (file table + keep-intact note)
   Page 3: Using the Call Viewer
-  Page 4: Using the Search Page
+  Page 4: Using the Call Index (search.html)
   Page 5: Using the Case Report
-  Page 6: Understanding AI Analysis (relevance pills + sections)
-  Page 7: Important Notes (disclaimer + tips)
+  Page 6: Reading the Analysis (relevance tiers + summary sections)
+  Page 7: Important Notes (disclaimer + technical notes)
 """
 
 import logging
@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import pdf_utils as U
+from .design_fonts import pdf_font_css
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def generate_guide_pdf(case_name: str,
     call_count_display = f"{call_count:,} call{'s' if call_count != 1 else ''}"
 
     ctx = {
+        "fonts_css": pdf_font_css(),
         "case_name": case_name,
         "case_name_short": U.shorten(case_name, 38),
         "gen_date": gen_date,
@@ -66,5 +68,6 @@ def generate_guide_pdf(case_name: str,
     html_str = template.render(**ctx)
 
     # Screenshots are referenced by absolute file:// URIs (_shot_url), so no
-    # base URL is needed for resource resolution.
-    return render_pdf(html_str, paged=True)
+    # base URL is needed for resource resolution. Every page is an explicit
+    # fixed-size sheet, so the plain (non-Paged.js) render path applies.
+    return render_pdf(html_str)

@@ -7,13 +7,18 @@ full-text search engine that surfaces relevant transcript excerpts. From
 any row, clients can jump to the call in the viewer (with audio deep-link
 to a specific timestamp) or open the formatted transcript PDF.
 
-All call data is embedded in a <script> JSON blob; no external deps.
+All call data is embedded in a <script> JSON blob; fonts are embedded as
+base64 woff2 data URIs; no external deps — the page works from file:// on
+a machine with no network access.
 """
 
 import logging
 import os
+import re
+from datetime import datetime
 from typing import List, Optional
 
+from .design_fonts import embedded_font_css
 from .html_json import dump_script_safe_json
 from .models import call_stem
 from . import pdf_utils as U
@@ -128,15 +133,34 @@ def _build_call_data(calls) -> List[dict]:
     return [_build_call_datum(c) for c in calls]
 
 
+def _case_title_html(case_name: str) -> str:
+    """Render the masthead title; "X v. Y" captions get the italic v."""
+    name = (case_name or "Call Index").strip() or "Call Index"
+    match = re.match(r"^(.{2,80}?)\s+(vs?\.?)\s+(.{2,80})$", name, re.IGNORECASE)
+    if match:
+        return (
+            f"{_escape(match.group(1))}<span class=\"v\">{_escape(match.group(2))}</span>"
+            f"{_escape(match.group(3))}"
+        )
+    return _escape(name)
+
+
 def generate_search_html(calls, case_name: str = "") -> str:
     call_data = _build_call_data(calls)
     data_json = dump_script_safe_json(call_data)
-    title = f"{case_name} — Searchable Call Index" if case_name else "Searchable Call Index"
+    title = f"{case_name} — Call Index" if case_name else "Call Index"
 
-    return _TEMPLATE.replace("__TITLE__", _escape(title)) \
-                    .replace("__CASE_NAME__", _escape(case_name or "Jail Call Review")) \
-                    .replace("__CALL_COUNT__", str(len(call_data))) \
-                    .replace("__DATA_JSON__", data_json)
+    now = datetime.now()
+    gen_date = f"{now.strftime('%B')} {now.day}, {now.year}"
+
+    return (
+        _TEMPLATE
+        .replace("__TITLE__", _escape(title))
+        .replace("__CASE_TITLE_HTML__", _case_title_html(case_name))
+        .replace("__GEN_DATE__", gen_date)
+        .replace("__FONTS_CSS__", embedded_font_css())
+        .replace("__DATA_JSON__", data_json)
+    )
 
 
 def _escape(s: str) -> str:
@@ -149,10 +173,11 @@ def _escape(s: str) -> str:
 # HTML template (single-file, vanilla JS)
 # ─────────────────────────────────────────────────────────────────────────────
 # Placeholders (string-replaced above) — not Jinja:
-#   __TITLE__          page <title>
-#   __CASE_NAME__      header case name
-#   __CALL_COUNT__     header count
-#   __DATA_JSON__      embedded JSON blob
+#   __TITLE__            page <title>
+#   __CASE_TITLE_HTML__  masthead case title (pre-escaped HTML)
+#   __GEN_DATE__         delivery generation date
+#   __FONTS_CSS__        embedded @font-face rules
+#   __DATA_JSON__        embedded JSON blob
 
 _TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
@@ -161,741 +186,574 @@ _TEMPLATE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
 <style>
+__FONTS_CSS__
+
   *, *::before, *::after { box-sizing: border-box; }
   :root {
-    --ink:         #111315;
-    --ink-soft:    #25282b;
-    --body:        #3e4449;
-    --muted:       #717980;
-    --quiet:       #9ba3aa;
-    --rule:        #d9dee2;
-    --rule-strong: #b7c0c6;
-    --paper:       #ffffff;
-    --wash:        #f4f7f6;
-    --wash-strong: #e6eeee;
-    --teal:        #00746b;
-    --teal-soft:   #dcefed;
-    --teal-bright: #6ad2c5;
-    --green:       #1f7a48;
-    --amber:       #a97813;
-    --red:         #a83242;
-    --hi-mark:     #ffe680;
-    --match-bg:    #fff7d9;
-    --spine-w:     14px;
-    --ctl-h:       0px;
+    --paper:       #F5F2EA;
+    --cream:       #FBF9F3;
+    --sheet:       #FFFFFF;
+    --ink:         #16140F;
+    --ink-2:       #45413A;
+    --ink-3:       #807A6E;
+    --rule:        rgba(22,20,15,.18);
+    --rule-faint:  rgba(22,20,15,.09);
+    --signal:      #A8271E;
+    --signal-ink:  #871F18;
+    --signal-bg:   rgba(168,39,30,.07);
+    --med:         #8F6400;
+    --low:         #76796E;
+    --mark:        #F4E9C8;
+    --serif: "Fraunces", Georgia, serif;
+    --sans:  "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono:  "IBM Plex Mono", Menlo, Consolas, monospace;
+    --ctl-h: 0px;
   }
   html, body { height: 100%; }
   body {
     margin: 0;
-    font-family: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--sans);
     color: var(--ink);
-    background: var(--wash);
-    -webkit-font-smoothing: antialiased;
-    font-size: 14.5px;
-    line-height: 1.5;
-    padding-left: var(--spine-w);
-  }
-  /* Persistent left "case binder" spine — a quiet motif that echoes the PDF cover */
-  body::before {
-    content: "";
-    position: fixed;
-    left: 0; top: 0; bottom: 0;
-    width: var(--spine-w);
-    background: var(--ink);
-    z-index: 80;
-  }
-
-  .eyebrow, .label, .col-label {
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 800;
-  }
-
-  /* ── Header ────────────────────────────────────────────────────────────── */
-  .hdr {
     background: var(--paper);
-    padding: 40px 48px 30px;
-    border-bottom: 1px solid var(--ink);
-    position: relative;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-size: 15px;
+    line-height: 1.5;
   }
-  .hdr-eyebrow {
-    color: var(--teal);
+  ::selection { background: var(--ink); color: var(--paper); }
+  .mono { font-family: var(--mono); font-feature-settings: "tnum"; }
+
+  .lbl {
     font-size: 10.5px;
-    font-weight: 800;
-    letter-spacing: 0.12em;
+    font-weight: 700;
+    letter-spacing: .14em;
     text-transform: uppercase;
-    margin-bottom: 14px;
+    color: var(--ink-3);
   }
-  .hdr-main {
+  .lbl--ink { color: var(--ink); }
+
+  /* relevance marker — the only color in the system */
+  .rv {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .rv::before { content: ""; width: 8px; height: 8px; border-radius: 1px; flex: none; }
+  .rv--HIGH   { color: var(--signal-ink); }
+  .rv--HIGH::before   { background: var(--signal); }
+  .rv--MEDIUM { color: var(--med); }
+  .rv--MEDIUM::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--med); }
+  .rv--LOW    { color: var(--low); }
+  .rv--LOW::before    { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(118,121,110,.7); }
+  .rv--none   { color: var(--ink-3); }
+  .rv--none::before   { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rule); }
+
+  /* ── Confidential band ──────────────────────────────────────────────── */
+  .band {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: flex-end;
-    gap: 48px;
+    gap: 18px;
+    padding: 10px 36px;
+    border-bottom: 1px solid var(--rule);
   }
-  .hdr-left { min-width: 0; flex: 1; }
-  .hdr-title {
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 36px;
-    line-height: 1.06;
-    color: var(--ink);
+  .band .sep { color: var(--ink-3); font-weight: 500; margin: 0 6px; }
+  .band-right { display: flex; gap: 26px; }
+
+  /* ── Masthead ───────────────────────────────────────────────────────── */
+  .head { padding: 32px 36px 0; }
+  .head-top {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 30px;
+  }
+  .head-title { min-width: 0; }
+  .head-title h1 {
     margin: 0;
-    font-weight: normal;
-    letter-spacing: -0.005em;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 46px;
+    line-height: 1.04;
+    letter-spacing: -.005em;
+    font-variation-settings: "opsz" 80;
     overflow-wrap: break-word;
   }
-  .hdr-rule {
-    width: 98px;
-    height: 3px;
-    background: var(--teal);
-    margin-top: 18px;
+  .head-title h1 .v {
+    font-style: italic;
+    font-weight: 400;
+    font-size: .62em;
+    color: var(--ink-3);
+    margin: 0 .14em;
   }
-  .hdr-meta {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    flex-shrink: 0;
-  }
-  .hdr-meta-block {
-    text-align: right;
-    border-left: 1px solid var(--rule);
-    padding: 4px 20px 4px 22px;
-  }
-  .hdr-meta-block:first-child { border-left: none; padding-left: 0; }
-  .hdr-meta-label {
-    color: var(--muted);
-    font-size: 9px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-bottom: 5px;
-  }
-  .hdr-meta-value {
-    color: var(--ink);
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 17px;
-    font-weight: normal;
-    line-height: 1.15;
-  }
+  .case-meta { margin-top: 9px; font-size: 13.5px; color: var(--ink-2); }
+  .case-meta .sep { color: var(--ink-3); margin: 0 7px; }
 
-  /* ── Controls ──────────────────────────────────────────────────────────── */
+  .stats { display: flex; flex: none; }
+  .stats .cell { padding: 2px 24px 6px; border-left: 1px solid var(--rule); }
+  .stats .cell:first-child { border-left: none; }
+  .stats .n {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 36px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
+    white-space: nowrap;
+  }
+  .stats .n small { font-size: .5em; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+  .stats .lbl { margin-top: 6px; font-size: 9.5px; }
+
+  .tally {
+    margin-top: 20px;
+    padding: 12px 0 13px;
+    border-top: 3px solid var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    position: relative;
+    flex-wrap: wrap;
+  }
+  .tally::before { content: ""; position: absolute; top: 2px; left: 0; right: 0; border-top: 1px solid var(--ink); }
+  .tally .rv { font-size: 11.5px; cursor: pointer; }
+  .tally .rv b { font-size: 14px; margin-right: 2px; }
+  .tally-range { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: .04em; }
+
+  /* ── Controls ───────────────────────────────────────────────────────── */
   .ctl {
-    background: var(--paper);
-    border-bottom: 1px solid var(--ink);
-    padding: 18px 48px;
     position: sticky;
     top: 0;
     z-index: 40;
-  }
-  .ctl-inner {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
-  .search-wrap {
-    flex: 1 1 340px;
-    min-width: 280px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
     background: var(--paper);
-    border: 1px solid var(--rule-strong);
-    padding: 0 16px;
+    padding: 13px 36px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .ctl-inner { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+  .search-wrap {
+    flex: 1 1 320px;
+    min-width: 260px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--sheet);
+    border: 1px solid var(--ink);
+    padding: 0 15px;
     height: 44px;
-    position: relative;
-    transition: border-color 0.12s, box-shadow 0.12s;
   }
-  .search-wrap:focus-within {
-    border-color: var(--ink);
-    box-shadow: inset 0 -2px 0 var(--teal);
-  }
-  .search-wrap svg { color: var(--muted); flex-shrink: 0; }
+  .search-wrap svg { color: var(--ink-3); flex-shrink: 0; }
+  .search-wrap:focus-within { box-shadow: inset 0 -2px 0 var(--ink); }
   .search-input {
     flex: 1;
     border: none;
     outline: none;
     background: transparent;
     font: inherit;
-    font-size: 14.5px;
+    font-size: 15px;
     color: var(--ink);
     height: 100%;
+    min-width: 0;
   }
-  .search-input::placeholder { color: var(--quiet); }
+  .search-input::placeholder { color: var(--ink-3); }
   .search-count {
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 800;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
     white-space: nowrap;
   }
+  .search-count b { color: var(--signal-ink); font-weight: 600; }
 
-  .filter-sep {
-    width: 1px;
-    height: 28px;
-    background: var(--rule-strong);
-    margin: 0 4px;
-  }
   .filter-label {
-    color: var(--muted);
+    color: var(--ink-3);
     font-size: 9.5px;
-    font-weight: 800;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: .1em;
     padding-right: 2px;
   }
-  .filter-input {
+  .filter-input, .filter-select {
     font: inherit;
     font-size: 13px;
     color: var(--ink);
-    background: var(--paper);
-    border: 1px solid var(--rule-strong);
+    background: var(--cream);
+    border: 1px solid var(--rule);
     padding: 0 10px;
-    height: 34px;
+    height: 38px;
     border-radius: 0;
     font-variant-numeric: tabular-nums;
   }
   .filter-select {
-    font: inherit;
-    font-size: 12.5px;
-    color: var(--ink);
-    background: var(--paper);
-    border: 1px solid var(--rule-strong);
     padding: 0 28px 0 12px;
-    height: 34px;
-    border-radius: 0;
-    min-width: 170px;
+    min-width: 150px;
     appearance: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%23717980' d='M0 0l5 6 5-6z'/></svg>");
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%23807A6E' d='M0 0l5 6 5-6z'/></svg>");
     background-repeat: no-repeat;
     background-position: right 10px center;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 600;
   }
   .filter-input:focus, .filter-select:focus {
     outline: none;
     border-color: var(--ink);
-    box-shadow: inset 0 -2px 0 var(--teal);
   }
 
-  .chip-group { display: inline-flex; gap: 0; }
+  .chip-group { display: inline-flex; border: 1px solid var(--rule); background: var(--cream); }
   .chip {
     display: inline-flex;
     align-items: center;
     font: inherit;
-    font-size: 10.5px;
-    font-weight: 800;
+    font-size: 11px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--ink);
-    background: var(--paper);
-    border: 1px solid var(--ink);
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    background: transparent;
+    border: none;
+    border-left: 1px solid var(--rule);
     padding: 0 14px;
-    height: 32px;
+    height: 36px;
     cursor: pointer;
     border-radius: 0;
-    transition: background 0.12s, color 0.12s;
   }
-  .chip + .chip { border-left: none; }
-  .chip:hover { background: var(--wash-strong); }
+  .chip:first-child { border-left: none; }
+  .chip:hover { color: var(--ink); }
   .chip.active { background: var(--ink); color: var(--paper); }
-  .chip.active[data-rel="HIGH"]   { background: var(--red);   border-color: var(--red); }
-  .chip.active[data-rel="MEDIUM"] { background: var(--amber); border-color: var(--amber); }
-  .chip.active[data-rel="LOW"]    { background: var(--green); border-color: var(--green); }
 
   .chip-clear {
     background: transparent;
     border: none;
-    color: var(--muted);
+    color: var(--ink-3);
     font: inherit;
-    font-size: 10.5px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
+    font-size: 12.5px;
     cursor: pointer;
     padding: 0 4px;
     text-decoration: underline;
-    text-underline-offset: 4px;
-    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
   }
   .chip-clear:hover { color: var(--ink); }
 
-  /* ── Main ──────────────────────────────────────────────────────────────── */
-  .main { padding: 26px 48px 96px; }
+  /* ── Index table ────────────────────────────────────────────────────── */
+  .main { padding: 0 36px 90px; }
 
-  /* Dossier table */
-  table.dossier {
-    width: 100%;
-    background: var(--paper);
-    border: 1px solid var(--ink);
-    border-collapse: collapse;
-    table-layout: fixed;
-  }
-  table.dossier thead th {
-    background: var(--ink);
-    color: var(--paper);
-    text-align: left;
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    padding: 13px 14px;
-    border-right: 1px solid #2b2f33;
-    cursor: pointer;
-    user-select: none;
+  .cols {
+    display: grid;
+    grid-template-columns: 100px 132px 60px 170px 1fr 148px;
+    gap: 0 18px;
+    align-items: baseline;
+    padding: 14px 0 9px;
+    border-bottom: 1px solid var(--ink);
     position: sticky;
     top: var(--ctl-h);
-    white-space: nowrap;
-    z-index: 5;
+    background: var(--paper);
+    z-index: 30;
   }
-  table.dossier thead th:last-child { border-right: none; }
-  table.dossier thead th:hover { background: #1d2124; }
-  table.dossier thead th.sorted { background: #1d2124; }
-  table.dossier thead th .sort-arrow {
-    display: inline-block;
-    margin-left: 6px;
-    font-size: 9px;
-    color: var(--teal-bright);
-    opacity: 0;
-    vertical-align: middle;
-  }
-  table.dossier thead th.sorted .sort-arrow { opacity: 1; }
-  table.dossier thead th.no-sort { cursor: default; }
-  table.dossier thead th.no-sort:hover { background: var(--ink); }
+  .cols .lbl { font-size: 10px; cursor: pointer; user-select: none; }
+  .cols .lbl.no-sort { cursor: default; }
+  .cols .lbl.sorted { color: var(--ink); }
+  .cols .lbl .arr { letter-spacing: 0; }
+  .cols .num { text-align: right; }
 
-  table.dossier tbody tr.row {
+  .row {
+    display: grid;
+    grid-template-columns: 100px 132px 60px 170px 1fr 148px;
+    gap: 0 18px;
+    align-items: baseline;
+    padding: 14px 0 13px;
+    border-bottom: 1px solid var(--rule-faint);
     cursor: pointer;
-    transition: background 0.1s;
-    border-bottom: 1px solid var(--rule);
-  }
-  table.dossier tbody tr.row:hover { background: var(--wash); }
-  table.dossier tbody tr.row.open  { background: var(--wash-strong); }
-  table.dossier tbody tr.row td {
-    padding: 14px 14px;
-    vertical-align: middle;
-    border-right: 1px solid var(--rule);
-    font-size: 13.5px;
-    color: var(--ink-soft);
-  }
-  table.dossier tbody tr.row td:last-child { border-right: none; }
-  table.dossier tbody tr.row td:first-child {
     position: relative;
-    padding-left: 22px;
   }
-  table.dossier tbody tr.row td:first-child::before {
+  .row:hover { background: rgba(255,255,255,.55); }
+  .row.open { background: rgba(255,255,255,.55); border-bottom: none; }
+  .row.rel-HIGH::before {
     content: "";
     position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 5px;
-    background: transparent;
+    left: -22px;
+    top: 0;
+    bottom: -1px;
+    width: 4px;
+    background: var(--signal);
   }
-  table.dossier tbody tr.row.rel-HIGH   td:first-child::before { background: var(--red); }
-  table.dossier tbody tr.row.rel-MEDIUM td:first-child::before { background: var(--amber); }
-  table.dossier tbody tr.row.rel-LOW    td:first-child::before { background: var(--green); }
-
-  .col-date    { width: 148px; }
-  .col-rel     { width: 108px; }
-  .col-dur     { width: 86px; text-align: right; }
-  .col-outside { width: 146px; }
-  .col-summary { width: auto; }
-  .col-actions { width: 172px; text-align: right; white-space: nowrap; }
-
-  td.col-date, td.col-dur, td.col-outside {
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  td.col-date { color: var(--ink); font-weight: 600; }
-
-  .rel-pill {
-    display: inline-block;
-    font-size: 10px;
-    font-weight: 800;
-    padding: 3px 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--paper);
-    border-radius: 0;
-  }
-  .rel-pill.rel-HIGH   { background: var(--red); }
-  .rel-pill.rel-MEDIUM { background: var(--amber); }
-  .rel-pill.rel-LOW    { background: var(--green); }
-  .rel-none {
-    color: var(--quiet);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 800;
-  }
-
-  .summary-cell {
-    color: var(--ink-soft);
+  .row .rv { font-size: 10.5px; }
+  .row .date b { display: block; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .row .date span { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .row .dur { font-family: var(--mono); font-size: 13px; text-align: right; font-feature-settings: "tnum"; color: var(--ink-2); }
+  .row .party { min-width: 0; }
+  .row .party b { display: block; font-size: 13.5px; font-weight: 600; font-family: var(--mono); letter-spacing: .01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .party span { display: block; font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .sum { font-size: 14px; color: var(--ink-2); line-height: 1.45; min-width: 0; }
+  .row .sum .clamp {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    line-height: 1.5;
-    font-size: 13.5px;
   }
-  .summary-cell.empty { color: var(--quiet); font-style: italic; }
+  .row .sum .empty { color: var(--ink-3); font-style: italic; }
+  mark { background: var(--mark); color: var(--ink); font-weight: 600; padding: 0 2px; border-bottom: 2px solid var(--med); }
 
-  .action-btn {
-    display: inline-block;
-    font-size: 10px;
-    font-weight: 800;
+  .row .acts { text-align: right; white-space: nowrap; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .08em;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 7px 13px;
-    background: var(--paper);
+    padding: 8px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    text-decoration: none;
     border: 1px solid var(--ink);
     color: var(--ink);
-    text-decoration: none;
-    cursor: pointer;
-    margin-left: 6px;
-    transition: background 0.12s, color 0.12s;
-  }
-  .action-btn:hover { background: var(--ink); color: var(--paper); }
-  .action-btn.primary { background: var(--ink); color: var(--paper); }
-  .action-btn.primary:hover { background: var(--teal); border-color: var(--teal); }
-
-  /* ── Detail panel ──────────────────────────────────────────────────────── */
-  tr.detail td {
-    padding: 0;
-    background: var(--wash);
-    border-bottom: 1px solid var(--ink);
-  }
-  .detail-panel {
-    padding: 30px 34px 36px;
-    border-left: 5px solid var(--teal);
-    background: var(--wash);
-    animation: fadeIn 0.2s ease;
-  }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-  .meta-strip {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    border-top: 1px solid var(--ink);
-    border-bottom: 1px solid var(--rule-strong);
-    margin-bottom: 24px;
-    background: var(--paper);
-  }
-  .meta-cell {
-    padding: 14px 18px;
-    border-right: 1px solid var(--rule);
-    min-width: 0;
-  }
-  .meta-cell:last-child { border-right: none; }
-  .meta-cell .meta-label {
-    color: var(--muted);
-    font-size: 9px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-bottom: 6px;
-  }
-  .meta-cell .meta-value {
-    color: var(--ink);
-    font-size: 13px;
-    font-weight: 700;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .section-heading {
-    color: var(--teal);
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin: 0 0 12px 0;
-    padding-bottom: 9px;
-    border-bottom: 1px solid var(--rule);
-  }
-
-  .detail-grid {
-    display: grid;
-    grid-template-columns: 1.35fr 1fr;
-    gap: 22px;
-    margin-bottom: 26px;
-  }
-  .detail-block {
-    background: var(--paper);
-    border: 1px solid var(--rule-strong);
-    padding: 20px 24px;
-  }
-  .detail-block p {
-    margin: 0;
-    font-size: 14px;
-    line-height: 1.62;
-    color: var(--ink-soft);
-    font-family: Georgia, "Times New Roman", serif;
-  }
-
-  /* Review cues */
-  .cues-block {
-    background: var(--paper);
-    border: 1px solid var(--rule-strong);
-    padding: 20px 24px 8px;
-    margin-bottom: 26px;
-  }
-  .cues-block .section-heading { margin-bottom: 4px; }
-  .cues-legend {
-    color: var(--muted);
-    font-size: 9.5px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 10px;
-  }
-  .cue {
-    display: grid;
-    grid-template-columns: 78px 1fr 120px;
-    gap: 18px;
-    padding: 16px 12px 16px 0;
-    border-top: 1px solid var(--rule);
-    cursor: pointer;
-    align-items: start;
-    transition: background 0.12s, padding 0.15s;
-    position: relative;
-  }
-  .cue::before {
-    content: "";
-    position: absolute;
-    left: -12px; top: 12px; bottom: 12px;
-    width: 3px;
     background: transparent;
-    transition: background 0.12s;
+    margin-left: 6px;
   }
-  .cue:hover { background: var(--wash); padding-left: 10px; }
-  .cue:hover::before { background: var(--teal); left: -2px; }
-  .cue:first-child { border-top: none; }
-  .cue-ts {
-    color: var(--teal);
-    font-family: "SF Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
-    font-size: 12px;
-    font-weight: 800;
-    padding-top: 2px;
-    white-space: nowrap;
-    letter-spacing: 0.02em;
-  }
-  .cue-body {
-    font-size: 13.5px;
-    line-height: 1.6;
-    color: var(--ink-soft);
-    min-width: 0;
-  }
-  .cue-speaker {
-    display: inline-block;
-    color: var(--muted);
-    font-size: 9.5px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-right: 8px;
-    vertical-align: 1px;
-  }
-  .cue-quote {
-    font-family: Georgia, "Times New Roman", serif;
-    font-style: italic;
-    color: var(--ink);
-  }
-  .cue-note {
-    display: block;
-    margin-top: 5px;
-    color: var(--body);
-    font-size: 12.5px;
-    line-height: 1.55;
-  }
-  .cue-cite {
-    text-align: right;
-    font-size: 9.5px;
-    color: var(--muted);
-    font-family: "SF Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding-top: 3px;
-    line-height: 1.7;
-    min-width: 0;
-  }
-  .cue-cite .cite-line { display: block; }
-  .cue-cite a {
-    color: var(--teal);
-    text-decoration: none;
-    border-bottom: 1px solid var(--teal-soft);
-    padding-bottom: 1px;
-    transition: border-color 0.12s;
-  }
-  .cue-cite a:hover { border-bottom-color: var(--teal); }
-
-  /* Transcript block */
-  .transcript-block {
-    background: var(--paper);
-    border: 1px solid var(--rule-strong);
-  }
-  .transcript-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    padding: 16px 24px 12px;
-    border-bottom: 1px solid var(--rule);
-    gap: 18px;
-  }
-  .transcript-head .section-heading {
-    margin: 0; border-bottom: none; padding-bottom: 0;
-  }
-  .transcript-head .hint {
-    font-size: 9.5px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 800;
-  }
-  .transcript-body {
-    max-height: 440px;
-    overflow-y: auto;
-    padding: 16px 24px 22px;
-    font-family: "SF Mono", "IBM Plex Mono", Menlo, Consolas, monospace;
-    font-size: 12.5px;
-    line-height: 1.85;
-    color: var(--ink-soft);
-  }
-  .transcript-body::-webkit-scrollbar { width: 10px; }
-  .transcript-body::-webkit-scrollbar-thumb { background: var(--rule-strong); }
-  .transcript-body::-webkit-scrollbar-track { background: var(--wash); }
-
-  .ts-turn {
-    display: grid;
-    grid-template-columns: 52px 130px 1fr;
-    gap: 12px;
-    padding: 3px 8px;
-    cursor: pointer;
-    border-left: 2px solid transparent;
-    transition: background 0.1s, border-color 0.1s;
-  }
-  .ts-turn:hover {
-    background: var(--wash);
-    border-left-color: var(--teal);
-  }
-  .ts-turn.is-match {
-    background: var(--match-bg);
-    border-left-color: var(--amber);
-  }
-  .ts-turn .t {
-    color: var(--teal);
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .ts-turn .sp {
-    color: var(--muted);
-    font-size: 10.5px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .ts-turn .tx {
-    color: var(--ink-soft);
-    word-break: break-word;
-  }
+  .btn:hover { background: var(--ink); color: var(--paper); }
+  .btn--primary { background: var(--ink); color: var(--paper); }
+  .btn--primary:hover { background: #000; }
+  .btn .mono-bit { font-family: var(--mono); font-weight: 500; letter-spacing: 0; text-transform: none; opacity: .7; }
 
   /* Match excerpts in the Summary column (search mode) */
   .excerpts { display: flex; flex-direction: column; gap: 5px; }
   .excerpt {
     display: grid;
-    grid-template-columns: 46px 1fr;
-    gap: 12px;
-    padding: 7px 10px;
-    background: var(--match-bg);
-    border-left: 3px solid var(--amber);
+    grid-template-columns: 48px 1fr;
+    gap: 10px;
+    padding: 6px 9px;
+    background: var(--sheet);
+    border-left: 3px solid var(--med);
     cursor: pointer;
-    font-size: 12.5px;
-    line-height: 1.55;
-    color: var(--ink-soft);
-    transition: background 0.12s;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink-2);
   }
-  .excerpt:hover { background: #ffecb0; }
+  .excerpt:hover { background: var(--cream); }
   .excerpt .ex-t {
-    font-family: "SF Mono", "IBM Plex Mono", Menlo, monospace;
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding-top: 1px;
+    font-family: var(--mono);
+    color: var(--ink-3);
+    font-size: 10.5px;
+    font-weight: 600;
+    padding-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  mark {
-    background: var(--hi-mark);
-    color: var(--ink);
-    padding: 0 1px;
+  /* ── Detail panel ───────────────────────────────────────────────────── */
+  .detail {
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    background: var(--sheet);
+    padding: 24px 28px 22px;
+    position: relative;
+    box-shadow: 0 14px 26px -18px rgba(22,20,15,.25);
   }
+  .detail.rel-HIGH::before {
+    content: "";
+    position: absolute;
+    left: -22px;
+    top: -1px;
+    bottom: 0;
+    width: 4px;
+    background: var(--signal);
+  }
+  .detail h4 {
+    margin: 0 0 9px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 340px) 1fr;
+    gap: 0 36px;
+  }
+  .brief {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.55;
+    color: var(--ink);
+    font-variation-settings: "opsz" 18;
+  }
+  .id-block { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rule-faint); }
+  .id-block p { margin: 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+
+  .cues table { width: 100%; border-collapse: collapse; }
+  .cues td { padding: 9px 0 8px; border-bottom: 1px solid var(--rule-faint); vertical-align: baseline; }
+  .cues tr:last-child td { border-bottom: none; }
+  .cues tr { cursor: pointer; }
+  .cues tr:hover .note { color: var(--ink); }
+  .cues .ts { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--signal-ink); width: 60px; white-space: nowrap; }
+  .cues .note { font-size: 13.5px; color: var(--ink-2); padding-right: 18px; line-height: 1.45; }
+  .cues .note b { color: var(--ink); font-weight: 600; }
+  .cues .note .q { font-family: var(--serif); font-style: italic; color: var(--ink); font-variation-settings: "opsz" 18; }
+  .cues .cite { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-align: right; white-space: nowrap; width: 130px; }
+  .cues .cite a { color: var(--ink-3); text-decoration: underline; text-underline-offset: 3px; }
+  .cues .cite a:hover { color: var(--ink); }
+
+  /* Transcript block */
+  .trans {
+    margin-top: 22px;
+    border: 1px solid var(--rule);
+    background: var(--sheet);
+  }
+  .trans-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .trans-head h4 { margin: 0; }
+  .trans-head .hint { font-size: 11px; color: var(--ink-3); }
+  .trans-nav { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .trans-nav .nav-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--signal-ink);
+    font-weight: 600;
+    letter-spacing: .04em;
+    white-space: nowrap;
+  }
+  .trans-nav .nav-label.quiet { color: var(--ink-3); font-weight: 400; }
+  .trans-nav button {
+    font: inherit;
+    font-size: 14px;
+    line-height: 1;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--ink);
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    padding: 0;
+  }
+  .trans-nav button:hover { background: var(--ink); color: var(--paper); }
+  .trans-body {
+    max-height: 460px;
+    overflow-y: auto;
+    padding: 6px 18px 14px;
+  }
+  .trans-body::-webkit-scrollbar { width: 10px; }
+  .trans-body::-webkit-scrollbar-thumb { background: var(--rule); }
+  .trans-body::-webkit-scrollbar-track { background: var(--cream); }
+
+  .turn {
+    display: grid;
+    grid-template-columns: 118px 1fr;
+    gap: 0 16px;
+    padding: 9px 10px 8px;
+    border-bottom: 1px solid var(--rule-faint);
+    cursor: pointer;
+    position: relative;
+  }
+  .turn:last-child { border-bottom: none; }
+  .turn:hover { background: var(--cream); }
+  .turn .who {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .turn .who .t {
+    display: block;
+    margin-top: 3px;
+    font-family: var(--mono);
+    font-weight: 400;
+    font-size: 11px;
+    letter-spacing: .02em;
+  }
+  .turn .tx { font-size: 14px; line-height: 1.55; color: var(--ink-2); word-break: break-word; }
+  .turn.has-cue::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 9px;
+    width: 4px;
+    height: 16px;
+    background: var(--signal);
+  }
+  .turn.has-cue .who { color: var(--signal-ink); }
+  .turn.is-match { background: var(--cream); }
+  .turn.nav-current { background: var(--signal-bg); box-shadow: inset 0 0 0 1px var(--signal); }
+
+  /* Bottom meta strip + actions */
+  .detail-meta {
+    display: flex;
+    gap: 28px;
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .detail-meta .m .lbl { font-size: 9.5px; margin-bottom: 3px; display: block; }
+  .detail-meta .m .v { font-family: var(--mono); font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; }
+  .detail-acts { margin-left: auto; display: flex; gap: 10px; align-items: flex-end; }
 
   /* Empty state */
   .no-results {
-    background: var(--paper);
-    border: 1px solid var(--ink);
-    padding: 92px 32px;
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    padding: 80px 32px;
     text-align: center;
   }
   .no-results .big {
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 34px;
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 30px;
     color: var(--ink);
-    margin-bottom: 10px;
     line-height: 1;
   }
   .no-results .big::after {
     content: "";
     display: block;
-    width: 72px;
-    height: 3px;
-    background: var(--teal);
-    margin: 16px auto 16px;
+    width: 64px;
+    border-top: 3px solid var(--ink);
+    margin: 18px auto 14px;
   }
-  .no-results .small {
-    color: var(--muted);
-    font-size: 10.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    font-weight: 800;
-  }
+  .no-results .small { color: var(--ink-3); font-size: 13px; }
 
   /* Pagination */
   .pagination {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 28px;
-    padding: 32px 0 0;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 18px 0 0;
+    border-top: 1px solid var(--rule);
+    margin-top: -1px;
   }
   .pagination button {
-    background: var(--paper);
-    border: 1px solid var(--ink);
+    background: transparent;
+    border: none;
     color: var(--ink);
     font: inherit;
-    font-size: 10px;
-    font-weight: 800;
+    font-size: 12px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    padding: 11px 22px;
+    letter-spacing: .1em;
     cursor: pointer;
-    transition: background 0.12s, color 0.12s;
+    padding: 6px 0;
   }
-  .pagination button:hover:not(:disabled) {
-    background: var(--ink);
-    color: var(--paper);
-  }
-  .pagination button:disabled { opacity: 0.3; cursor: default; }
+  .pagination button:disabled { color: var(--ink-3); opacity: .5; cursor: default; }
   .pagination .page-info {
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 800;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+    letter-spacing: .04em;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -903,75 +761,79 @@ _TEMPLATE = r"""<!DOCTYPE html>
   .hidden { display: none !important; }
 
   @media (max-width: 1100px) {
-    .hdr, .ctl, .main { padding-left: 28px; padding-right: 28px; }
-    .col-outside { display: none; }
-    .detail-grid { grid-template-columns: 1fr; }
-    .hdr-main { flex-direction: column; align-items: flex-start; gap: 22px; }
-    .hdr-meta { align-self: stretch; justify-content: flex-start; }
-    .hdr-meta-block:first-child { padding-left: 0; }
-    .hdr-meta-block { padding-left: 18px; }
+    .band, .head, .ctl, .main { padding-left: 22px; padding-right: 22px; }
+    .head-top { flex-direction: column; align-items: flex-start; gap: 20px; }
+    .cols, .row { grid-template-columns: 92px 124px 56px 1fr 130px; }
+    .cols .c-party, .row .party { display: none; }
+    .detail-grid { grid-template-columns: 1fr; gap: 22px 0; }
+    .row.rel-HIGH::before, .detail.rel-HIGH::before { left: -12px; }
   }
   @media (max-width: 760px) {
-    body { padding-left: 0; font-size: 13.5px; }
-    body::before { display: none; }
-    .hdr-title { font-size: 25px; }
-    .col-dur, .col-rel { display: none; }
-    .cue { grid-template-columns: 60px 1fr; gap: 12px; }
-    .cue-cite { grid-column: 1 / -1; text-align: left; padding-top: 0; }
+    body { font-size: 13.5px; }
+    .head-title h1 { font-size: 32px; }
+    .cols, .row { grid-template-columns: 86px 1fr 96px; }
+    .c-dur, .row .dur, .c-rel, .row .rv { display: none; }
+    .cols, .row { grid-template-columns: 110px 1fr 96px; }
   }
 
   @media print {
-    body { background: var(--paper); padding-left: 0; }
-    body::before, .ctl, .pagination, .action-btn { display: none !important; }
-    tr.detail { display: none !important; }
-    table.dossier thead th { position: static; }
+    body { background: #fff; }
+    .ctl, .pagination, .acts, .detail { display: none !important; }
+    .cols { position: static; }
   }
 </style>
 </head>
 <body>
-  <header class="hdr">
-    <div class="hdr-eyebrow">Searchable Call Index &middot; Review Dossier</div>
-    <div class="hdr-main">
-      <div class="hdr-left">
-        <h1 class="hdr-title">__CASE_NAME__</h1>
-        <div class="hdr-rule"></div>
+  <div class="band">
+    <span class="lbl lbl--ink">Privileged &amp; Confidential<span class="sep">·</span>Attorney Work Product</span>
+    <div class="band-right">
+      <span class="lbl">Call Index</span>
+      <span class="lbl">Prepared __GEN_DATE__</span>
+    </div>
+  </div>
+
+  <header class="head">
+    <div class="head-top">
+      <div class="head-title">
+        <h1>__CASE_TITLE_HTML__</h1>
+        <div class="case-meta" id="caseMeta"></div>
       </div>
-      <div class="hdr-meta">
-        <div class="hdr-meta-block" id="hdrInmate">
-          <div class="hdr-meta-label">Defendant</div>
-          <div class="hdr-meta-value" id="hdrInmateVal">&mdash;</div>
-        </div>
-        <div class="hdr-meta-block">
-          <div class="hdr-meta-label">Calls</div>
-          <div class="hdr-meta-value">__CALL_COUNT__</div>
-        </div>
+      <div class="stats">
+        <div class="cell"><div class="n" id="statCalls">0</div><div class="lbl">Calls</div></div>
+        <div class="cell"><div class="n" id="statAudio">0</div><div class="lbl">Audio</div></div>
+        <div class="cell"><div class="n" id="statNumbers">0</div><div class="lbl">Numbers</div></div>
+        <div class="cell"><div class="n" id="statCues">0</div><div class="lbl">Review Cues</div></div>
       </div>
+    </div>
+    <div class="tally">
+      <span class="rv rv--HIGH" data-tally="HIGH"><b id="tallyHigh">0</b> High</span>
+      <span class="rv rv--MEDIUM" data-tally="MEDIUM"><b id="tallyMed">0</b> Medium</span>
+      <span class="rv rv--LOW" data-tally="LOW"><b id="tallyLow">0</b> Low</span>
+      <span class="tally-range" id="tallyRange"></span>
     </div>
   </header>
 
   <div class="ctl" id="ctl">
     <div class="ctl-inner">
       <div class="search-wrap">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/>
         </svg>
         <input type="text" class="search-input" id="searchInput"
-               placeholder="Search transcripts, summaries, cues, names, numbers…" autofocus>
+               placeholder="Search every word spoken — transcripts, summaries, cues, numbers…" autofocus>
         <span class="search-count" id="searchCount"></span>
       </div>
-      <div class="filter-sep"></div>
       <span class="filter-label">From</span>
       <input type="date" class="filter-input" id="dateFrom">
       <span class="filter-label">To</span>
       <input type="date" class="filter-input" id="dateTo">
       <select class="filter-select" id="phoneFilter">
-        <option value="">All Numbers</option>
+        <option value="">All numbers</option>
       </select>
-      <div class="filter-sep"></div>
       <div class="chip-group">
         <button class="chip" data-rel="" id="relAll">All</button>
         <button class="chip" data-rel="HIGH">High</button>
-        <button class="chip" data-rel="MEDIUM">Medium</button>
+        <button class="chip" data-rel="MEDIUM">Med</button>
         <button class="chip" data-rel="LOW">Low</button>
       </div>
       <button class="chip-clear" id="clearFilters">Clear</button>
@@ -979,22 +841,18 @@ _TEMPLATE = r"""<!DOCTYPE html>
   </div>
 
   <main class="main">
-    <table class="dossier" id="callTable">
-      <thead>
-        <tr>
-          <th class="col-date" data-sort="call_sort">Date / Time<span class="sort-arrow"></span></th>
-          <th class="col-rel" data-sort="rel_rank">Relevance<span class="sort-arrow"></span></th>
-          <th class="col-dur" data-sort="duration">Duration<span class="sort-arrow"></span></th>
-          <th class="col-outside" data-sort="outside">Outside<span class="sort-arrow"></span></th>
-          <th class="col-summary no-sort">Summary &middot; Matches</th>
-          <th class="col-actions no-sort">Open</th>
-        </tr>
-      </thead>
-      <tbody id="callTbody"></tbody>
-    </table>
+    <div class="cols" id="cols">
+      <span class="lbl c-rel" data-sort="rel_rank">Relevance<span class="arr"></span></span>
+      <span class="lbl" data-sort="call_sort">Date<span class="arr"></span></span>
+      <span class="lbl num c-dur" data-sort="duration">Length<span class="arr"></span></span>
+      <span class="lbl c-party" data-sort="outside">Outside Party<span class="arr"></span></span>
+      <span class="lbl no-sort">Summary · Matches</span>
+      <span class="lbl num no-sort">Open</span>
+    </div>
+    <div id="rows"></div>
     <div class="no-results hidden" id="noResults">
       <div class="big">No matches</div>
-      <div class="small">Try a different search term or clear your filters</div>
+      <div class="small">Try a different search term or clear your filters.</div>
     </div>
     <div class="pagination hidden" id="pagination">
       <button id="prevPage">&larr; Previous</button>
@@ -1006,46 +864,18 @@ _TEMPLATE = r"""<!DOCTYPE html>
 <script>
   const CALLS = __DATA_JSON__;
   const REL_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1, "": 0 };
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   // Precompute sort/search helpers
   CALLS.forEach(c => {
     c.rel_rank = REL_RANK[c.relevance] || 0;
+    c.turns_blob = (c.turns || []).map(t => t[2]).join(' ').toLowerCase();
     c.search_blob = [
       c.filename, c.inmate, c.outside, c.brief_summary,
       c.identity, c.facility, c.outcome, c.call_type,
       (c.notes_cues || []).map(n => (n.quote || '') + ' ' + (n.note || '')).join(' '),
-      (c.turns || []).map(t => t[2]).join(' '),
-    ].join(' ').toLowerCase();
+    ].join(' ').toLowerCase() + ' ' + c.turns_blob;
   });
-
-  // Populate header defendant cell from the unique inmate set.
-  (function setHeaderInmate() {
-    const inmates = new Set();
-    CALLS.forEach(c => { if (c.inmate) inmates.add(c.inmate); });
-    const el = document.getElementById('hdrInmateVal');
-    const wrap = document.getElementById('hdrInmate');
-    if (inmates.size === 0) {
-      wrap.classList.add('hidden');
-    } else if (inmates.size === 1) {
-      el.textContent = Array.from(inmates)[0];
-    } else {
-      el.textContent = inmates.size + ' defendants';
-    }
-  })();
-
-  // Measure the control bar so the sticky table header snaps to the right offset.
-  function measureCtl() {
-    const ctl = document.getElementById('ctl');
-    const h = ctl.getBoundingClientRect().height;
-    document.documentElement.style.setProperty('--ctl-h', h + 'px');
-  }
-  window.addEventListener('resize', measureCtl);
-
-  const state = {
-    query: '', dateFrom: '', dateTo: '', phone: '', relevance: '',
-    sortKey: 'call_sort', sortDir: 'asc',
-    page: 1, pageSize: 50, openIdx: null,
-  };
 
   function esc(s) {
     if (s == null) return '';
@@ -1066,9 +896,22 @@ _TEMPLATE = r"""<!DOCTYPE html>
     }
     return m + ':' + String(ss).padStart(2, '0');
   }
-  function relPill(rel) {
-    if (!rel) return '<span class="rel-none">&mdash;</span>';
-    return '<span class="rel-pill rel-' + rel + '">' + rel + '</span>';
+  function fmtDate(dt) {  // "YYYY-MM-DD[ HH:MM]" → { d, t }
+    if (!dt) return { d: '—', t: '' };
+    const m = String(dt).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+    if (!m) return { d: dt, t: '' };
+    const d = MONTHS[+m[2] - 1] + ' ' + (+m[3]) + ', ' + m[1];
+    let t = '';
+    if (m[4] != null) {
+      let h = +m[4]; const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+      t = h + ':' + m[5] + ' ' + ap;
+    }
+    return { d, t };
+  }
+  function relMark(rel, size) {
+    const cls = rel ? 'rv--' + rel : 'rv--none';
+    const txt = rel ? rel.charAt(0) + rel.slice(1).toLowerCase() : '—';
+    return '<span class="rv ' + cls + '">' + txt + '</span>';
   }
   function viewerUrl(call, timeSec) {
     if (!call.audio_filename) return '';
@@ -1084,6 +927,60 @@ _TEMPLATE = r"""<!DOCTYPE html>
   }
   function openViewer(call, timeSec) { const u = viewerUrl(call, timeSec); if (u) window.open(u, '_blank'); }
   function openPdf(call, page)      { const u = pdfUrl(call, page);     if (u) window.open(u, '_blank'); }
+
+  // Masthead: stats, tally, case meta
+  (function buildMasthead() {
+    const totalSec = CALLS.reduce((a, c) => a + (c.duration || 0), 0);
+    const cues = CALLS.reduce((a, c) => a + ((c.notes_cues || []).length), 0);
+    const numbers = new Set(CALLS.filter(c => c.outside).map(c => c.outside));
+    const h = Math.floor(totalSec / 3600), mn = Math.floor((totalSec % 3600) / 60);
+    document.getElementById('statCalls').textContent = CALLS.length;
+    document.getElementById('statAudio').innerHTML = h
+      ? h + '<small>h</small> ' + mn + '<small>m</small>'
+      : mn + '<small>m</small>';
+    document.getElementById('statNumbers').textContent = numbers.size;
+    document.getElementById('statCues').textContent = cues;
+
+    const counts = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+    CALLS.forEach(c => { if (counts[c.relevance] != null) counts[c.relevance]++; });
+    document.getElementById('tallyHigh').textContent = counts.HIGH;
+    document.getElementById('tallyMed').textContent = counts.MEDIUM;
+    document.getElementById('tallyLow').textContent = counts.LOW;
+
+    const dates = CALLS.map(c => c.call_date).filter(Boolean).sort();
+    if (dates.length) {
+      const a = fmtDate(dates[0]), b = fmtDate(dates[dates.length - 1]);
+      const range = dates[0] === dates[dates.length - 1] ? a.d : a.d.replace(/, \d{4}$/,'') + ' — ' + b.d;
+      document.getElementById('tallyRange').textContent = range.toUpperCase();
+    }
+
+    const meta = [];
+    const inmates = new Set(CALLS.filter(c => c.inmate).map(c => c.inmate));
+    if (inmates.size === 1) meta.push('Defendant — ' + Array.from(inmates)[0]);
+    else if (inmates.size > 1) meta.push(inmates.size + ' defendants');
+    const facilities = new Set(CALLS.filter(c => c.facility).map(c => c.facility));
+    if (facilities.size === 1) meta.push(Array.from(facilities)[0]);
+    document.getElementById('caseMeta').innerHTML =
+      meta.map(esc).join('<span class="sep">·</span>') || '';
+  })();
+
+  // Measure the control bar so the sticky column header snaps to the right offset.
+  function measureCtl() {
+    const ctl = document.getElementById('ctl');
+    document.documentElement.style.setProperty('--ctl-h', ctl.getBoundingClientRect().height + 'px');
+  }
+  window.addEventListener('resize', measureCtl);
+  // The control bar's height can settle late while embedded fonts load.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(measureCtl);
+
+  const state = {
+    query: '', dateFrom: '', dateTo: '', phone: '', relevance: '',
+    sortKey: 'call_sort', sortDir: 'asc',
+    page: 1, pageSize: 50, openIdx: null,
+  };
+
+  // Per-open-panel transcript navigation (one panel open at a time)
+  const nav = { targets: [], pos: -1 };
 
   // Phone dropdown
   (function populatePhones() {
@@ -1121,6 +1018,12 @@ _TEMPLATE = r"""<!DOCTYPE html>
       return String(av).localeCompare(String(bv)) * dir;
     });
   }
+  function countOccurrences(blob, q) {
+    if (!q) return 0;
+    let n = 0, i = 0;
+    while ((i = blob.indexOf(q, i)) !== -1) { n++; i += q.length; }
+    return n;
+  }
 
   function buildExcerpts(call, q) {
     if (!q) return [];
@@ -1145,9 +1048,9 @@ _TEMPLATE = r"""<!DOCTYPE html>
   }
 
   function renderTable() {
-    const tbody = document.getElementById('callTbody');
+    const rowsEl = document.getElementById('rows');
     const noRes = document.getElementById('noResults');
-    const tbl = document.getElementById('callTable');
+    const colsEl = document.getElementById('cols');
     const countEl = document.getElementById('searchCount');
     const filtered = getFiltered();
     const sorted = getSorted(filtered);
@@ -1159,7 +1062,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
     if (sorted.length > state.pageSize) {
       pag.classList.remove('hidden');
       document.getElementById('pageInfo').textContent =
-        'Page ' + state.page + ' of ' + totalPages + ' · ' +
+        'Page ' + state.page + ' of ' + totalPages + ' · Showing ' +
         ((state.page - 1) * state.pageSize + 1) + '–' +
         Math.min(state.page * state.pageSize, sorted.length) + ' of ' + sorted.length;
       document.getElementById('prevPage').disabled = state.page <= 1;
@@ -1170,39 +1073,47 @@ _TEMPLATE = r"""<!DOCTYPE html>
     const start = (state.page - 1) * state.pageSize;
     const pageRows = sorted.slice(start, start + state.pageSize);
 
-    countEl.textContent = sorted.length
-      ? (sorted.length + (q ? ' match' : ' call') + (sorted.length === 1 ? '' : (q ? 'es' : 's')))
-      : '';
+    if (q) {
+      const qLower = q.toLowerCase();
+      const mentions = sorted.reduce((a, c) => a + countOccurrences(c.turns_blob, qLower), 0);
+      countEl.innerHTML = '<b>' + sorted.length + '</b> call' + (sorted.length === 1 ? '' : 's')
+        + (mentions ? ' · <b>' + mentions + '</b> mention' + (mentions === 1 ? '' : 's') : '');
+    } else {
+      countEl.textContent = '';
+    }
 
     if (sorted.length === 0) {
-      tbody.innerHTML = '';
-      tbl.classList.add('hidden');
+      rowsEl.innerHTML = '';
+      colsEl.classList.add('hidden');
       noRes.classList.remove('hidden');
       return;
     }
-    tbl.classList.remove('hidden');
+    colsEl.classList.remove('hidden');
     noRes.classList.add('hidden');
 
-    document.querySelectorAll('table.dossier thead th[data-sort]').forEach(th => {
-      const isSorted = th.dataset.sort === state.sortKey;
-      th.classList.toggle('sorted', isSorted);
-      const arr = th.querySelector('.sort-arrow');
-      if (arr) arr.textContent = isSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
+    document.querySelectorAll('#cols [data-sort]').forEach(el => {
+      const isSorted = el.dataset.sort === state.sortKey;
+      el.classList.toggle('sorted', isSorted);
+      const arr = el.querySelector('.arr');
+      if (arr) arr.textContent = isSorted ? (state.sortDir === 'asc' ? ' ↑' : ' ↓') : '';
     });
 
     const frag = document.createDocumentFragment();
     pageRows.forEach(call => {
       frag.appendChild(buildRow(call, q));
-      if (state.openIdx === call.index) frag.appendChild(buildDetailRow(call, q));
+      if (state.openIdx === call.index) frag.appendChild(buildDetail(call, q));
     });
-    tbody.innerHTML = '';
-    tbody.appendChild(frag);
+    rowsEl.innerHTML = '';
+    rowsEl.appendChild(frag);
+
+    if (state.openIdx != null) initTransNav(q);
   }
 
   function buildRow(call, q) {
-    const tr = document.createElement('tr');
-    tr.className = 'row' + (call.relevance ? ' rel-' + call.relevance : '') + (state.openIdx === call.index ? ' open' : '');
-    tr.dataset.idx = call.index;
+    const div = document.createElement('div');
+    const isOpen = state.openIdx === call.index;
+    div.className = 'row' + (call.relevance ? ' rel-' + call.relevance : '') + (isOpen ? ' open' : '');
+    div.dataset.idx = call.index;
 
     const excerpts = q ? buildExcerpts(call, q) : [];
     let summaryHtml;
@@ -1215,161 +1126,235 @@ _TEMPLATE = r"""<!DOCTYPE html>
           + '</div>';
       }).join('') + '</div>';
     } else if (call.brief_summary) {
-      summaryHtml = '<div class="summary-cell">' + highlight(call.brief_summary, q) + '</div>';
+      summaryHtml = '<div class="clamp">' + highlight(call.brief_summary, q) + '</div>';
     } else {
-      summaryHtml = '<div class="summary-cell empty">No summary</div>';
+      summaryHtml = '<div class="empty">No summary</div>';
     }
 
-    tr.innerHTML =
-      '<td class="col-date">' + esc(call.datetime || '—') + '</td>' +
-      '<td class="col-rel">' + relPill(call.relevance) + '</td>' +
-      '<td class="col-dur">' + esc(call.duration_str || '—') + '</td>' +
-      '<td class="col-outside">' + highlight(call.outside || '—', q) + '</td>' +
-      '<td class="col-summary">' + summaryHtml + '</td>' +
-      '<td class="col-actions">' +
-        (call.audio_filename ? '<a class="action-btn primary" data-action="viewer">Viewer</a>' : '') +
-        (call.pdf_filename ? '<a class="action-btn" data-action="pdf">PDF</a>' : '') +
-      '</td>';
-    return tr;
+    const dt = fmtDate(call.datetime || call.call_date);
+    const idShort = call.identity || '';
+
+    div.innerHTML =
+      relMark(call.relevance) +
+      '<span class="date"><b>' + esc(dt.d) + '</b><span>' + esc(dt.t) + '</span></span>' +
+      '<span class="dur">' + esc(call.duration_str || '—') + '</span>' +
+      '<span class="party"><b>' + highlight(call.outside || '—', q) + '</b>' +
+        (idShort ? '<span title="' + esc(idShort) + '">' + highlight(idShort, q) + '</span>' : '') +
+      '</span>' +
+      '<span class="sum">' + summaryHtml + '</span>' +
+      '<span class="acts">' +
+        (call.audio_filename ? '<a class="btn btn--primary" data-action="viewer">Viewer</a>' : '') +
+        (call.pdf_filename ? '<a class="btn" data-action="pdf">PDF</a>' : '') +
+      '</span>';
+    return div;
   }
 
-  function buildDetailRow(call, q) {
-    const tr = document.createElement('tr');
-    tr.className = 'detail';
-    const td = document.createElement('td');
-    td.colSpan = 6;
-    td.innerHTML = buildDetailHtml(call, q);
-    tr.appendChild(td);
-    return tr;
-  }
+  function buildDetail(call, q) {
+    const div = document.createElement('div');
+    div.className = 'detail' + (call.relevance ? ' rel-' + call.relevance : '');
+    div.dataset.idx = call.index;
 
-  function buildDetailHtml(call, q) {
-    const metaCells = [];
-    const push = (label, value) => { if (value) metaCells.push({label, value}); };
-    push('When', call.datetime);
-    push('Duration', call.duration_str);
-    push('Outside', call.outside);
-    push('Outcome', call.outcome);
-    push('Facility', call.facility);
-    push('Type', call.call_type);
-    push('File', call.filename);
-
-    const metaHtml = metaCells.length
-      ? '<div class="meta-strip">' + metaCells.map(m =>
-          '<div class="meta-cell" title="' + esc(m.value) + '"><div class="meta-label">' + esc(m.label) + '</div>'
-          + '<div class="meta-value">' + esc(m.value) + '</div></div>'
-        ).join('') + '</div>'
-      : '';
-
-    const briefBlock = call.brief_summary
-      ? '<div class="detail-block"><div class="section-heading">Brief Summary</div><p>' + highlight(call.brief_summary, q) + '</p></div>'
-      : '';
-    const idBlock = call.identity
-      ? '<div class="detail-block"><div class="section-heading">Identity of Outside Party</div><p>' + highlight(call.identity, q) + '</p></div>'
-      : '';
-    const blocksHtml = (briefBlock || idBlock)
-      ? '<div class="detail-grid">' + briefBlock + idBlock + '</div>'
+    const briefHtml = call.brief_summary
+      ? '<h4>Summary</h4><p class="brief">' + highlight(call.brief_summary, q) + '</p>'
+      : '<h4>Summary</h4><p class="brief" style="color:var(--ink-3)">No summary for this call.</p>';
+    const idHtml = call.identity
+      ? '<div class="id-block"><h4>Outside Party</h4><p>' + highlight(call.identity, q) + '</p></div>'
       : '';
 
     let cuesHtml = '';
-    if ((call.notes_cues || []).length) {
-      const items = call.notes_cues.map((cue, i) => {
-        const speakerHtml = cue.speaker ? '<span class="cue-speaker">' + esc(cue.speaker) + '</span>' : '';
-        const quoteHtml = cue.quote ? '<span class="cue-quote">&ldquo;' + highlight(cue.quote, q) + '&rdquo;</span>' : '';
-        const noteHtml = cue.note ? '<span class="cue-note">' + highlight(cue.note, q) + '</span>' : '';
+    const cues = call.notes_cues || [];
+    if (cues.length) {
+      const rows = cues.map((cue, i) => {
+        const noteBits = [];
+        if (cue.note) noteBits.push('<b>' + highlight(cue.note, q) + '</b>');
+        if (cue.quote) noteBits.push('<span class="q">&ldquo;' + highlight(cue.quote, q) + '&rdquo;</span>');
         const citeParts = [];
-        if (cue.line_cite) citeParts.push('<span class="cite-line">Tr. ' + esc(cue.line_cite) + '</span>');
-        if (cue.page) citeParts.push('<span class="cite-line"><a data-cue-pdf="' + i + '">PDF p.' + cue.page + '</a></span>');
-        const citeHtml = citeParts.length ? '<div class="cue-cite">' + citeParts.join('') + '</div>' : '<div></div>';
-        return '<div class="cue" data-cue-idx="' + i + '">'
-          + '<div class="cue-ts">' + esc(cue.timestamp || '') + '</div>'
-          + '<div class="cue-body">' + speakerHtml + quoteHtml + noteHtml + '</div>'
-          + citeHtml
-          + '</div>';
+        if (cue.line_cite) citeParts.push('Tr. ' + esc(cue.line_cite));
+        if (cue.page) citeParts.push('<a data-cue-pdf="' + i + '">PDF p.' + cue.page + '</a>');
+        return '<tr data-cue-idx="' + i + '">'
+          + '<td class="ts">' + esc((cue.timestamp || '').replace(/[\[\]]/g, '')) + '</td>'
+          + '<td class="note">' + noteBits.join(' — ') + '</td>'
+          + '<td class="cite">' + citeParts.join(' · ') + '</td>'
+          + '</tr>';
       }).join('');
-      cuesHtml = '<div class="cues-block">'
-        + '<div class="section-heading">Review Cues</div>'
-        + '<div class="cues-legend">Click any cue to jump to that moment in the viewer</div>'
-        + items
-        + '</div>';
+      cuesHtml = '<div class="cues"><h4>Review Cues — ' + cues.length + '</h4><table>' + rows + '</table></div>';
+    } else {
+      cuesHtml = '<div class="cues"><h4>Review Cues</h4><p style="margin:0;font-size:13px;color:var(--ink-3)">None flagged for this call.</p></div>';
     }
 
+    // Map cues to their nearest transcript turn for flag markers + jumping.
     const turns = call.turns || [];
+    const cueTurnSet = new Set();
+    cues.forEach(cue => {
+      const ts = cue.timestamp_sec;
+      if (ts == null) return;
+      let best = -1;
+      for (let i = 0; i < turns.length; i++) {
+        if (turns[i][1] <= ts + 0.25) best = i; else break;
+      }
+      if (best >= 0) cueTurnSet.add(best);
+    });
+
     let turnsHtml;
     if (turns.length) {
       const qLower = q ? q.toLowerCase() : '';
-      turnsHtml = turns.map(t => {
+      turnsHtml = turns.map((t, i) => {
         const [speaker, start, text] = t;
         const isMatch = qLower && text.toLowerCase().indexOf(qLower) !== -1;
-        return '<div class="ts-turn' + (isMatch ? ' is-match' : '') + '" data-t="' + start + '">'
-          + '<span class="t">' + esc(secondsToLabel(start)) + '</span>'
-          + '<span class="sp">' + esc(speaker) + '</span>'
+        const cls = 'turn' + (isMatch ? ' is-match' : '') + (cueTurnSet.has(i) ? ' has-cue' : '');
+        return '<div class="' + cls + '" data-t="' + start + '" data-i="' + i + '">'
+          + '<span class="who">' + esc(speaker) + '<span class="t">' + esc(secondsToLabel(start)) + '</span></span>'
           + '<span class="tx">' + highlight(text, q) + '</span>'
           + '</div>';
       }).join('');
     } else {
-      turnsHtml = '<div style="color:var(--muted)">No transcript available.</div>';
+      turnsHtml = '<div style="color:var(--ink-3);padding:14px 0">No transcript available.</div>';
     }
-    const transcriptBlock =
-      '<div class="transcript-block">'
-      + '<div class="transcript-head"><div class="section-heading">Full Transcript</div>'
-      + '<span class="hint">Click any line to jump to that moment</span></div>'
-      + '<div class="transcript-body">' + turnsHtml + '</div>'
+
+    const transHtml =
+      '<div class="trans">'
+      + '<div class="trans-head"><h4>Transcript</h4><span class="hint">Select any line to open the viewer at that moment</span>'
+      + '<div class="trans-nav" id="transNav">'
+      + '<span class="nav-label" id="navLabel"></span>'
+      + '<button data-nav="-1" title="Previous">‹</button>'
+      + '<button data-nav="1" title="Next">›</button>'
+      + '</div></div>'
+      + '<div class="trans-body" id="transBody">' + turnsHtml + '</div>'
       + '</div>';
 
-    return '<div class="detail-panel">' + metaHtml + blocksHtml + cuesHtml + transcriptBlock + '</div>';
+    const metaCells = [];
+    const push = (label, value) => { if (value) metaCells.push({ label, value }); };
+    push('Call', String(call.index + 1).padStart(3, '0') + ' / ' + CALLS.length);
+    push('Recorded', call.datetime);
+    push('Number', call.outside);
+    push('Facility', call.facility);
+    push('Outcome', call.outcome);
+    push('File', call.filename);
+    const metaHtml = metaCells.map(m =>
+      '<div class="m"><span class="lbl">' + esc(m.label) + '</span><span class="v">' + esc(m.value) + '</span></div>'
+    ).join('');
+
+    const cueFirst = cues.length ? cues[0].timestamp_sec : null;
+    const actsHtml =
+      '<div class="detail-acts">'
+      + (call.pdf_filename ? '<a class="btn" data-action="pdf">Transcript PDF</a>' : '')
+      + (call.audio_filename
+          ? '<a class="btn btn--primary" data-action="viewer-cue">Open in Viewer'
+            + (cueFirst != null ? ' <span class="mono-bit">' + esc(secondsToLabel(cueFirst)) + ' →</span>' : '')
+            + '</a>'
+          : '')
+      + '</div>';
+
+    div.innerHTML =
+      '<div class="detail-grid">'
+      + '<div>' + briefHtml + idHtml + '</div>'
+      + cuesHtml
+      + '</div>'
+      + transHtml
+      + '<div class="detail-meta">' + metaHtml + actsHtml + '</div>';
+    return div;
+  }
+
+  // ── Transcript match / flag navigation ─────────────────────────────────
+  function initTransNav(q) {
+    const body = document.getElementById('transBody');
+    const navEl = document.getElementById('transNav');
+    const label = document.getElementById('navLabel');
+    if (!body || !navEl) return;
+
+    const matches = Array.from(body.querySelectorAll('.turn.is-match'));
+    const flags = Array.from(body.querySelectorAll('.turn.has-cue'));
+    if (q && matches.length) {
+      nav.targets = matches;
+      label.className = 'nav-label';
+      label.textContent = matches.length + ' MATCH' + (matches.length === 1 ? '' : 'ES');
+    } else if (flags.length) {
+      nav.targets = flags;
+      label.className = 'nav-label';
+      label.textContent = flags.length + ' FLAGGED';
+    } else {
+      nav.targets = [];
+      navEl.classList.add('hidden');
+      return;
+    }
+    navEl.classList.remove('hidden');
+    nav.pos = -1;
+    if (q && matches.length) jumpTrans(1);  // land on the first hit immediately
+  }
+
+  function jumpTrans(dir) {
+    if (!nav.targets.length) return;
+    const body = document.getElementById('transBody');
+    if (!body) return;
+    if (nav.pos >= 0 && nav.targets[nav.pos]) nav.targets[nav.pos].classList.remove('nav-current');
+    nav.pos = ((nav.pos + dir) % nav.targets.length + nav.targets.length) % nav.targets.length;
+    const el = nav.targets[nav.pos];
+    el.classList.add('nav-current');
+    body.scrollTop = el.offsetTop - body.clientHeight / 2 + el.clientHeight / 2;
+    const label = document.getElementById('navLabel');
+    if (label) {
+      const base = label.textContent.replace(/^\d+ \/ \d+ · /, '');
+      label.textContent = (nav.pos + 1) + ' / ' + nav.targets.length + ' · ' + base;
+    }
   }
 
   // ── Events ─────────────────────────────────────────────────────────────
-  const tbody = document.getElementById('callTbody');
-  tbody.addEventListener('click', e => {
+  const rowsEl = document.getElementById('rows');
+  rowsEl.addEventListener('click', e => {
+    const navBtn = e.target.closest('[data-nav]');
+    if (navBtn) { e.stopPropagation(); jumpTrans(parseInt(navBtn.dataset.nav, 10)); return; }
+
     const actionEl = e.target.closest('[data-action]');
     if (actionEl) {
       e.stopPropagation();
-      const row = actionEl.closest('tr.row'); if (!row) return;
-      const call = CALLS[parseInt(row.dataset.idx, 10)];
+      const host = actionEl.closest('.row, .detail'); if (!host) return;
+      const call = CALLS[parseInt(host.dataset.idx, 10)];
       if (!call) return;
-      if (actionEl.dataset.action === 'viewer') openViewer(call);
-      else if (actionEl.dataset.action === 'pdf') openPdf(call);
+      const action = actionEl.dataset.action;
+      if (action === 'viewer') openViewer(call);
+      else if (action === 'pdf') openPdf(call);
+      else if (action === 'viewer-cue') {
+        const cues = call.notes_cues || [];
+        openViewer(call, cues.length ? cues[0].timestamp_sec : null);
+      }
       return;
     }
     const excerpt = e.target.closest('.excerpt');
     if (excerpt) {
       e.stopPropagation();
-      const row = excerpt.closest('tr.row'); if (!row) return;
+      const row = excerpt.closest('.row'); if (!row) return;
       const call = CALLS[parseInt(row.dataset.idx, 10)];
       const t = excerpt.dataset.t;
       openViewer(call, t ? parseFloat(t) : null);
       return;
     }
-    const detailRow = e.target.closest('tr.detail');
-    if (detailRow) {
-      const cueCard = e.target.closest('.cue');
-      const cuePdfLink = e.target.closest('[data-cue-pdf]');
-      const tsTurn = e.target.closest('.ts-turn');
-      const prevRow = detailRow.previousElementSibling;
-      const call = prevRow ? CALLS[parseInt(prevRow.dataset.idx, 10)] : null;
+    const detail = e.target.closest('.detail');
+    if (detail) {
+      const call = CALLS[parseInt(detail.dataset.idx, 10)];
       if (!call) return;
+      const cuePdfLink = e.target.closest('[data-cue-pdf]');
       if (cuePdfLink) {
         e.stopPropagation();
         const cue = call.notes_cues[parseInt(cuePdfLink.dataset.cuePdf, 10)];
         if (cue && cue.page) openPdf(call, cue.page);
         return;
       }
-      if (cueCard) {
+      const cueRow = e.target.closest('[data-cue-idx]');
+      if (cueRow) {
         e.stopPropagation();
-        const cue = call.notes_cues[parseInt(cueCard.dataset.cueIdx, 10)];
+        const cue = call.notes_cues[parseInt(cueRow.dataset.cueIdx, 10)];
         if (cue) openViewer(call, cue.timestamp_sec);
         return;
       }
-      if (tsTurn) {
+      const turn = e.target.closest('.turn');
+      if (turn) {
         e.stopPropagation();
-        openViewer(call, parseFloat(tsTurn.dataset.t));
+        openViewer(call, parseFloat(turn.dataset.t));
         return;
       }
       return;
     }
-    const row = e.target.closest('tr.row');
+    const row = e.target.closest('.row');
     if (!row) return;
     const idx = parseInt(row.dataset.idx, 10);
     state.openIdx = state.openIdx === idx ? null : idx;
@@ -1387,12 +1372,16 @@ _TEMPLATE = r"""<!DOCTYPE html>
   document.getElementById('dateTo').addEventListener('change', e => { state.dateTo = e.target.value; onFilterChange(); });
   document.getElementById('phoneFilter').addEventListener('change', e => { state.phone = e.target.value; onFilterChange(); });
 
+  function setRelevance(rel) {
+    state.relevance = rel;
+    document.querySelectorAll('.chip[data-rel]').forEach(b => b.classList.toggle('active', b.dataset.rel === rel));
+    onFilterChange();
+  }
   document.querySelectorAll('.chip[data-rel]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.relevance = btn.dataset.rel;
-      document.querySelectorAll('.chip[data-rel]').forEach(b => b.classList.toggle('active', b === btn));
-      onFilterChange();
-    });
+    btn.addEventListener('click', () => setRelevance(btn.dataset.rel));
+  });
+  document.querySelectorAll('.tally [data-tally]').forEach(el => {
+    el.addEventListener('click', () => setRelevance(state.relevance === el.dataset.tally ? '' : el.dataset.tally));
   });
   document.getElementById('relAll').classList.add('active');
 
@@ -1408,9 +1397,9 @@ _TEMPLATE = r"""<!DOCTYPE html>
     renderTable();
   });
 
-  document.querySelectorAll('table.dossier thead th[data-sort]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.sort;
+  document.querySelectorAll('#cols [data-sort]').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.sort;
       if (state.sortKey === key) {
         state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
       } else {
