@@ -183,32 +183,6 @@ body {
     overflow-wrap: anywhere;
 }
 
-.cov-note {
-    position: absolute;
-    left: 46.5pt;
-    right: 40.5pt;
-    bottom: 90pt;
-    border: 1px solid var(--rule);
-    background: var(--cream);
-    padding: 14pt 16.5pt;
-}
-
-.cov-note h4 {
-    margin: 0 0 4.5pt;
-    font-size: 7.1pt;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--ink);
-}
-
-.cov-note p {
-    margin: 0;
-    font-size: 9pt;
-    line-height: 1.55;
-    color: var(--ink-2);
-}
-
 /* ── Inner page chapter header ── */
 .chap {
     position: absolute;
@@ -353,16 +327,6 @@ body {
     font-style: italic;
 }
 
-.shot-caption {
-    margin-top: 6pt;
-    font-family: var(--mono);
-    font-size: 7.5pt;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-    text-align: center;
-}
-
 /* ── Steps ── */
 .step {
     display: grid;
@@ -499,15 +463,6 @@ body {
     color: var(--ink);
 }
 
-.note-box .title {
-    margin: 0 0 4.5pt;
-    font-family: var(--serif);
-    font-weight: 600;
-    font-size: 12pt;
-    line-height: 1.25;
-    font-variation-settings: "opsz" 30;
-}
-
 .note-box p {
     margin: 0;
     font-size: 9pt;
@@ -522,8 +477,7 @@ body {
 <div class="page">
     <div class="spine"></div>
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential · Attorney Work Product</span>
-        <span class="lbl">User Guide</span>
+        <span class="lbl lbl--ink">User Guide</span>
     </div>
 
     <div class="cov-main">
@@ -538,11 +492,6 @@ body {
         </div>
     </div>
 
-    <div class="cov-note">
-        <h4>Offline Package</h4>
-        <p>Every file in this delivery opens locally — no internet connection, installation, or account is required. Links between documents are relative and remain intact wherever the folder is copied.</p>
-    </div>
-
     <div class="foot">
         <span class="doc">User Guide</span><span>·</span><span>Cover</span>
         <span class="pg">01</span>
@@ -554,8 +503,7 @@ body {
 <div class="page">
     <div class="spine"></div>
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
 
     <div class="chap">
@@ -570,7 +518,7 @@ body {
             <div class="trow"><span class="f">viewer.html</span><span class="d"><b>Audio viewer.</b> Synced audio and transcript for every call; citations in the PDFs open here at the exact moment.</span></div>
             <div class="trow"><span class="f">case-report.pdf</span><span class="d"><b>Case report.</b> At-a-glance metrics, top findings, high-relevance call cards, and caller statistics across the full set.</span></div>
             <div class="trow"><span class="f">transcripts/</span><span class="d"><b>Transcript PDFs</b> in deposition format, one per call, each with a cover and an analysis summary sheet.</span></div>
-            <div class="trow"><span class="f">transcripts-no-summary/</span><span class="d"><b>Clean transcript PDFs</b> — the same transcripts without the analysis pages, for filing or production.</span></div>
+            <div class="trow"><span class="f">transcripts-no-summary/</span><span class="d"><b>Clean transcript PDFs</b>: the same transcripts without the analysis pages, for filing or production.</span></div>
             <div class="trow"><span class="f">audio/</span><span class="d"><b>MP3 audio</b>, repaired and converted from the facility's source recordings. Played by the viewer; also opens in any media player.</span></div>
             <div class="trow"><span class="f">guide.pdf</span><span class="d"><b>This document.</b></span></div>
         </div>
@@ -579,7 +527,7 @@ body {
 
         <div class="note-box">
             <h4>Keep the Folder Intact</h4>
-            <p>Extract the delivery fully before use and keep the files together — the links between <span class="mono">search.html</span>, <span class="mono">viewer.html</span>, and the PDFs are relative paths that resolve only when the folder structure is unchanged. To share the delivery, copy the entire folder.</p>
+            <p>Extract the delivery fully before use and keep the files together: the links between <span class="mono">search.html</span>, <span class="mono">viewer.html</span>, and the PDFs are relative paths that resolve only when the folder structure is unchanged. To share the delivery, copy the entire folder.</p>
         </div>
     </div>
 
@@ -594,8 +542,7 @@ body {
 <div class="page">
     <div class="spine"></div>
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
 
     <div class="chap">
@@ -610,7 +557,6 @@ body {
             {% else %}
             <div class="shot-placeholder">Viewer screenshot</div>
             {% endif %}
-            <div class="shot-caption">Call list · audio transport · synced transcript · analysis panel</div>
         </div>
 
         <div class="gap"></div>
@@ -634,7 +580,7 @@ body {
         <div class="step">
             <span class="n">04</span>
             <div><h4>Analysis panel and Present mode</h4>
-            <p>The right panel shows the call's relevance, summary, outside party, and clickable review cues; both side panels collapse with their <span class="kbd">‹</span> <span class="kbd">›</span> buttons. <span class="kbd">P</span> enters Present mode — audio controls and the transcript page only; <span class="kbd">ESC</span> exits.</p></div>
+            <p>The right panel shows the call's relevance, summary, outside party, and clickable review cues; both side panels collapse with their <span class="kbd">‹</span> <span class="kbd">›</span> buttons. <span class="kbd">P</span> enters Present mode: audio controls and the transcript page only; <span class="kbd">ESC</span> exits.</p></div>
         </div>
         </div>
         </div>
@@ -650,8 +596,7 @@ body {
 <div class="page">
     <div class="spine"></div>
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
 
     <div class="chap">
@@ -666,7 +611,6 @@ body {
             {% else %}
             <div class="shot-placeholder">Search screenshot</div>
             {% endif %}
-            <div class="shot-caption">Case masthead · search and filters · call table with expanding detail rows</div>
         </div>
 
         <div class="gap"></div>
@@ -680,12 +624,12 @@ body {
         <div class="step">
             <span class="n">02</span>
             <div><h4>Filter and sort</h4>
-            <p>Narrow by date range, outside number, or relevance — the High / Medium / Low counts under the case name are clickable filters too. Click a column heading to sort.</p></div>
+            <p>Narrow by date range, outside number, or relevance: the High / Medium / Low counts under the case name are clickable filters too. Click a column heading to sort.</p></div>
         </div>
         <div class="step">
             <span class="n">03</span>
             <div><h4>Expand a row</h4>
-            <p>Selecting a row opens the call's summary, outside-party identity, review cues, and the full transcript. The <span class="kbd">‹</span> <span class="kbd">›</span> arrows above the transcript step through search matches — or through the flagged passages when no search is active.</p></div>
+            <p>Selecting a row opens the call's summary, outside-party identity, review cues, and the full transcript. The <span class="kbd">‹</span> <span class="kbd">›</span> arrows above the transcript step through search matches, or through the flagged passages when no search is active.</p></div>
         </div>
         <div class="step">
             <span class="n">04</span>
@@ -706,8 +650,7 @@ body {
 <div class="page">
     <div class="spine"></div>
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
 
     <div class="chap">
@@ -731,7 +674,7 @@ body {
             </div>
             <div class="row">
                 <span class="k">Medium-Relevance Calls</span>
-                <span class="d">Compact rows for MEDIUM calls — date, number, brief summary, and cue count.</span>
+                <span class="d">Compact rows for MEDIUM calls: date, number, brief summary, and cue count.</span>
             </div>
             <div class="row">
                 <span class="k">Caller Statistics</span>
@@ -743,7 +686,7 @@ body {
 
         <div class="note-box">
             <h4>Linked Citations</h4>
-            <p>Every citation in the report is a clickable link — call references open <span class="mono">viewer.html</span> at the cited moment, and PDF references open the transcript. Keep <span class="mono">case-report.pdf</span> inside the delivery folder so its links can resolve.</p>
+            <p>Every citation in the report is a clickable link: call references open <span class="mono">viewer.html</span> at the cited moment, and PDF references open the transcript. Keep <span class="mono">case-report.pdf</span> inside the delivery folder so its links can resolve.</p>
         </div>
     </div>
 
@@ -758,8 +701,7 @@ body {
 <div class="page">
     <div class="spine"></div>
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
 
     <div class="chap">
@@ -772,15 +714,15 @@ body {
 
         <div class="rel-row">
             <span class="rv rv--high">High</span>
-            <span class="desc"><b>Potentially jury-relevant or case-substantive content</b> — charges, witnesses, evidence, admissions, or statements bearing on the case.</span>
+            <span class="desc"><b>Potentially jury-relevant or case-substantive content</b>: charges, witnesses, evidence, admissions, or statements bearing on the case.</span>
         </div>
         <div class="rel-row">
             <span class="rv rv--medium">Medium</span>
-            <span class="desc"><b>Substantive legal or case context, not clearly central</b> — court dates, counsel, custody status, or indirect references to the case.</span>
+            <span class="desc"><b>Substantive legal or case context, not clearly central</b>: court dates, counsel, custody status, or indirect references to the case.</span>
         </div>
         <div class="rel-row">
             <span class="rv rv--low">Low</span>
-            <span class="desc"><b>Little to no apparent case relevance</b> — routine personal conversation.</span>
+            <span class="desc"><b>Little to no apparent case relevance</b>: routine personal conversation.</span>
         </div>
 
         <div class="gap"></div>
@@ -790,11 +732,11 @@ body {
         <div class="kv">
             <div class="row">
                 <span class="k">Notes</span>
-                <span class="d">Timestamped review cues — only moments flagged as needing attorney attention. Each carries the audio timestamp <span class="mono">[MM:SS]</span> and a <span class="mono">TR. page:line</span> cite that matches the printed transcript exactly. &ldquo;No relevant information found&rdquo; means nothing was flagged.</span>
+                <span class="d">Timestamped review cues: only moments flagged as needing attorney attention. Each carries the audio timestamp <span class="mono">[MM:SS]</span> and a <span class="mono">TR. page:line</span> cite that matches the printed transcript exactly. &ldquo;No relevant information found&rdquo; means nothing was flagged.</span>
             </div>
             <div class="row">
                 <span class="k">Outside Party</span>
-                <span class="d">Who the defendant appears to be speaking with — populated only when the call itself supports the inference. Case-level identity inferences in the report carry a confidence level.</span>
+                <span class="d">Who the defendant appears to be speaking with, populated only when the call itself supports the inference. Case-level identity inferences in the report carry a confidence level.</span>
             </div>
             <div class="row">
                 <span class="k">Brief Summary</span>
@@ -802,12 +744,6 @@ body {
             </div>
         </div>
 
-        <div class="gap"></div>
-
-        <div class="note-box">
-            <h4>Quotes Are Transcript-Derived</h4>
-            <p>Every quotation shown in a review cue is drawn verbatim from the cited transcript lines — the same text, page, and line numbering as the transcript PDF — so each excerpt can be checked against the printed page and the audio at its timestamp.</p>
-        </div>
     </div>
 
     <div class="foot">
@@ -816,63 +752,6 @@ body {
     </div>
 </div>
 
-
-<!-- ═══════════════════════ 07 · Important notes ═══════════════════════ -->
-<div class="page">
-    <div class="spine"></div>
-    <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
-    </div>
-
-    <div class="chap">
-        <div class="eyebrow">Section 06</div>
-        <h2>Important Notes</h2>
-    </div>
-
-    <div class="body">
-        <div class="note-box">
-            <h4>Read Before Use</h4>
-            <p class="title">Verify against the source recording before quoting or filing.</p>
-            <p>Transcripts, summaries, relevance ratings, and identity inferences are machine-generated. Transcripts may contain errors with names, technical terms, slang, or overlapping speech; ratings and summaries are a triage aid, not a definitive assessment. Verify critical details against the original audio before quotation, filing, or use in court.</p>
-        </div>
-
-        <div class="gap"></div>
-
-        <div class="sec-h">Technical Notes</div>
-
-        <div class="step">
-            <span class="n">01</span>
-            <div><h4>Fully offline</h4>
-            <p>No internet connection, installation, or account is required. The HTML pages open in any modern browser; the PDFs open in any PDF reader.</p></div>
-        </div>
-        <div class="step">
-            <span class="n">02</span>
-            <div><h4>Keep files together</h4>
-            <p>Extract the delivery fully and keep the folder structure unchanged — links between the pages and PDFs are relative paths. Copy the whole folder to move or share the delivery.</p></div>
-        </div>
-        <div class="step">
-            <span class="n">03</span>
-            <div><h4>Clean transcripts for filing</h4>
-            <p><span class="mono">transcripts-no-summary/</span> contains the same transcript PDFs without the analysis pages.</p></div>
-        </div>
-        <div class="step">
-            <span class="n">04</span>
-            <div><h4>Audio plays anywhere</h4>
-            <p>The MP3 files in <span class="mono">audio/</span> are standard and play in any media player; the file name of each call appears on its transcript cover.</p></div>
-        </div>
-        <div class="step">
-            <span class="n">05</span>
-            <div><h4>Viewer shortcuts</h4>
-            <p><span class="kbd">SPACE</span> play / pause · <span class="kbd">←</span> <span class="kbd">→</span> skip · <span class="kbd">↑</span> <span class="kbd">↓</span> page · <span class="kbd">P</span> present mode · <span class="kbd">ESC</span> exit.</p></div>
-        </div>
-    </div>
-
-    <div class="foot">
-        <span class="doc">User Guide</span><span>·</span><span>Important Notes</span>
-        <span class="pg">07</span>
-    </div>
-</div>
 
 </body>
 </html>

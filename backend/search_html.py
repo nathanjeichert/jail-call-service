@@ -785,9 +785,8 @@ __FONTS_CSS__
 </head>
 <body>
   <div class="band">
-    <span class="lbl lbl--ink">Privileged &amp; Confidential<span class="sep">·</span>Attorney Work Product</span>
+    <span class="lbl lbl--ink">Call Index</span>
     <div class="band-right">
-      <span class="lbl">Call Index</span>
       <span class="lbl">Prepared __GEN_DATE__</span>
     </div>
   </div>
@@ -820,7 +819,7 @@ __FONTS_CSS__
           <circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/>
         </svg>
         <input type="text" class="search-input" id="searchInput"
-               placeholder="Search every word spoken — transcripts, summaries, cues, numbers…" autofocus>
+               placeholder="Search every word spoken: transcripts, summaries, cues, numbers…" autofocus>
         <span class="search-count" id="searchCount"></span>
       </div>
       <span class="filter-label">From</span>
@@ -950,13 +949,13 @@ __FONTS_CSS__
     const dates = CALLS.map(c => c.call_date).filter(Boolean).sort();
     if (dates.length) {
       const a = fmtDate(dates[0]), b = fmtDate(dates[dates.length - 1]);
-      const range = dates[0] === dates[dates.length - 1] ? a.d : a.d.replace(/, \d{4}$/,'') + ' — ' + b.d;
+      const range = dates[0] === dates[dates.length - 1] ? a.d : a.d.replace(/, \d{4}$/,'') + ' – ' + b.d;
       document.getElementById('tallyRange').textContent = range.toUpperCase();
     }
 
     const meta = [];
     const inmates = new Set(CALLS.filter(c => c.inmate).map(c => c.inmate));
-    if (inmates.size === 1) meta.push('Defendant — ' + Array.from(inmates)[0]);
+    if (inmates.size === 1) meta.push('Defendant: ' + Array.from(inmates)[0]);
     else if (inmates.size > 1) meta.push(inmates.size + ' defendants');
     const facilities = new Set(CALLS.filter(c => c.facility).map(c => c.facility));
     if (facilities.size === 1) meta.push(Array.from(facilities)[0]);
@@ -1173,11 +1172,11 @@ __FONTS_CSS__
         if (cue.page) citeParts.push('<a data-cue-pdf="' + i + '">PDF p.' + cue.page + '</a>');
         return '<tr data-cue-idx="' + i + '">'
           + '<td class="ts">' + esc((cue.timestamp || '').replace(/[\[\]]/g, '')) + '</td>'
-          + '<td class="note">' + noteBits.join(' — ') + '</td>'
+          + '<td class="note">' + noteBits.join(': ') + '</td>'
           + '<td class="cite">' + citeParts.join(' · ') + '</td>'
           + '</tr>';
       }).join('');
-      cuesHtml = '<div class="cues"><h4>Review Cues — ' + cues.length + '</h4><table>' + rows + '</table></div>';
+      cuesHtml = '<div class="cues"><h4>Review Cues: ' + cues.length + '</h4><table>' + rows + '</table></div>';
     } else {
       cuesHtml = '<div class="cues"><h4>Review Cues</h4><p style="margin:0;font-size:13px;color:var(--ink-3)">None flagged for this call.</p></div>';
     }

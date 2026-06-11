@@ -817,8 +817,7 @@
 <body>
   <div class="frame">
     <div class="band">
-      <span class="lbl lbl--ink">Privileged &amp; Confidential<span class="sep">·</span>Attorney Work Product</span>
-      <span class="lbl">Call Viewer</span>
+      <span class="lbl lbl--ink">Call Viewer</span>
     </div>
 
     <div class="app">
@@ -1083,7 +1082,7 @@
       mainTitleFilename.textContent = call.filename;
       const dp = fmtDateParts(call.datetime);
       mainTitle.innerHTML = esc(call.outside || call.filename)
-        + (dp ? '<span class="dash">—</span><span class="dt">' + esc(dp.long) + '</span>' : '');
+        + (dp ? '<span class="dash">·</span><span class="dt">' + esc(dp.long) + '</span>' : '');
       const metaParts = [dp && dp.time, formatDur(call.duration), call.inmate, call.facility, call.outcome].filter(Boolean);
       mainMeta.innerHTML = metaParts.map(esc).join('<span class="sep">·</span>');
 
@@ -1132,7 +1131,7 @@
             + '<span class="n">' + esc(cue.note || cue.quote || '') + '</span>'
             + '</div>'
           ).join('');
-          parts.push('<div class="side-sec"><h4>Review Cues — ' + cues.length + '</h4>' + rows + '</div>');
+          parts.push('<div class="side-sec"><h4>Review Cues: ' + cues.length + '</h4>' + rows + '</div>');
         } else {
           parts.push('<div class="side-sec"><h4>Review Cues</h4><span class="side-empty">None flagged.</span></div>');
         }
@@ -1391,9 +1390,38 @@
       timeDuration.textContent = formatTime(duration);
       syncProgressUI(ws.getCurrentTime(), duration);
       if (pendingSeek > 0) {
-        ws.setTime(pendingSeek);
-        syncProgressUI(pendingSeek, duration);
+        // Deep-link seek: move the playhead AND the transcript view to the
+        // target moment immediately, but stay paused until the user plays.
+        const target = duration > 0 ? Math.max(0, Math.min(pendingSeek, duration)) : pendingSeek;
+        ws.setTime(target);
+        onPlayerTimeUpdate(target);
+        revealTranscriptAt(target);
         pendingSeek = 0;
+      }
+    }
+
+    // Jump the transcript view to the line containing time t. Cue timestamps
+    // are rounded to whole seconds and can land in the gap just before a
+    // line starts, so fall back to the next upcoming line when none contains t.
+    function revealTranscriptAt(t) {
+      let containing = null;
+      let upcoming = null;
+      for (const entry of lineEntries) {
+        const start = parseFloat(entry.start) || 0;
+        const end = parseFloat(entry.end) || 0;
+        if (t >= start && t < (end || start + 5)) { containing = entry; break; }
+        if (start >= t && (!upcoming || start < (parseFloat(upcoming.start) || 0))) upcoming = entry;
+      }
+      const entry = containing || upcoming;
+      if (!entry) return;
+      const page = entry.page || 1;
+      if (page !== currentPage) goToPage(page, { source: 'playback' });
+      const entryStart = String(entry.start || 0);
+      const lineEl = Array.from(document.querySelectorAll('.trans-line'))
+        .find(el => el.dataset.start === entryStart);
+      if (lineEl) {
+        setTranscriptScrollGuard(700);
+        lineEl.scrollIntoView({ block: 'center' });
       }
     }
 
@@ -1605,7 +1633,7 @@
       if (foundIdx !== -1) {
         startIdx = foundIdx;
       } else {
-        setTimeout(() => showToast('Requested call not found — showing first call'), 500);
+        setTimeout(() => showToast('Requested call not found, showing first call'), 500);
       }
     }
 

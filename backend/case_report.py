@@ -136,6 +136,7 @@ VOICE FOR HEADLINE AND DETAIL:
 - NEVER use the second person ("you", "your", "yours"). The defendant is NEVER "you" — even when the transcript has the defendant speaking in the first person. If the outside party told the defendant something, write "the outside party told the defendant…", NOT "the outside party informs you…".
 - NEVER use imperatives directed at the reader ("review this", "note that", "see", "click here").
 - Do not include recommendations, legal advice, strategic suggestions, or commentary about the report itself. Just state what happened and why it matters.
+- Avoid em dashes in headlines and detail prose; use colons, commas, or separate sentences instead.
 
 CRITERIA (what makes a finding important):
 - Discussion of charges, alleged offense, or related criminal conduct
@@ -211,6 +212,7 @@ TASK 1 — findings
 - Write in a neutral, objective, reader-agnostic tone suitable for either defense or prosecution review.
 - Narrate in third-person neutral past-tense factual prose.
 - No recommendations or legal advice.
+- Avoid em dashes in headline and detail prose; use colons, commas, or separate sentences instead.
 - Each finding must include:
   - call_id: integer call id from INPUT_CALLS
   - headline: 4-9 word title
@@ -1077,7 +1079,10 @@ def generate_case_report_pdf(
         cue_count = len(parsed.get("review_cue_items", []) or [])
         medium_rows.append({
             "call_index": call.index + 1,
-            "filename": U.shorten(call.filename, 48),
+            # Middle-truncated to one line of the mono column (120pt minus
+            # 12pt padding at 7.1pt IBM Plex Mono ≈ 25 chars); a tail spilling
+            # one or two characters onto a second line reads badly.
+            "filename": U.shorten_middle(call.filename, 24),
             "datetime": _format_call_datetime_short(call),
             "duration": _format_duration(call.duration_seconds),
             "party": call.outside_number_fmt or call.outside_number or "—",

@@ -31,15 +31,17 @@
     --mono: "IBM Plex Mono", Menlo, monospace;
 }
 
-/* Inner pages reserve a bottom margin so the @page footer margin boxes
-   (rendered by Paged.js, which polyfills string() and counter(page))
-   have somewhere to render. The cover overrides via :first below. */
+/* Inner pages reserve a bottom margin for the @page footer margin boxes
+   (rendered by Paged.js, which polyfills string() and counter(page)) and a
+   top margin so content that flows across a page break — call cards and cue
+   tables have non-deterministic heights — never rides the top sheet edge on
+   continuation pages. The cover overrides via :first below. */
 @page {
     size: letter;
-    margin: 0 0 0.7in 0;
+    margin: 0.4in 0 0.7in 0;
 
     @bottom-left {
-        content: "Case Report  ·  " string(chapter-name);
+        content: string(chapter-name);
         white-space: nowrap;
         font-family: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
         font-size: 6.75pt;
@@ -317,9 +319,14 @@ a { color: inherit; text-decoration: none; }
 
 section.chapter {
     page-break-before: always;
-    /* The chapter content carries its own inset since @page margin is 0. */
+    /* The chapter content carries its own horizontal inset since the @page
+       side margins are 0. */
     padding: 0 40.5pt 12pt 46.5pt;
 }
+
+/* The @page top margin already pushes chapter starts down; trim the band's
+   own padding so section headers sit close to where they did before. */
+section.chapter .band { padding-top: 3pt; }
 
 .chap { padding-top: 22.5pt; }
 .chap .eyebrow {
@@ -621,14 +628,24 @@ section.chapter {
 
 .cc-foot {
     display: flex;
-    gap: 16.5pt;
-    padding: 7.5pt 15pt;
+    gap: 9pt;
+    padding: 9pt 15pt;
     border-top: 1px solid var(--rule);
-    font-family: var(--mono);
-    font-size: 7.5pt;
-    color: var(--ink-3);
+    /* Keep the action row glued to the cue table so a page break never
+       strands it alone at the top of the next page. */
+    page-break-inside: avoid;
+    page-break-before: avoid;
 }
-.cc-foot a { color: var(--ink); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.cc-foot a {
+    font-size: 7.1pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink);
+    border: 1px solid var(--ink);
+    padding: 3pt 6.75pt;
+    white-space: nowrap;
+}
 
 /* ════════════════════ Medium-relevance compact rows ════════════════════ */
 
@@ -752,14 +769,13 @@ section.chapter {
 <div class="cover">
     <span class="chapter-marker">Cover</span>
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential · Attorney Work Product</span>
-        <span class="lbl">Case Report</span>
+        <span class="lbl lbl--ink">Case Report</span>
     </div>
 
     <div class="rc-cap">
-        <div class="eyebrow">Recorded-Call Review</div>
+        <div class="eyebrow">Jail Call Review</div>
         {% if case_caption %}
-        <h1>{{ case_caption.left }}<span class="v">— against —</span>{{ case_caption.right }}</h1>
+        <h1>{{ case_caption.left }}<span class="v">v.</span>{{ case_caption.right }}</h1>
         {% else %}
         <h1>{{ case_name }}</h1>
         {% endif %}
@@ -795,8 +811,7 @@ section.chapter {
 <!-- ═══════════════════════ 01 · At a Glance ═══════════════════════ -->
 <section class="chapter" id="sec-glance">
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
     <header class="chap">
         <div class="eyebrow">Section 01</div>
@@ -827,7 +842,7 @@ section.chapter {
 
     {% if timeline %}
     <div class="ag-sec">
-        <h3>Call Volume by {{ timeline.unit_name }} <span class="m">PEAK — {{ timeline.max_count }} CALL{{ "S" if timeline.max_count != 1 else "" }}, {{ timeline.peak_label }}</span></h3>
+        <h3>Call Volume by {{ timeline.unit_name }} <span class="m">PEAK: {{ timeline.max_count }} CALL{{ "S" if timeline.max_count != 1 else "" }}, {{ timeline.peak_label }}</span></h3>
         <div class="ag-chart">
             <svg viewBox="0 0 {{ timeline.svg.width }} {{ timeline.svg.height }}" aria-hidden="true">
                 <line x1="0" y1="{{ timeline.svg.axis_y }}" x2="{{ timeline.svg.width }}" y2="{{ timeline.svg.axis_y }}" stroke="#16140F" stroke-width="1"/>
@@ -886,13 +901,12 @@ section.chapter {
 <!-- ═══════════════════════ 02 · Top Findings ═══════════════════════ -->
 <section class="chapter" id="sec-findings">
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
     <header class="chap">
         <div class="eyebrow">Section 02</div>
         <span class="chapter-marker">Top Findings</span>
-        <h2>Top Findings{% if findings %}<span class="chapmeta">{{ findings|length }} FINDING{{ "S" if findings|length != 1 else "" }} · FROM {{ synthesis_input_count }} CALL{{ "S" if synthesis_input_count != 1 else "" }}</span>{% endif %}</h2>
+        <h2>Top Findings{% if findings %}<span class="chapmeta">{{ findings|length }} FINDING{{ "S" if findings|length != 1 else "" }}</span>{% endif %}</h2>
     </header>
 
     {% if findings %}
@@ -930,8 +944,7 @@ section.chapter {
 <!-- ═══════════════════════ 03 · High-Relevance Calls ═══════════════════════ -->
 <section class="chapter" id="sec-high">
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
     <header class="chap">
         <div class="eyebrow">Section 03</div>
@@ -952,7 +965,7 @@ section.chapter {
             <p class="cc-brief">{{ c.brief }}</p>
             {% endif %}
             {% if c.speakers %}
-            <div class="cc-speakers"><b>Outside party</b> — {{ c.speakers }}</div>
+            <div class="cc-speakers"><b>Outside party</b>: {{ c.speakers }}</div>
             {% endif %}
 
             {% if c.has_cues %}
@@ -964,7 +977,7 @@ section.chapter {
                         <a href="{{ cue.viewer_link }}">{{ cue.timestamp|replace("[", "")|replace("]", "") }}</a>
                         {% endif %}
                     </td>
-                    <td class="q">{% if cue.note %}<b>{{ cue.note }}</b>{% endif %}{% if cue.note and cue.quote %} — {% endif %}{% if cue.quote %}<i>&ldquo;{{ cue.quote }}&rdquo;</i>{% endif %}</td>
+                    <td class="q">{% if cue.note %}<b>{{ cue.note }}</b>{% endif %}{% if cue.note and cue.quote %}: {% endif %}{% if cue.quote %}<i>&ldquo;{{ cue.quote }}&rdquo;</i>{% endif %}</td>
                     <td class="cite">{% if cue.line_cite %}TR. {{ cue.line_cite }}{% endif %}</td>
                 </tr>
                 {% endfor %}
@@ -972,8 +985,8 @@ section.chapter {
             {% endif %}
         </div>
         <div class="cc-foot">
-            <a href="{{ c.viewer_link }}">{{ c.viewer_link }}</a>
-            <a href="{{ c.pdf_link }}">{{ c.pdf_link }}</a>
+            <a href="{{ c.viewer_link }}">Open in Viewer →</a>
+            <a href="{{ c.pdf_link }}">Transcript PDF</a>
         </div>
     </div>
     {% endfor %}
@@ -990,8 +1003,7 @@ section.chapter {
 <!-- ═══════════════════════ 04 · Medium-Relevance Calls ═══════════════════════ -->
 <section class="chapter" id="sec-medium">
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
     <header class="chap">
         <div class="eyebrow">Section 04</div>
@@ -1024,8 +1036,7 @@ section.chapter {
 <!-- ═══════════════════════ 05 · Caller Statistics ═══════════════════════ -->
 <section class="chapter" id="sec-callers">
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential</span>
-        <span class="lbl">{{ case_name_short }}</span>
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
     </div>
     <header class="chap">
         <div class="eyebrow">Section 05</div>

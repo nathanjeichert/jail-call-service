@@ -532,8 +532,7 @@ body {
     <div class="spine"></div>
 
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential · Attorney Work Product</span>
-        <span class="lbl">Call Transcript</span>
+        <span class="lbl lbl--ink">Call Transcript</span>
     </div>
 
     <div class="cov-main">
@@ -572,8 +571,7 @@ body {
     <div class="spine"></div>
 
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential · Attorney Work Product</span>
-        <span class="lbl">Call Summary</span>
+        <span class="lbl lbl--ink">Call Summary</span>
     </div>
 
     <div class="sm-title">
@@ -621,7 +619,7 @@ body {
                     <div class="b">
                         {% if cue.note %}<div class="why">{{ cue.note }}</div>{% endif %}
                         {% if cue.quote %}
-                        <div class="q">{% if cue.speaker %}<span class="spk">{{ cue.speaker }} — </span>{% endif %}&ldquo;{{ cue.quote }}&rdquo;</div>
+                        <div class="q">{% if cue.speaker %}<span class="spk">{{ cue.speaker }}: </span>{% endif %}&ldquo;{{ cue.quote }}&rdquo;</div>
                         {% endif %}
                     </div>
                     <span class="c">{% if cue.line_cite %}TR. {{ cue.line_cite }}{% endif %}</span>
@@ -680,14 +678,13 @@ body {
     <div class="spine"></div>
 
     <div class="band">
-        <span class="lbl lbl--ink">Privileged &amp; Confidential · Attorney Work Product</span>
-        <span class="lbl">Call Summary</span>
+        <span class="lbl lbl--ink">Call Summary</span>
     </div>
 
     <div class="sm-content sm-content--continued">
         <div class="notes">
             <div class="notes-head">
-                <h4>Notes — Continued</h4>
+                <h4>Notes, Continued</h4>
                 <span class="m">[MM:SS] · TR. PAGE:LINE</span>
             </div>
             {% for cue in overflow_page.review_cues %}
@@ -696,7 +693,7 @@ body {
                 <div class="b">
                     {% if cue.note %}<div class="why">{{ cue.note }}</div>{% endif %}
                     {% if cue.quote %}
-                    <div class="q">{% if cue.speaker %}<span class="spk">{{ cue.speaker }} — </span>{% endif %}&ldquo;{{ cue.quote }}&rdquo;</div>
+                    <div class="q">{% if cue.speaker %}<span class="spk">{{ cue.speaker }}: </span>{% endif %}&ldquo;{{ cue.quote }}&rdquo;</div>
                     {% endif %}
                 </div>
                 <span class="c">{% if cue.line_cite %}TR. {{ cue.line_cite }}{% endif %}</span>

@@ -41,6 +41,7 @@ from .models import (
     normalize_speaker_assignment,
 )
 from . import config as cfg
+from .icm_parser import parse_icm_report
 from .job_settings import (
     compose_summary_prompt,
     extract_case_context,
@@ -228,9 +229,48 @@ async def upload_audio(files: list[UploadFile] = File(...)):
     return {"paths": saved_paths}
 
 
+def _icm_preview(xml_path: str) -> dict:
+    """Parse an uploaded ICM report and summarize it for the job-setup UI.
+
+    The summary lets the operator confirm the right report was uploaded and
+    prefill/tweak job metadata (defendant name, etc.) before starting the job.
+    """
+    icm_map = parse_icm_report(xml_path)
+    if not icm_map:
+        return {"parsed": False, "call_count": 0}
+
+    metas = list(icm_map.values())
+    inmate_names = sorted({m.inmate_name for m in metas if m.inmate_name and m.inmate_name != "INMATE"})
+    facilities = sorted({m.facility for m in metas if m.facility})
+    dates = sorted(m.call_date for m in metas if m.call_date)
+    numbers = {m.outside_number for m in metas if m.outside_number}
+    return {
+        "parsed": True,
+        "call_count": len(metas),
+        "inmate_names": inmate_names,
+        "facilities": facilities,
+        "date_range": {"start": dates[0], "end": dates[-1]} if dates else None,
+        "unique_numbers": len(numbers),
+    }
+
+
+class XmlPreviewRequest(BaseModel):
+    path: str
+
+
+@app.post("/api/xml/preview")
+def preview_xml(req: XmlPreviewRequest):
+    """Parse an ICM report already on disk (pasted path) and summarize it."""
+    path = req.path.strip()
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=400, detail=f"Not a valid file: {path}")
+    return {"path": os.path.abspath(path), "preview": _icm_preview(path)}
+
+
 @app.post("/api/upload/xml")
 async def upload_xml(file: UploadFile = File(...)):
-    """Accept a single XML file, save to uploads/<uuid>/, return absolute path."""
+    """Accept a single XML file, save it, and return its path plus a parsed
+    metadata preview the UI can prefill job fields from."""
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in XML_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Expected an XML file, got: {file.filename}")
@@ -243,7 +283,8 @@ async def upload_xml(file: UploadFile = File(...)):
     dest_path = os.path.join(dest_dir, safe_name)
     await _write_upload_file(file, dest_path)
 
-    return {"path": os.path.abspath(dest_path)}
+    abs_path = os.path.abspath(dest_path)
+    return {"path": abs_path, "preview": _icm_preview(abs_path)}
 
 @app.post("/api/jobs", status_code=201)
 def create_job(req: CreateJobRequest):

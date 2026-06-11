@@ -29,7 +29,7 @@ def _footer_clearance(page, footer_section: str, page_num: str):
 
 
 class GuideLayoutTests(unittest.TestCase):
-    def test_guide_stays_seven_pages_and_keeps_body_text_above_footer(self):
+    def test_guide_stays_six_pages_and_keeps_body_text_above_footer(self):
         pdf_bytes = generate_guide_pdf(
             case_name="State v. Marcus Reeves",
             call_count=248,
@@ -38,7 +38,7 @@ class GuideLayoutTests(unittest.TestCase):
 
         reader = PdfReader(io.BytesIO(pdf_bytes))
 
-        self.assertEqual(len(reader.pages), 7)
+        self.assertEqual(len(reader.pages), 6)
         self.assertGreaterEqual(
             _footer_clearance(reader.pages[2], "USING THE CALL VIEWER", "03"),
             8.0,

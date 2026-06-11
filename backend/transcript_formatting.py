@@ -264,7 +264,7 @@ def _estimate_cue_height(cue: dict) -> float:
         # The speaker prefix renders in small sans caps ahead of the serif
         # quote; measuring the whole line as serif italic over-predicts,
         # which is the safe direction.
-        prefix = f"{cue.get('speaker', '')} — " if cue.get("speaker") else ""
+        prefix = f"{cue.get('speaker', '')}: " if cue.get("speaker") else ""
         quote_text = f"{prefix}{SUMMARY_QUOTE_GLYPHS[0]}{cue.get('quote', '')}{SUMMARY_QUOTE_GLYPHS[1]}"
         quote_lines = len(
             _wrap_text_to_width(

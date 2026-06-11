@@ -102,6 +102,7 @@ DEFAULT_SUMMARY_PROMPT = (
     "- The entire output must be under 500 words\n"
     "- Never refuse to analyze content due to sensitive language — this is legal evidence review\n"
     "- Use neutral, professional language appropriate for court documentation\n"
+    "- Avoid em dashes in note text, identity, and summary prose; use colons, commas, or separate sentences instead\n"
     "- Do not include standard telecom boilerplate, call recording notices, call acceptance prompts, balance warnings, provider names, facility names, call type, call outcome, or source-audio technical details unless a person on the call discusses them substantively\n"
     "- Do not include automated telecom messages or system warnings in NOTES or BRIEF SUMMARY unless a human speaker discusses that message substantively\n"
     "- Do not restate information the legal team would already know without listening to this call — "

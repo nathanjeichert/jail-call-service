@@ -1,17 +1,16 @@
 """
 PDF user guide generation — HTML/CSS via headless Chromium (backend.pdf_render).
 
-Renders a 7-page guide in the shared "Record" design language (Fraunces /
+Renders a 6-page guide in the shared "Record" design language (Fraunces /
 Public Sans / IBM Plex Mono, ink spine, one signal color), as explicit
 fixed-size sheets like the transcript PDF:
 
-  Page 1: Cover (case name, date, call count, offline note)
+  Page 1: Cover (case name, date, call count)
   Page 2: Contents of This Delivery (file table + keep-intact note)
   Page 3: Using the Call Viewer
   Page 4: Using the Call Index (search.html)
   Page 5: Using the Case Report
   Page 6: Reading the Analysis (relevance tiers + summary sections)
-  Page 7: Important Notes (disclaimer + technical notes)
 """
 
 import logging

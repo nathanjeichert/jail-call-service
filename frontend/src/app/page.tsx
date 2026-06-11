@@ -75,6 +75,21 @@ function EngineSelector({ label, engines, selected, onSelect, labels }: {
   );
 }
 
+type XmlPreview = {
+  parsed: boolean;
+  call_count: number;
+  inmate_names?: string[];
+  facilities?: string[];
+  date_range?: { start: string; end: string } | null;
+  unique_numbers?: number;
+};
+
+function titleCaseName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/(^|[\s\-'])([a-z])/g, (_m, sep, ch) => sep + ch.toUpperCase());
+}
+
 const STAGE_LABELS: Record<string, string> = {
   created: 'Created',
   converting: 'Converting audio...',
@@ -116,6 +131,7 @@ export default function JobsPage() {
 
   const [uploading, setUploading] = useState(false);
   const [fileCount, setFileCount] = useState<number | null>(null);
+  const [xmlPreview, setXmlPreview] = useState<XmlPreview | null>(null);
 
   const AUDIO_EXTS = ['.wav', '.mp3', '.m4a'];
   const isAudioPath = (val: string) => AUDIO_EXTS.some(ext => val.toLowerCase().endsWith(ext));
@@ -234,6 +250,7 @@ export default function JobsPage() {
         if (pathsRef.current) pathsRef.current.value = '';
         setFileCount(null);
         if (xmlRef.current) xmlRef.current.value = '';
+        setXmlPreview(null);
         if (skipSummaryRef.current) skipSummaryRef.current.checked = false;
         if (audioInputRef.current) audioInputRef.current.value = '';
         if (xmlInputRef.current) xmlInputRef.current.value = '';
@@ -328,6 +345,21 @@ export default function JobsPage() {
     if (audioInputRef.current) audioInputRef.current.value = '';
   };
 
+  // Surface what the ICM report contains and prefill the editable job
+  // metadata fields (defendant name) so the operator can tweak them before
+  // the job starts — the fields above remain the source of truth.
+  const applyXmlPreview = (preview: XmlPreview | null | undefined) => {
+    if (!preview || !preview.parsed) {
+      setXmlPreview(preview ?? null);
+      return;
+    }
+    setXmlPreview(preview);
+    const names = preview.inmate_names || [];
+    if (names.length === 1 && defendantNameRef.current && !defendantNameRef.current.value.trim()) {
+      defendantNameRef.current.value = titleCaseName(names[0]);
+    }
+  };
+
   const handleXmlUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -342,6 +374,7 @@ export default function JobsPage() {
         if (data?.path && xmlRef.current) {
           xmlRef.current.value = data.path;
         }
+        applyXmlPreview(data?.preview);
       } else {
         const err = await safeJson(res);
         setError(err?.detail || 'Upload failed');
@@ -351,6 +384,23 @@ export default function JobsPage() {
     }
     setUploading(false);
     if (xmlInputRef.current) xmlInputRef.current.value = '';
+  };
+
+  // Pasted (not uploaded) XML paths get previewed when the field loses focus.
+  const handleXmlPathBlur = async () => {
+    const path = xmlRef.current?.value.trim();
+    if (!path) { setXmlPreview(null); return; }
+    try {
+      const res = await fetch(`${API}/xml/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      if (res.ok) {
+        const data = await safeJson(res);
+        applyXmlPreview(data?.preview);
+      }
+    } catch { }
   };
 
   const handleScanFolder = async () => {
@@ -553,6 +603,7 @@ export default function JobsPage() {
                   ref={xmlRef}
                   type="text"
                   placeholder={'Upload XML or paste path (e.g. /Users/you/calls/ICM_report.xml)'}
+                  onBlur={handleXmlPathBlur}
                   className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent font-mono"
                 />
                 <input
@@ -571,6 +622,34 @@ export default function JobsPage() {
                   {uploading ? 'Uploading...' : 'Upload XML...'}
                 </button>
               </div>
+              {xmlPreview && (
+                xmlPreview.parsed ? (
+                  <div className="mt-2 text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200 space-y-0.5">
+                    <p className="font-medium text-slate-700">
+                      Metadata parsed: {xmlPreview.call_count} call record{xmlPreview.call_count !== 1 ? 's' : ''}
+                      {xmlPreview.unique_numbers ? `, ${xmlPreview.unique_numbers} outside number${xmlPreview.unique_numbers !== 1 ? 's' : ''}` : ''}
+                    </p>
+                    {(xmlPreview.inmate_names?.length ?? 0) > 0 && (
+                      <p>Inmate{(xmlPreview.inmate_names!.length !== 1) ? 's' : ''}: {xmlPreview.inmate_names!.map(titleCaseName).join(', ')}</p>
+                    )}
+                    {xmlPreview.date_range && (
+                      <p>Dates: {xmlPreview.date_range.start} to {xmlPreview.date_range.end}</p>
+                    )}
+                    {(xmlPreview.facilities?.length ?? 0) > 0 && (
+                      <p>Housing: {xmlPreview.facilities!.join(', ')}</p>
+                    )}
+                    <p className="text-slate-400">
+                      This metadata flows onto transcript covers, the call index, and the case report.
+                      Adjust the Case Name and Defendant Name fields above before starting if needed.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 border border-amber-200">
+                    Could not parse call records from this XML. The job will still run, but transcript covers
+                    and reports will be missing call dates, phone numbers, and inmate names.
+                  </div>
+                )
+              )}
             </div>
           </div>
           <div>

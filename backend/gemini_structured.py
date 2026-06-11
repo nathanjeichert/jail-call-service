@@ -99,6 +99,7 @@ GEMINI_SUMMARY_JSON_INSTRUCTIONS = (
     "in two summary pages, but for unusually dense and highly relevant calls you may return more "
     "when warranted, up to 21 notes total. "
     "If more moments seem arguable, omit weaker or redundant ones so the strongest notes fit first.\n"
+    "Avoid em dashes in reason, identity, and brief-summary prose; use colons, commas, or separate sentences instead.\n"
     "Set identity_of_outside_party to null when the caller cannot be reasonably identified.\n"
     "Ignore any transcript lines spoken by AUTOMATED MESSAGE when choosing notes or writing the brief summary."
 )
