@@ -186,14 +186,16 @@ async def _summarize_with_engine(job_id, call, engine: SummarizationEngine, prom
     return normalize_summary_text(summary_text, line_entries), usage
 
 
-def _transcript_title_data(call: CallResult, case_name: str) -> dict:
+def _transcript_title_data(call: CallResult, job: Job) -> dict:
+    """Cover-sheet facts for a call. The defendant falls back to the job's
+    name when the ICM report did not supply one, matching the speaker labels."""
     stem = call_stem(call.index, call.filename)
     return {
-        "CASE_NAME": case_name,
+        "CASE_NAME": job.case_name,
         "FILE_NAME": call.filename,
         "AUDIO_FILENAME": os.path.basename(call.mp3_path) if call.mp3_path else f"{stem}.mp3",
         "FILE_DURATION": format_duration(call.duration_seconds),
-        "INMATE_NAME": call.inmate_name or "",
+        "INMATE_NAME": call.inmate_name or job.defendant_name or "",
         "CALL_DATETIME": call.call_datetime_str or "",
         "FACILITY": call.facility or "",
         "OUTSIDE_NUMBER_FMT": call.outside_number_fmt or "",
@@ -202,12 +204,12 @@ def _transcript_title_data(call: CallResult, case_name: str) -> dict:
     }
 
 
-async def _generate_pdf_one(job_id, call, case_name, transcripts_dir, transcripts_no_summary_dir, executor) -> CallResult:
+async def _generate_pdf_one(job_id, call, job, transcripts_dir, transcripts_no_summary_dir, executor) -> CallResult:
     """Generate both PDF variants (with and without summary) for a single call."""
     from .delivery.transcript_pdf import create_pdf
 
     stem = call_stem(call.index, call.filename)
-    title_data = _transcript_title_data(call, case_name)
+    title_data = _transcript_title_data(call, job)
     turns, summary, duration = call.turns, call.summary, call.duration_seconds or 0
 
     def _gen() -> str:
@@ -415,7 +417,7 @@ async def _run_pipeline(job: Job) -> None:
 
     pdf = _Stage(
         "generating_pdf", JobStage.GENERATING, n_pdf,
-        lambda c: _generate_pdf_one(job_id, c, job.case_name, transcripts_dir, transcripts_no_summary_dir, pdf_executor),
+        lambda c: _generate_pdf_one(job_id, c, job, transcripts_dir, transcripts_no_summary_dir, pdf_executor),
         _pdf_fail, asyncio.Queue(),
     )
     summarize = _Stage(

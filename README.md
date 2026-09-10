@@ -1,73 +1,84 @@
 # Jail Call Service
 
-Local-first batch processing tool for G.729 jail call recordings.
-Takes a folder of WAV files and delivers a zip with transcripts, audio, and offline review assets.
+Local-first batch processing for G.729 jail call recordings. Takes a folder
+of WAV files (plus the provider's ICM metadata XML) and delivers a zip with
+per-call transcripts, audio, an offline viewer and search index, a case
+report, and a reviewer's guide.
 
 ## Setup
 
 ```bash
-# 1. Install Python dependencies
+# 1. Python dependencies (use the pyenv interpreter, 3.12)
 pip install -r requirements.txt
+python -m playwright install chromium        # headless Chromium for PDF rendering
 
-# 2. Set up API keys
-cp .env.example .env
-# Edit .env with your AssemblyAI and Gemini API keys
+# 2. Keys and settings
+cp .env.example .env                          # fill in what you use
 
-# 3. Install frontend dependencies
+# 3. Frontend dependencies
 cd frontend && npm install && cd ..
 
-# 4. (Optional) Install local transcription engine
-# Place the fluidaudiocli binary at bin/fluidaudiocli
-# Build from source: https://github.com/FluidInference/FluidAudio (requires Xcode)
-# Or run the GitHub Actions workflow: .github/workflows/build-fluidaudio.yml
+# 4. (Optional) local transcription engine
+#    Place the fluidaudiocli binary at bin/fluidaudiocli
+#    (build from https://github.com/FluidInference/FluidAudio, or run
+#    .github/workflows/build-fluidaudio.yml). Models download on first use.
 
-# 5. Start everything
-./run.sh
-# Open http://localhost:3000
+# 5. Run
+./run.sh                                      # backend :8000 + frontend :3000
 ```
 
-## Transcription Engines
+Requirements: Python 3.11+, Node 20.9+, `ffmpeg` on PATH (`brew install ffmpeg`).
 
-| Engine | Type | Speed (17-min call) | Requirements |
-|--------|------|---------------------|--------------|
-| **AssemblyAI** | Cloud API | ~30s (depends on queue) | API key |
-| **Parakeet** | Local (CoreML) | ~21s on M2 | `bin/fluidaudiocli` binary |
+## Engines
 
-Select the engine per-job from the UI. The local engine uses NVIDIA Parakeet TDT 0.6b v2 via FluidAudio CoreML, running on Apple's Neural Engine. No API key or internet needed after initial model download.
+Selectable per job in the UI. Any transcription engine pairs with any
+summarization engine; the rest of the pipeline is engine-agnostic.
+
+| Stage | Engine | Runs | Needs |
+|---|---|---|---|
+| Transcription | AssemblyAI (multichannel) | cloud | `ASSEMBLYAI_API_KEY` |
+| Transcription | Parakeet TDT 0.6b v2 via FluidAudio CoreML | local (Apple Neural Engine) | `bin/fluidaudiocli` |
+| Summarization | Gemini Flash (structured JSON) | cloud | `GEMINI_API_KEY` |
+| Summarization | Gemma 4 E2B via mlx-lm | local (Metal) | `mlx-lm`, ~4 GB RAM |
 
 ## Usage
 
 1. Open http://localhost:3000
-2. Create a job: provide case name, choose transcription engine, and path to WAV files
-3. Click "Start Processing" — the pipeline runs automatically
-4. When done, click "Review Transcripts" to check/edit summaries
-5. Click "Approve All & Package" → "Download Zip"
+2. New job: case name, defendant, engines, speaker side, then upload or paste
+   the audio paths (and the `ICM_report.xml` if you have it)
+3. The pipeline starts automatically; pause/resume/retry from the job page
+4. When done, **Review Transcripts** to check or edit summaries
+5. **Approve All & Package**, then **Download Zip**
 
-## Deliverable Zip Contents
+## Delivery zip
 
 ```
 {CaseName}/
-├── transcripts/          # PDF per call (summary on page 2)
-├── audio/                # Converted MP3 files
-├── viewer.html           # Multi-call browser player
-├── search.html           # Searchable call index
-├── case-report.pdf       # Case-level findings and caller stats
-└── guide.pdf             # Instructions for the reviewer
+├── transcripts/              # PDF per call: cover, AI summary sheet(s), ruled transcript
+├── transcripts-no-summary/   # same PDFs without the summary sheet
+├── audio/                    # converted MP3s
+├── viewer.html               # offline player with synced transcript and review cues
+├── search.html               # searchable call index (the client's home page)
+├── case-report.pdf           # case-level findings, caller stats, timeline
+└── guide.pdf                 # how to use the package
 ```
 
-## Pipeline Stages
+## Pipeline
 
-1. **Convert** — repairs corrupted G.729 WAV headers, converts to MP3 (parallel)
-2. **Transcribe** — AssemblyAI multichannel or Parakeet local (inmate/outside party)
-3. **Summarize** — Gemini Flash generates summaries (parallel, rate-limited)
-4. **Generate** — PDFs, search HTML, viewer HTML, guide PDF, case report
-5. **Package** — Zips the deliverable folder
+1. **Convert** — repairs zeroed G.729 WAV headers on a working copy, converts to MP3 (parallel)
+2. **Transcribe** — two channels → speaker-attributed turns with word timestamps
+3. **Summarize** — automated-message detection, then a structured per-call summary
+4. **Generate** — transcript PDFs, then search/viewer/guide/case report
+5. **Package** — zips the output folder
 
-## Requirements
+Every stage transition is checkpointed in SQLite (`jobs/jail_calls.db`), so
+a paused or interrupted job resumes without re-spending API credits.
 
-- Python 3.11+
-- Node.js 20.9+
-- ffmpeg (must be on PATH: `brew install ffmpeg`)
-- Gemini API key (or GOOGLE_API_KEY)
-- AssemblyAI API key (only if using cloud transcription)
-- `bin/fluidaudiocli` (only if using local transcription)
+## Development
+
+```bash
+python -m pytest tests/                       # unit + regression suite
+python tests/make_test_package.py             # synthetic delivery package for manual review
+```
+
+`AGENTS.md` is the architecture reference for the codebase.

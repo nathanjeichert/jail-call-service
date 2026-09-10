@@ -4,42 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-const API = '/api';
-
-type CallSummary = {
-  index: number;
-  filename: string;
-  status: string;
-  duration_seconds?: number;
-  has_transcript: boolean;
-  has_summary: boolean;
-  repaired: boolean;
-  error?: string;
-  inmate_name?: string;
-  call_datetime_str?: string;
-  outside_number_fmt?: string;
-  facility?: string;
-  call_outcome?: string;
-};
-
-type JobDetail = {
-  id: string;
-  case_name: string;
-  input_folder: string;
-  stage: string;
-  total_calls: number;
-  done_calls: number;
-  error_calls: number;
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
-  has_zip: boolean;
-  error?: string;
-  calls: CallSummary[];
-  defendant_name?: string;
-  summary_prompt?: string;
-  speaker_assignment?: string;
-};
+import {
+  api, errorMessage, extractCaseContext, formatDuration, formatElapsed, isRunning, IDLE_STAGES,
+  type JobAction, type JobDetail,
+} from '@/lib/api';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'text-slate-400',
@@ -72,38 +40,25 @@ const STAGE_STEPS = [
   { key: 'done', label: 'Done' },
 ];
 
-function formatDuration(s?: number): string {
-  if (!s) return '-';
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-}
+const ACTION_VERBS: Record<JobAction, string> = {
+  start: 'start job',
+  pause: 'pause',
+  resume: 'resume',
+  'retry-errors': 'retry',
+  package: 'package',
+};
 
-function formatElapsed(startedAt?: string): string {
-  if (!startedAt) return '';
-  const start = new Date(startedAt).getTime();
-  if (isNaN(start)) return '';
-  const elapsed = Math.max(0, Math.floor((Date.now() - start) / 1000));
-  const h = Math.floor(elapsed / 3600);
-  const m = Math.floor((elapsed % 3600) / 60);
-  const s = elapsed % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
+const SSE_MAX_RETRIES = 5;
+const POLL_INTERVAL_MS = 3000;
 
 function StageIndicator({ stage }: { stage: string }) {
-  const stageOrder = STAGE_STEPS.map(s => s.key);
-  // For "paused" state, find where we were paused (keep that step highlighted)
-  const effectiveStage = stage === 'paused' || stage === 'error' ? stage : stage;
-  const currentIdx = stageOrder.indexOf(effectiveStage);
-
+  const currentIdx = STAGE_STEPS.findIndex(s => s.key === stage);
   return (
     <div className="flex items-center gap-0 flex-wrap">
       {STAGE_STEPS.map((step, idx) => {
         const isDone = stage === 'done' || (currentIdx >= 0 && idx < currentIdx);
         const isActive = step.key === stage;
-        const isPaused = stage === 'paused' && idx === 0; // show first incomplete step
+        const isPaused = stage === 'paused' && idx === 0;
         return (
           <div key={step.key} className="flex items-center">
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -137,59 +92,51 @@ export default function JobDetailPage() {
 
   const [job, setJob] = useState<JobDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [starting, setStarting] = useState(false);
-  const [packaging, setPackaging] = useState(false);
-  const [pausing, setPausing] = useState(false);
-  const [resuming, setResuming] = useState(false);
-  const [retrying, setRetrying] = useState(false);
+  const [busy, setBusy] = useState<JobAction | null>(null);
   const [fetchError, setFetchError] = useState('');
-  const [elapsed, setElapsed] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+
   const eventSourceRef = useRef<EventSource | null>(null);
   const initialLoadDone = useRef(false);
+  const sseRetriesRef = useRef(0);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadJob = async () => {
+  const loadJob = async (): Promise<JobDetail | null> => {
     try {
-      const res = await fetch(`${API}/jobs/${jobId}`);
-      if (!res.ok) {
-        // Only redirect on the initial load — polling 404s should not bounce the user
-        if (!initialLoadDone.current) { router.push('/'); }
-        else { setFetchError(`Failed to load job: ${res.statusText}`); }
-        return null;
-      }
-      const data = await res.json();
+      const data = await api.jobs.get(jobId);
       setJob(data);
       setFetchError('');
       return data;
     } catch (e) {
-      setFetchError(`Failed to load job: ${e instanceof Error ? e.message : String(e)}`);
+      // Only redirect on the initial load; a transient error while polling
+      // should not bounce the user off the page.
+      if (!initialLoadDone.current) router.push('/');
+      else setFetchError(`Failed to load job: ${errorMessage(e)}`);
+      return null;
     }
-    setLoading(false);
-    return null;
   };
 
-  const sseRetriesRef = useRef(0);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPollingFallback = () => {
+  const stopPolling = () => {
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
   };
 
-  const startPollingFallback = () => {
-    stopPollingFallback();
-    pollingRef.current = setInterval(loadJob, 3000);
+  const startPolling = () => {
+    stopPolling();
+    pollingRef.current = setInterval(loadJob, POLL_INTERVAL_MS);
   };
 
+  // Live progress over SSE, with retry and a polling fallback.
   const connectSSE = () => {
-    if (eventSourceRef.current) eventSourceRef.current.close();
-    stopPollingFallback();
-    const es = new EventSource(`${API}/jobs/${jobId}/events`);
+    eventSourceRef.current?.close();
+    stopPolling();
+    const es = new EventSource(api.jobs.eventsUrl(jobId));
     es.onmessage = async (e) => {
       sseRetriesRef.current = 0;
       const event = JSON.parse(e.data);
       if (event.type === 'done' || event.type === 'error') {
         es.close();
         eventSourceRef.current = null;
-        stopPollingFallback();
+        stopPolling();
         await loadJob();
       } else if (event.type !== 'ping') {
         await loadJob();
@@ -199,136 +146,76 @@ export default function JobDetailPage() {
       es.close();
       eventSourceRef.current = null;
       sseRetriesRef.current += 1;
-      if (sseRetriesRef.current < 5) {
+      if (sseRetriesRef.current < SSE_MAX_RETRIES) {
         setTimeout(connectSSE, Math.min(1000 * sseRetriesRef.current, 5000));
       } else {
-        startPollingFallback();
+        startPolling();
       }
     };
     eventSourceRef.current = es;
   };
 
   useEffect(() => {
-    let elapsedInterval: ReturnType<typeof setInterval> | null = null;
-
     loadJob().then(data => {
       initialLoadDone.current = true;
       setLoading(false);
-      if (data && !['created', 'done', 'error', 'paused'].includes(data.stage)) {
-        connectSSE();
-      }
-      // Polling fallback (also serves as SSE fallback after retries exhausted)
-      startPollingFallback();
-      // Elapsed time ticker
-      elapsedInterval = setInterval(() => {
-        setJob(prev => {
-          if (prev?.started_at && !['created', 'done'].includes(prev.stage)) {
-            setElapsed(formatElapsed(prev.started_at));
-          } else if (prev?.started_at && prev?.completed_at) {
-            // Show final elapsed
-            const start = new Date(prev.started_at).getTime();
-            const end = new Date(prev.completed_at).getTime();
-            const secs = Math.max(0, Math.floor((end - start) / 1000));
-            const h = Math.floor(secs / 3600);
-            const m = Math.floor((secs % 3600) / 60);
-            const s = secs % 60;
-            setElapsed(h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`);
-          }
-          return prev;
-        });
-      }, 1000);
+      if (data && isRunning(data.stage)) connectSSE();
+      startPolling();
     });
-
+    const ticker = setInterval(() => setNow(Date.now()), 1000);
     return () => {
       eventSourceRef.current?.close();
-      stopPollingFallback();
-      if (elapsedInterval) clearInterval(elapsedInterval);
+      stopPolling();
+      clearInterval(ticker);
     };
   }, [jobId]);
 
-  const handleStart = async () => {
-    setStarting(true);
+  const runAction = async (action: JobAction, reconnect: boolean) => {
+    setBusy(action);
     setFetchError('');
     try {
-      const res = await fetch(`${API}/jobs/${jobId}/start`, { method: 'POST' });
-      if (res.ok) {
-        connectSSE();
-        await loadJob();
-      } else {
-        setFetchError(`Failed to start job: ${res.statusText}`);
-      }
-    } catch (e) { setFetchError(`Failed to start job: ${e instanceof Error ? e.message : String(e)}`); }
-    setStarting(false);
-  };
-
-  const handlePackage = async () => {
-    setPackaging(true);
-    setFetchError('');
-    try {
-      const res = await fetch(`${API}/jobs/${jobId}/package`, { method: 'POST' });
-      if (res.ok) {
-        connectSSE();
-        await loadJob();
-      } else {
-        setFetchError(`Failed to package: ${res.statusText}`);
-      }
-    } catch (e) { setFetchError(`Failed to package: ${e instanceof Error ? e.message : String(e)}`); }
-    setPackaging(false);
-  };
-
-  const handlePause = async () => {
-    setPausing(true);
-    setFetchError('');
-    try {
-      const res = await fetch(`${API}/jobs/${jobId}/pause`, { method: 'POST' });
-      if (res.ok) await loadJob();
-      else setFetchError(`Failed to pause: ${res.statusText}`);
-    } catch (e) { setFetchError(`Failed to pause: ${e instanceof Error ? e.message : String(e)}`); }
-    setPausing(false);
-  };
-
-  const handleResume = async () => {
-    setResuming(true);
-    setFetchError('');
-    try {
-      const res = await fetch(`${API}/jobs/${jobId}/resume`, { method: 'POST' });
-      if (res.ok) { connectSSE(); await loadJob(); }
-      else setFetchError(`Failed to resume: ${res.statusText}`);
-    } catch (e) { setFetchError(`Failed to resume: ${e instanceof Error ? e.message : String(e)}`); }
-    setResuming(false);
-  };
-
-  const handleRetryErrors = async () => {
-    setRetrying(true);
-    setFetchError('');
-    try {
-      const res = await fetch(`${API}/jobs/${jobId}/retry-errors`, { method: 'POST' });
-      if (res.ok) { connectSSE(); await loadJob(); }
-      else setFetchError(`Failed to retry: ${res.statusText}`);
-    } catch (e) { setFetchError(`Failed to retry: ${e instanceof Error ? e.message : String(e)}`); }
-    setRetrying(false);
+      await api.jobs.action(jobId, action);
+      if (reconnect) connectSSE();
+      await loadJob();
+    } catch (e) {
+      setFetchError(`Failed to ${ACTION_VERBS[action]}: ${errorMessage(e)}`);
+    }
+    setBusy(null);
   };
 
   const handleDelete = async () => {
     if (!confirm('Delete this job and all its files?')) return;
     try {
-      const res = await fetch(`${API}/jobs/${jobId}`, { method: 'DELETE' });
-      if (res.ok) router.push('/');
-    } catch { }
+      await api.jobs.delete(jobId);
+      router.push('/');
+    } catch (e) {
+      setFetchError(`Failed to delete: ${errorMessage(e)}`);
+    }
   };
 
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-slate-400">Loading...</div>;
   }
-
   if (!job) {
     return <div className="flex items-center justify-center h-64 text-red-500">Job not found.</div>;
   }
 
-  const isRunning = !['created', 'done', 'error', 'paused'].includes(job.stage);
+  const running = isRunning(job.stage);
   const pct = job.total_calls > 0 ? Math.round((job.done_calls / job.total_calls) * 100) : 0;
   const jobTitle = job.case_name || 'Jail Calls';
   const inmateSpeakerSide = job.speaker_assignment === 'right_inmate' ? 'Right' : 'Left';
+  const caseContext = extractCaseContext(job.summary_prompt);
+  const elapsed = job.stage === 'created' ? '' : formatElapsed(job.started_at, job.completed_at, now);
+
+  const actionButton = (action: JobAction, label: string, busyLabel: string, className: string, reconnect = true) => (
+    <button
+      onClick={() => runAction(action, reconnect)}
+      disabled={busy === action}
+      className={`px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors ${className}`}
+    >
+      {busy === action ? busyLabel : label}
+    </button>
+  );
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -339,11 +226,8 @@ export default function JobDetailPage() {
           <span>/</span>
           <span className="text-slate-900 font-medium">{jobTitle}</span>
         </div>
-        {['created', 'done', 'error', 'paused'].includes(job.stage) && (
-          <button
-            onClick={handleDelete}
-            className="text-xs text-slate-400 hover:text-red-600 transition-colors"
-          >
+        {IDLE_STAGES.includes(job.stage) && (
+          <button onClick={handleDelete} className="text-xs text-slate-400 hover:text-red-600 transition-colors">
             Delete Job
           </button>
         )}
@@ -355,59 +239,21 @@ export default function JobDetailPage() {
           <div>
             <h1 className="text-xl font-bold text-slate-900">{jobTitle}</h1>
             <p className="text-sm text-slate-400 font-mono mt-1">{job.input_folder}</p>
-            {job.summary_prompt?.includes('CASE CONTEXT:\n') && (
+            {caseContext && (
               <div className="mt-3 text-sm text-slate-600 bg-slate-50 rounded-lg px-4 py-3 border border-slate-200">
                 <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Case Context</div>
-                <div className="whitespace-pre-wrap">{job.summary_prompt.split('CASE CONTEXT:\n').pop()}</div>
+                <div className="whitespace-pre-wrap">{caseContext}</div>
               </div>
             )}
           </div>
           <div className="flex gap-3 flex-shrink-0">
-            {job.stage === 'created' && (
-              <button
-                onClick={handleStart}
-                disabled={starting}
-                className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors"
-              >
-                {starting ? 'Starting...' : 'Start Existing Job'}
-              </button>
-            )}
-            {isRunning && (
-              <button
-                onClick={handlePause}
-                disabled={pausing}
-                className="px-4 py-2 bg-amber-100 text-amber-800 text-sm font-medium rounded-lg hover:bg-amber-200 disabled:opacity-50 transition-colors"
-              >
-                {pausing ? 'Pausing...' : 'Pause'}
-              </button>
-            )}
-            {job.stage === 'paused' && (
-              <button
-                onClick={handleResume}
-                disabled={resuming}
-                className="px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 transition-colors"
-              >
-                {resuming ? 'Resuming...' : 'Resume Processing'}
-              </button>
-            )}
-            {job.error_calls > 0 && !isRunning && (
-              <button
-                onClick={handleRetryErrors}
-                disabled={retrying}
-                className="px-4 py-2 bg-red-100 text-red-800 text-sm font-medium rounded-lg hover:bg-red-200 disabled:opacity-50 transition-colors"
-              >
-                {retrying ? 'Retrying...' : `Retry ${job.error_calls} Errors`}
-              </button>
-            )}
+            {job.stage === 'created' && actionButton('start', 'Start Existing Job', 'Starting...', 'bg-slate-800 text-white hover:bg-slate-700')}
+            {running && actionButton('pause', 'Pause', 'Pausing...', 'bg-amber-100 text-amber-800 hover:bg-amber-200', false)}
+            {job.stage === 'paused' && actionButton('resume', 'Resume Processing', 'Resuming...', 'bg-slate-800 text-white hover:bg-slate-700')}
+            {job.error_calls > 0 && !running && actionButton('retry-errors', `Retry ${job.error_calls} Errors`, 'Retrying...', 'bg-red-100 text-red-800 hover:bg-red-200')}
             {job.stage === 'done' && (
               <>
-                <button
-                  onClick={handlePackage}
-                  disabled={packaging}
-                  className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                >
-                  {packaging ? 'Packaging...' : 'Re-package'}
-                </button>
+                {actionButton('package', 'Re-package', 'Packaging...', 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50')}
                 <Link
                   href={`/jobs/${jobId}/review`}
                   className="px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 transition-colors"
@@ -416,7 +262,7 @@ export default function JobDetailPage() {
                 </Link>
                 {job.has_zip && (
                   <a
-                    href={`/api/jobs/${jobId}/download`}
+                    href={api.jobs.downloadUrl(jobId)}
                     className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
                   >
                     Download Zip
@@ -427,13 +273,11 @@ export default function JobDetailPage() {
           </div>
         </div>
 
-        {/* Stage indicator */}
         <div className="mt-5">
           <StageIndicator stage={job.stage} />
         </div>
 
-        {/* Progress bar */}
-        {(isRunning || job.stage === 'paused') && (
+        {(running || job.stage === 'paused') && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-slate-500 mb-1">
               <span>{job.done_calls} / {job.total_calls} calls done</span>
@@ -464,7 +308,6 @@ export default function JobDetailPage() {
           </div>
         )}
 
-        {/* Stats */}
         <div className="mt-4 flex gap-6 text-sm">
           <div><span className="text-slate-400">Total:</span> <span className="font-medium">{job.total_calls}</span></div>
           <div><span className="text-slate-400">Done:</span> <span className="font-medium text-green-700">{job.done_calls}</span></div>

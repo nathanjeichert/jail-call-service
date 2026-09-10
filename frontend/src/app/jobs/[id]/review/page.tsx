@@ -1,53 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-const API = '/api';
-
-type Turn = {
-  speaker: string;
-  text: string;
-  timestamp?: string;
-  is_continuation: boolean;
-};
-
-type CallTranscript = {
-  index: number;
-  filename: string;
-  duration_seconds?: number;
-  turns: Turn[];
-};
-
-type CallSummary = {
-  index: number;
-  filename: string;
-  status: string;
-  duration_seconds?: number;
-  has_transcript: boolean;
-  has_summary: boolean;
-};
-
-type JobInfo = {
-  id: string;
-  case_name: string;
-  calls: CallSummary[];
-};
-
-function formatDuration(s?: number): string {
-  if (!s) return '';
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-}
+import {
+  api, ApiError, errorMessage, formatDuration,
+  type CallTranscript, type JobDetail,
+} from '@/lib/api';
 
 export default function ReviewPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id as string;
 
-  const [job, setJob] = useState<JobInfo | null>(null);
+  const [job, setJob] = useState<JobDetail | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [transcript, setTranscript] = useState<CallTranscript | null>(null);
   const [summary, setSummary] = useState('');
@@ -59,55 +26,40 @@ export default function ReviewPage() {
   const [packaging, setPackaging] = useState(false);
   const [fetchError, setFetchError] = useState('');
 
-  const loadJobInfo = async (): Promise<JobInfo | null> => {
-    try {
-      const res = await fetch(`${API}/jobs/${jobId}`);
-      if (!res.ok) {
-        if (res.status === 404) router.push('/');
-        else setFetchError(`Failed to load job: ${res.statusText}`);
-        return null;
-      }
-      const data = await res.json();
-      setJob(data);
-      setFetchError('');
-      return data;
-    } catch (e) {
-      setFetchError(`Failed to load job: ${e instanceof Error ? e.message : String(e)}`);
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    loadJobInfo().then(data => {
-      if (!data) return;
-      const firstDone = (data.calls || []).find((c: CallSummary) => c.has_transcript);
-      if (firstDone) loadCall(firstDone.index, data.id);
-    });
-  }, [jobId]);
-
-  const loadCall = async (index: number, jid?: string) => {
-    const id = jid || jobId;
+  const loadCall = async (index: number) => {
     setSelectedIndex(index);
     setLoadingTranscript(true);
     setSaveMsg('');
-
     try {
-      const [transRes, sumRes] = await Promise.all([
-        fetch(`${API}/jobs/${id}/calls/${index}/transcript`),
-        fetch(`${API}/jobs/${id}/calls/${index}/summary`),
+      const [transcriptResult, summaryResult] = await Promise.allSettled([
+        api.jobs.transcript(jobId, index),
+        api.jobs.summary(jobId, index),
       ]);
-      if (transRes.ok) setTranscript(await transRes.json());
-      else setTranscript(null);
-
-      if (sumRes.ok) {
-        const sumData = await sumRes.json();
-        setSummary(sumData.summary || '');
-        setEditedSummary(sumData.summary || '');
+      setTranscript(transcriptResult.status === 'fulfilled' ? transcriptResult.value : null);
+      if (summaryResult.status === 'fulfilled') {
+        setSummary(summaryResult.value.summary || '');
+        setEditedSummary(summaryResult.value.summary || '');
       }
       setFetchError('');
-    } catch (e) { setFetchError(`Failed to load call: ${e instanceof Error ? e.message : String(e)}`); }
+    } catch (e) {
+      setFetchError(`Failed to load call: ${errorMessage(e)}`);
+    }
     setLoadingTranscript(false);
   };
+
+  useEffect(() => {
+    api.jobs.get(jobId)
+      .then(data => {
+        setJob(data);
+        setFetchError('');
+        const firstDone = data.calls.find(c => c.has_transcript);
+        if (firstDone) loadCall(firstDone.index);
+      })
+      .catch(e => {
+        if (e instanceof ApiError && e.status === 404) router.push('/');
+        else setFetchError(`Failed to load job: ${errorMessage(e)}`);
+      });
+  }, [jobId]);
 
   const saveSummary = async () => {
     if (selectedIndex === null) return;
@@ -115,19 +67,13 @@ export default function ReviewPage() {
     setSaveMsg('');
     setFetchError('');
     try {
-      const res = await fetch(`${API}/jobs/${jobId}/calls/${selectedIndex}/summary`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ summary: editedSummary }),
-      });
-      if (res.ok) {
-        setSummary(editedSummary);
-        setSaveMsg('Saved!');
-        setTimeout(() => setSaveMsg(''), 2000);
-      } else {
-        setFetchError(`Failed to save summary: ${res.statusText}`);
-      }
-    } catch (e) { setFetchError(`Failed to save summary: ${e instanceof Error ? e.message : String(e)}`); }
+      await api.jobs.updateSummary(jobId, selectedIndex, editedSummary);
+      setSummary(editedSummary);
+      setSaveMsg('Saved!');
+      setTimeout(() => setSaveMsg(''), 2000);
+    } catch (e) {
+      setFetchError(`Failed to save summary: ${errorMessage(e)}`);
+    }
     setSaving(false);
   };
 
@@ -135,22 +81,18 @@ export default function ReviewPage() {
     setPackaging(true);
     setFetchError('');
     try {
-      const res = await fetch(`${API}/jobs/${jobId}/package`, { method: 'POST' });
-      if (res.ok) {
-        setApprovedAll(true);
-      } else {
-        setFetchError(`Failed to package: ${res.statusText}`);
-      }
-    } catch (e) { setFetchError(`Failed to package: ${e instanceof Error ? e.message : String(e)}`); }
+      await api.jobs.action(jobId, 'package');
+      setApprovedAll(true);
+    } catch (e) {
+      setFetchError(`Failed to package: ${errorMessage(e)}`);
+    }
     setPackaging(false);
   };
 
   // Warn on unsaved changes
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (editedSummary !== summary) {
-        e.preventDefault();
-      }
+      if (editedSummary !== summary) e.preventDefault();
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
@@ -160,7 +102,7 @@ export default function ReviewPage() {
     return <div className="flex items-center justify-center h-64 text-slate-400">Loading…</div>;
   }
 
-  const doneCalls = (job.calls || []).filter(c => c.has_transcript);
+  const doneCalls = job.calls.filter(c => c.has_transcript);
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100">
@@ -185,7 +127,7 @@ export default function ReviewPage() {
                 }`}
               >
                 <div className="text-xs font-medium text-slate-700 truncate">{call.filename}</div>
-                <div className="text-xs text-slate-400 mt-0.5">{formatDuration(call.duration_seconds)}</div>
+                <div className="text-xs text-slate-400 mt-0.5">{formatDuration(call.duration_seconds, '')}</div>
               </button>
             ))
           )}
@@ -193,7 +135,7 @@ export default function ReviewPage() {
         <div className="p-4 border-t border-slate-100">
           {approvedAll ? (
             <a
-              href={`/api/jobs/${jobId}/download`}
+              href={api.jobs.downloadUrl(jobId)}
               className="w-full block text-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
             >
               Download Zip
@@ -227,12 +169,11 @@ export default function ReviewPage() {
               </div>
             )}
 
-            {/* Header */}
             <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">{transcript?.filename}</h2>
                 {transcript?.duration_seconds && (
-                  <span className="text-xs text-slate-400">{formatDuration(transcript.duration_seconds)}</span>
+                  <span className="text-xs text-slate-400">{formatDuration(transcript.duration_seconds, '')}</span>
                 )}
               </div>
             </div>
@@ -248,13 +189,14 @@ export default function ReviewPage() {
                     <div className="space-y-1">
                       {transcript?.turns.map((turn, i) => (
                         <div key={i} className="flex gap-3 text-sm">
-                          {!turn.is_continuation && (
+                          {turn.is_continuation ? (
+                            <span className="min-w-[140px] shrink-0" />
+                          ) : (
                             <span className="font-semibold text-slate-600 min-w-[140px] text-right shrink-0">
                               {turn.timestamp && <span className="font-mono text-slate-400 text-xs mr-1">{turn.timestamp}</span>}
                               {turn.speaker}:
                             </span>
                           )}
-                          {turn.is_continuation && <span className="min-w-[140px] shrink-0" />}
                           <p className="text-slate-800 leading-relaxed">{turn.text}</p>
                         </div>
                       ))}

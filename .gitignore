@@ -24,3 +24,6 @@ test-output/
 # Real call recordings and local design scratch (never commit; repo is public)
 test files/
 design-mockups/
+
+# Per-machine Claude Code settings
+.claude/settings.local.json
