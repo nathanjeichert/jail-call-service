@@ -16,17 +16,6 @@ ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
 
 
-def validate_api_keys() -> None:
-    """Log a warning at startup for missing cloud keys (local engines don't need them)."""
-    missing = []
-    if not ASSEMBLYAI_API_KEY:
-        missing.append("ASSEMBLYAI_API_KEY")
-    if not GEMINI_API_KEY:
-        missing.append("GEMINI_API_KEY (or GOOGLE_API_KEY)")
-    if missing:
-        msg = f"Missing required API keys in .env: {', '.join(missing)}. Jobs will fail without these."
-        logger.warning(msg)
-
 # Paths
 _REPO_ROOT = os.path.dirname(os.path.dirname(__file__))
 JOBS_DIR = os.path.join(_REPO_ROOT, "jobs")

@@ -7,19 +7,12 @@ import Link from 'next/link';
 import { ToggleGroup } from '@/components/ToggleGroup';
 import {
   api, errorMessage, extractCaseContext, isRunning,
-  type AppConfig, type CreateJobBody, type JobSummary, type XmlPreview,
+  type AppConfig, type CreateJobBody, type EngineInfo, type JobSummary, type XmlPreview,
 } from '@/lib/api';
 
 const AUDIO_EXTS = ['.wav', '.mp3', '.m4a'];
 const DEFAULT_AUTO_MESSAGE_MODE = 'label';
 const DEFAULT_SPEAKER_ASSIGNMENT = 'left_inmate';
-
-const ENGINE_LABELS: Record<string, string> = {
-  assemblyai: 'AssemblyAI (Cloud)',
-  parakeet: 'Parakeet (Local)',
-  gemini: 'Gemini (Cloud)',
-  gemma: 'Gemma 4 E2B (Local)',
-};
 
 const SPEAKER_OPTIONS = [
   { value: 'left_inmate', label: 'Left = Inmate / Defendant' },
@@ -302,11 +295,16 @@ export default function JobsPage() {
   const warnings: string[] = [];
   if (config) {
     if (!config.ffmpeg_found) warnings.push('ffmpeg not found. Set FFMPEG_PATH in .env or install ffmpeg to PATH.');
-    if (!config.assemblyai_configured && activeTranscriptionEngine === 'assemblyai') warnings.push('ASSEMBLYAI_API_KEY not set in .env. AssemblyAI transcription will fail (use Parakeet for local transcription).');
-    if (!config.gemini_configured && activeSummarizationEngine === 'gemini') warnings.push('GEMINI_API_KEY not set in .env. Gemini summaries will fail (use Gemma or Skip Summary for testing).');
+    // An installed engine that still needs a key or binary: say what, from the registry.
+    const notReady = (engines: EngineInfo[], id: string) => engines.find(e => e.id === id && e.installed && !e.ready);
+    const t = notReady(config.transcription_engines, activeTranscriptionEngine);
+    if (t) warnings.push(`${t.label}: ${t.requirement}. Jobs using it will fail.`);
+    const s = notReady(config.summarization_engines, activeSummarizationEngine);
+    if (s) warnings.push(`${s.label}: ${s.requirement}. Jobs using it will fail unless Skip Summary is checked.`);
   }
 
-  const engineOptions = (engines: string[]) => engines.map(value => ({ value, label: ENGINE_LABELS[value] || value }));
+  const engineOptions = (engines?: EngineInfo[]) =>
+    (engines || []).filter(e => e.installed).map(e => ({ value: e.id, label: e.label }));
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -350,13 +348,13 @@ export default function JobsPage() {
             />
             <ToggleGroup
               label="Transcription Engine"
-              options={engineOptions(config?.available_transcription_engines || ['assemblyai'])}
+              options={engineOptions(config?.transcription_engines)}
               value={activeTranscriptionEngine}
               onChange={setSelectedEngine}
             />
             <ToggleGroup
               label="Summarization Engine"
-              options={engineOptions(config?.available_summarization_engines || ['gemini'])}
+              options={engineOptions(config?.summarization_engines)}
               value={activeSummarizationEngine}
               onChange={setSelectedSumEngine}
             />

@@ -77,17 +77,24 @@ export type CreateJobBody = {
   speaker_assignment: string;
 };
 
+/** One engine as the backend registry describes it; the UI names no engines itself. */
+export type EngineInfo = {
+  id: string;
+  label: string;
+  local: boolean;
+  installed: boolean;
+  ready: boolean;
+  requirement: string;
+};
+
 export type AppConfig = {
-  assemblyai_configured: boolean;
-  gemini_configured: boolean;
   ffmpeg_found: boolean;
   ffmpeg_path: string;
   default_summary_prompt: string;
-  gemini_model: string;
   default_transcription_engine: string;
-  available_transcription_engines: string[];
+  transcription_engines: EngineInfo[];
   default_summarization_engine: string;
-  available_summarization_engines: string[];
+  summarization_engines: EngineInfo[];
 };
 
 export type XmlPreview = {

@@ -1,16 +1,29 @@
 """
 Shared helpers for job prompt composition and engine/runtime selection.
+
+Engine facts (local or cloud, concurrency cap, what a job still needs
+before it can run) come from the stage registries in
+``backend/engine_registry.py``; nothing here names an engine.
 """
 
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from . import config as cfg
+from .engine_registry import EngineRegistry, EngineSpec
 
 CASE_CONTEXT_MARKER = "\n\nCASE CONTEXT:\n"
 AUTO_MESSAGE_MODES = frozenset({"exclude", "label"})
-LOCAL_TRANSCRIPTION_ENGINES = frozenset({"parakeet"})
-LOCAL_SUMMARIZATION_ENGINES = frozenset({"gemma"})
+
+
+def _transcription_registry() -> EngineRegistry:
+    from .transcription import REGISTRY
+    return REGISTRY
+
+
+def _summarization_registry() -> EngineRegistry:
+    from .summarization import REGISTRY
+    return REGISTRY
 
 
 def normalize_optional_name(value: Optional[str]) -> Optional[str]:
@@ -59,12 +72,22 @@ class RuntimeSelection:
     auto_message_mode: Optional[str]
 
     @property
+    def transcription_spec(self) -> Optional[EngineSpec]:
+        return _transcription_registry().find(self.transcription_engine)
+
+    @property
+    def summarization_spec(self) -> Optional[EngineSpec]:
+        return _summarization_registry().find(self.summarization_engine)
+
+    @property
     def transcription_is_local(self) -> bool:
-        return self.transcription_engine in LOCAL_TRANSCRIPTION_ENGINES
+        spec = self.transcription_spec
+        return bool(spec and spec.local)
 
     @property
     def summarization_is_local(self) -> bool:
-        return self.summarization_engine in LOCAL_SUMMARIZATION_ENGINES
+        spec = self.summarization_spec
+        return bool(spec and spec.local)
 
     @property
     def all_local(self) -> bool:
@@ -80,11 +103,13 @@ class RuntimeSelection:
         return self.auto_message_mode
 
     def transcription_workers(self, total_calls: int) -> int:
-        limit = cfg.MAX_PARAKEET_CONCURRENT if self.transcription_is_local else cfg.MAX_TRANSCRIPTION_CONCURRENT
+        spec = self.transcription_spec
+        limit = (spec.max_concurrency if spec else None) or cfg.MAX_TRANSCRIPTION_CONCURRENT
         return min(limit, max(1, total_calls))
 
     def summarization_workers(self, total_calls: int) -> int:
-        limit = cfg.MAX_GEMMA_CONCURRENT if self.summarization_is_local else cfg.MAX_SUMMARIZATION_CONCURRENT
+        spec = self.summarization_spec
+        limit = (spec.max_concurrency if spec else None) or cfg.MAX_SUMMARIZATION_CONCURRENT
         return min(limit, max(1, total_calls))
 
 
@@ -107,39 +132,18 @@ def resolve_runtime_selection(
     )
 
 
+def _require_ready(registry: EngineRegistry, name: str) -> None:
+    spec = registry.find(name)
+    if spec is None or not spec.installed():
+        available = ", ".join(registry.available()) or "none"
+        raise RuntimeError(f"{registry.stage.capitalize()} engine '{name}' is unavailable. Available: {available}")
+    requirement = spec.requirement()
+    if requirement:
+        raise RuntimeError(f"{spec.label}: {requirement}")
+
+
 def validate_runtime_selection(selection: RuntimeSelection) -> None:
-    from .summarization import AVAILABLE_ENGINES as AVAILABLE_SUMMARIZATION_ENGINES
-    from .transcription import AVAILABLE_ENGINES as AVAILABLE_TRANSCRIPTION_ENGINES
-
-    if selection.transcription_engine not in AVAILABLE_TRANSCRIPTION_ENGINES:
-        available = ", ".join(AVAILABLE_TRANSCRIPTION_ENGINES) or "none"
-        raise RuntimeError(
-            f"Transcription engine '{selection.transcription_engine}' is unavailable. "
-            f"Available: {available}"
-        )
-
-    if (
-        not selection.skip_summary
-        and selection.summarization_engine not in AVAILABLE_SUMMARIZATION_ENGINES
-    ):
-        available = ", ".join(AVAILABLE_SUMMARIZATION_ENGINES) or "none"
-        raise RuntimeError(
-            f"Summarization engine '{selection.summarization_engine}' is unavailable. "
-            f"Available: {available}"
-        )
-
-    if not selection.transcription_is_local and not cfg.ASSEMBLYAI_API_KEY:
-        raise RuntimeError(
-            f"ASSEMBLYAI_API_KEY is required for transcription engine "
-            f"'{selection.transcription_engine}' but is not set in .env"
-        )
-
-    if (
-        not selection.skip_summary
-        and not selection.summarization_is_local
-        and not cfg.GEMINI_API_KEY
-    ):
-        raise RuntimeError(
-            f"GEMINI_API_KEY is required for summarization engine "
-            f"'{selection.summarization_engine}' but is not set in .env"
-        )
+    """Raise before any work starts if a selected engine cannot run."""
+    _require_ready(_transcription_registry(), selection.transcription_engine)
+    if not selection.skip_summary:
+        _require_ready(_summarization_registry(), selection.summarization_engine)

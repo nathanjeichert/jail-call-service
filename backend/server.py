@@ -49,8 +49,8 @@ from .job_settings import (
     resolve_default_engine,
 )
 from .models import AUDIO_EXTENSIONS, DEFAULT_SPEAKER_ASSIGNMENT, CallStatus, Job, normalize_speaker_assignment
-from .summarization import AVAILABLE_ENGINES as SUMMARIZATION_ENGINES
-from .transcription import AVAILABLE_ENGINES as TRANSCRIPTION_ENGINES
+from .summarization import REGISTRY as SUMMARIZATION
+from .transcription import REGISTRY as TRANSCRIPTION
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ PACKAGEABLE_STAGES = ("done", "error", "generating")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    cfg.validate_api_keys()
+    _warn_unready_engines()
     paused = job_store.pause_orphaned_jobs()
     for jid in paused:
         logger.info("Startup: paused orphaned job %s", jid)
@@ -246,20 +246,30 @@ def preview_xml(req: PathRequest):
     return {"path": os.path.abspath(path), "preview": _icm_preview(path)}
 
 
+def _warn_unready_engines() -> None:
+    """Startup log line for each installed engine that still needs a key or binary."""
+    for registry in (TRANSCRIPTION, SUMMARIZATION):
+        for row in registry.describe():
+            if row["installed"] and not row["ready"]:
+                logger.warning("%s engine %s is not ready: %s", registry.stage, row["label"], row["requirement"])
+
+
 @app.get("/api/config")
 def get_config():
-    """Safe config and readiness checks for the frontend."""
+    """Readiness checks and the engine menu for the frontend.
+
+    Each engine row carries its UI label, whether it runs locally, whether
+    its dependency is installed, and what it still needs (``requirement``)
+    when it is not ``ready``. The UI names no engines itself.
+    """
     return {
-        "assemblyai_configured": bool(cfg.ASSEMBLYAI_API_KEY),
-        "gemini_configured": bool(cfg.GEMINI_API_KEY),
         "ffmpeg_found": bool(FFMPEG_PATH),
         "ffmpeg_path": FFMPEG_PATH or "",
         "default_summary_prompt": cfg.DEFAULT_SUMMARY_PROMPT,
-        "gemini_model": cfg.GEMINI_MODEL,
-        "default_transcription_engine": resolve_default_engine(cfg.DEFAULT_TRANSCRIPTION_ENGINE, TRANSCRIPTION_ENGINES),
-        "available_transcription_engines": TRANSCRIPTION_ENGINES,
-        "default_summarization_engine": resolve_default_engine(cfg.DEFAULT_SUMMARIZATION_ENGINE, SUMMARIZATION_ENGINES),
-        "available_summarization_engines": SUMMARIZATION_ENGINES,
+        "default_transcription_engine": resolve_default_engine(cfg.DEFAULT_TRANSCRIPTION_ENGINE, TRANSCRIPTION.available()),
+        "transcription_engines": TRANSCRIPTION.describe(),
+        "default_summarization_engine": resolve_default_engine(cfg.DEFAULT_SUMMARIZATION_ENGINE, SUMMARIZATION.available()),
+        "summarization_engines": SUMMARIZATION.describe(),
     }
 
 
