@@ -28,6 +28,7 @@ from typing import Awaitable, Callable, Dict, List, Optional
 from . import config as cfg
 from . import job_store
 from .audio_converter import convert_single, discover_audio_files
+from .call_dates import filename_date_fields
 from .events import cleanup_event_queue, emit
 from .formatting import format_duration
 from .icm_parser import find_icm_report, parse_icm_report
@@ -334,11 +335,16 @@ def _init_calls(job: Job, audio_files: List[str], icm_map: dict) -> None:
         if path in existing:
             continue
         meta = icm_map.get(os.path.basename(path))
+        fields = asdict(meta) if meta else {}
+        if not fields.get("call_date"):
+            # No ICM record (or one without a date): the filename usually
+            # carries the call's start time. Only the date fields are inferred.
+            fields.update(filename_date_fields(os.path.basename(path)))
         job.calls.append(CallResult(
             index=i,
             filename=os.path.basename(path),
             original_path=path,
-            **(asdict(meta) if meta else {}),
+            **fields,
         ))
 
 
