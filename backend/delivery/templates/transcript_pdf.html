@@ -8,27 +8,10 @@
     margin: 0;
 }
 
-{{ fonts_css }}
+{{ theme_css }}
 
 *, *::before, *::after {
     box-sizing: border-box;
-}
-
-:root {
-    --ink: #16140F;
-    --ink-2: #45413A;
-    --ink-3: #807A6E;
-    --rule: rgba(22, 20, 15, 0.18);
-    --rule-faint: rgba(22, 20, 15, 0.09);
-    --cream: #FBF9F3;
-    --signal: #A8271E;
-    --signal-ink: #871F18;
-    --med: #8F6400;
-    --low: #76796E;
-    --paper: #ffffff;
-    --serif: "Fraunces", Georgia, serif;
-    --sans: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    --mono: "IBM Plex Mono", Menlo, monospace;
 }
 
 body {
@@ -107,25 +90,6 @@ body {
 }
 
 /* ── Record chrome shared by cover + summary sheets ───────────────── */
-.spine {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 9.75pt;
-    background: var(--ink);
-}
-
-.lbl {
-    font-size: 7.1pt;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-}
-
-.lbl--ink { color: var(--ink); }
-
 .band {
     position: absolute;
     left: 46.5pt;
@@ -140,31 +104,6 @@ body {
 }
 
 /* relevance marker — the only color in the system */
-.rv {
-    display: inline-flex;
-    align-items: center;
-    gap: 5pt;
-    font-size: 8.25pt;
-    font-weight: 700;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    white-space: nowrap;
-}
-
-.rv::before {
-    content: "";
-    width: 6pt;
-    height: 6pt;
-    border-radius: 0.75pt;
-}
-
-.rv--high { color: var(--signal-ink); }
-.rv--high::before { background: var(--signal); }
-.rv--medium { color: var(--med); }
-.rv--medium::before { background: transparent; box-shadow: inset 0 0 0 1.1pt var(--med); }
-.rv--low { color: var(--low); }
-.rv--low::before { background: transparent; box-shadow: inset 0 0 0 1.1pt rgba(118, 121, 110, 0.7); }
-
 .foot {
     position: absolute;
     left: 46.5pt;
@@ -197,45 +136,6 @@ body {
 }
 
 /* ── Cover sheet ────────────────────────────────────────────────────── */
-.cov-main {
-    position: absolute;
-    left: 46.5pt;
-    right: 40.5pt;
-    top: 128pt;
-}
-
-.cov-eyebrow {
-    font-size: 8.25pt;
-    font-weight: 700;
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-    color: var(--signal-ink);
-}
-
-.cov-title {
-    margin: 16pt 0 0;
-    font-family: var(--serif);
-    font-weight: 600;
-    font-size: 33pt;
-    line-height: 1.08;
-    letter-spacing: -0.005em;
-    font-variation-settings: "opsz" 90;
-    overflow-wrap: break-word;
-}
-
-.oxrule {
-    margin-top: 20pt;
-    width: 90pt;
-    border-top: 2.25pt solid var(--ink);
-}
-
-.oxrule::after {
-    content: "";
-    display: block;
-    border-top: 0.75pt solid var(--ink);
-    margin-top: 1.5pt;
-}
-
 .cov-stats {
     display: flex;
     margin-top: 34pt;
@@ -251,15 +151,7 @@ body {
     padding-left: 0;
 }
 
-.cov-stats .n {
-    font-family: var(--serif);
-    font-weight: 600;
-    font-size: 27pt;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-    font-variation-settings: "opsz" 80;
-    white-space: nowrap;
-}
+.cov-stats .n { font-size: 27pt; font-variation-settings: "opsz" 80; }
 
 .cov-stats .lbl {
     margin-top: 4.5pt;
@@ -269,32 +161,6 @@ body {
 .cov-facts {
     margin-top: 38pt;
     max-width: 372pt;
-}
-
-.cov-facts .row {
-    display: flex;
-    justify-content: space-between;
-    gap: 13.5pt;
-    padding: 6pt 1.5pt;
-    border-bottom: 1px solid var(--rule-faint);
-}
-
-.cov-facts .k {
-    flex: none;
-    font-size: 7.1pt;
-    font-weight: 700;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-    padding-top: 1.5pt;
-}
-
-.cov-facts .w {
-    font-size: 9.4pt;
-    color: var(--ink);
-    text-align: right;
-    min-width: 0;
-    overflow-wrap: anywhere;
 }
 
 .cov-facts .w.mono {
@@ -549,7 +415,7 @@ body {
         {% endif %}
 
         {% if cover_facts %}
-        <div class="cov-facts">
+        <div class="cov-facts facts">
             {% for fact in cover_facts %}
             <div class="row">
                 <span class="k">{{ fact.label }}</span>

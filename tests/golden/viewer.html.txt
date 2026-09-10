@@ -56,34 +56,94 @@
     font-style: normal;
 }
 
+/* Record design tokens: the palette and type stacks every delivery artifact
+   shares. Sizes live in print.css / screen.css; shared components in
+   components.css. Composed by backend/delivery/theme.py. */
+:root {
+  --paper:       #F5F2EA;   /* page ground on screen; print.css makes it white */
+  --cream:       #FBF9F3;
+  --sheet:       #FFFFFF;
+  --ink:         #16140F;
+  --ink-2:       #45413A;
+  --ink-3:       #807A6E;
+  --rule:        rgba(22, 20, 15, 0.18);
+  --rule-faint:  rgba(22, 20, 15, 0.09);
+
+  /* One signal color: HIGH relevance, cue timestamps, chart peaks, playhead. */
+  --signal:      #A8271E;
+  --signal-ink:  #871F18;
+  --signal-bg:   rgba(168, 39, 30, 0.07);
+  --med:         #8F6400;   /* MEDIUM: hollow ochre square */
+  --med-bar:     #C9A227;
+  --low:         #76796E;   /* LOW: hollow gray square */
+  --low-bar:     #B9BCB0;
+  --unrated-bar: #DAD7CC;
+  --mark:        #F4E9C8;   /* search-hit highlight */
+
+  --serif: "Fraunces", Georgia, serif;
+  --sans:  "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono:  "IBM Plex Mono", Menlo, Consolas, monospace;
+}
+
+/* Screen medium (self-contained HTML pages): pixel sizes on tinted paper.
+   A page may override any of these after the theme block. */
+:root {
+  --lbl-size: 10.5px;
+  --eyebrow-size: 10px;
+  --eyebrow-track: 0.22em;
+
+  --rv-gap: 7px;
+  --rv-size: 11px;
+  --rv-dot: 8px;
+  --rv-radius: 1px;
+  --rv-ring: 1.5px;
+}
+
+/* Shared components, medium-neutral: every size comes from a token set in
+   print.css or screen.css. Keep this file to the pieces that look the same
+   in every artifact; page layout stays in each template. */
+
+/* Small caps label ("At a Glance", table headers, cover stats). */
+.lbl { font-size: var(--lbl-size); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+.lbl--ink { color: var(--ink); }
+
+/* Section eyebrow above a chapter title. */
+.eyebrow { font-size: var(--eyebrow-size); font-weight: 700; letter-spacing: var(--eyebrow-track); text-transform: uppercase; color: var(--signal-ink); }
+
+.mono { font-family: var(--mono); }
+
+/* Big serif numeral in a stat cell; the template sets size and optical size. */
+.cell .n { font-family: var(--serif); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cell .n small { font-size: 0.5em; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+
+/* Relevance marker: filled crimson square for HIGH, hollow ochre for
+   MEDIUM, hollow gray for LOW, hollow rule-colored for unrated. Modifier
+   classes are lowercase everywhere (rv--high); JS lowercases the tier. */
+.rv { display: inline-flex; align-items: center; gap: var(--rv-gap); font-size: var(--rv-size); font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; white-space: nowrap; }
+.rv::before { content: ""; width: var(--rv-dot); height: var(--rv-dot); border-radius: var(--rv-radius); flex: none; }
+.rv--high { color: var(--signal-ink); }
+.rv--high::before { background: var(--signal); }
+.rv--medium { color: var(--med); }
+.rv--medium::before { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) var(--med); }
+.rv--low { color: var(--low); }
+.rv--low::before { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) rgba(118, 121, 110, 0.7); }
+.rv--none { color: var(--ink-3); }
+.rv--none::before { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) var(--rule); }
+
     *,
     *::before,
     *::after {
       box-sizing: border-box;
     }
 
-    :root {
-      --rail-calls-w: 264px;
+    :root { --rail-calls-w: 264px;
       --rail-side-w: 304px;
       --rail-collapsed-w: 38px;
-      --paper: #F5F2EA;
-      --cream: #FBF9F3;
-      --sheet: #FFFFFF;
-      --ink: #16140F;
-      --ink-2: #45413A;
-      --ink-3: #807A6E;
-      --rule: rgba(22, 20, 15, .18);
-      --rule-faint: rgba(22, 20, 15, .09);
-      --signal: #A8271E;
-      --signal-ink: #871F18;
-      --signal-bg: rgba(168, 39, 30, .07);
-      --med: #8F6400;
-      --low: #76796E;
-      --mark: #F4E9C8;
-      --serif: "Fraunces", Georgia, serif;
-      --sans: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-      --mono: "IBM Plex Mono", Menlo, Consolas, monospace;
-    }
+      /* the viewer runs its labels and markers one notch smaller than the index */
+      --lbl-size: 10px;
+      --rv-gap: 6px;
+      --rv-size: 10px;
+      --rv-dot: 7px; }
 
     body {
       margin: 0;
@@ -96,35 +156,6 @@
     }
 
     ::selection { background: var(--ink); color: var(--paper); }
-
-    .lbl {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-      color: var(--ink-3);
-    }
-    .lbl--ink { color: var(--ink); }
-
-    .rv {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .13em;
-      text-transform: uppercase;
-      white-space: nowrap;
-    }
-    .rv::before { content: ""; width: 7px; height: 7px; border-radius: 1px; flex: none; }
-    .rv--HIGH { color: var(--signal-ink); }
-    .rv--HIGH::before { background: var(--signal); }
-    .rv--MEDIUM { color: var(--med); }
-    .rv--MEDIUM::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--med); }
-    .rv--LOW { color: var(--low); }
-    .rv--LOW::before { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(118, 121, 110, .7); }
-    .rv--none { color: var(--ink-3); }
-    .rv--none::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rule); }
 
     /* ── Top band ── */
     .band {
@@ -1090,7 +1121,7 @@
       return { long, short, time };
     }
     function relMark(rel, extra) {
-      const cls = rel ? 'rv--' + rel : 'rv--none';
+      const cls = rel ? 'rv--' + rel.toLowerCase() : 'rv--none';
       const txt = rel ? rel.charAt(0) + rel.slice(1).toLowerCase() : '—';
       return '<span class="rv ' + cls + '">' + esc(txt) + (extra ? esc(extra) : '') + '</span>';
     }

@@ -6,10 +6,9 @@ surfaces relevant transcript excerpts. From any row, clients can jump to the
 call in the viewer (audio deep-link to a timestamp) or open the transcript
 PDF.
 
-All call data is embedded in a <script> JSON blob; fonts are embedded as
-base64 woff2 data URIs; no external deps — the page works from file:// on a
-machine with no network access. The template is ``templates/search.html``
-with ``__PLACEHOLDER__`` substitution (its CSS/JS is full of braces).
+All call data is embedded in a <script> JSON blob; fonts and the shared
+design layer are inlined (:mod:`theme`); no external deps — the page works
+from file:// on a machine with no network access.
 
 Input is the per-call :class:`~backend.delivery.call_view.CallView` list the
 delivery stage builds once for every surface.
@@ -22,8 +21,8 @@ from typing import List, Optional, Sequence
 from ..formatting import format_generated_date, timestamp_to_seconds
 from ..html_json import dump_script_safe_json
 from .call_view import CallView
-from .fonts import embedded_font_css
-from .templates import load_static_template
+from .templates import render_template
+from .theme import theme_css
 
 
 def _escape(s: str) -> str:
@@ -100,11 +99,11 @@ def generate_search_html(views: Sequence[CallView], case_name: str = "", gen_dat
     title = f"{case_name} — Call Index" if case_name else "Call Index"
     gen_date = gen_date or format_generated_date()
 
-    return (
-        load_static_template("search.html")
-        .replace("__TITLE__", _escape(title))
-        .replace("__CASE_TITLE_HTML__", _case_title_html(case_name))
-        .replace("__GEN_DATE__", gen_date)
-        .replace("__FONTS_CSS__", embedded_font_css())
-        .replace("__DATA_JSON__", dump_script_safe_json(call_data))
+    return render_template(
+        "search.html",
+        title=_escape(title),
+        case_title_html=_case_title_html(case_name),
+        gen_date=gen_date,
+        theme_css=theme_css("screen"),
+        data_json=dump_script_safe_json(call_data),
     )

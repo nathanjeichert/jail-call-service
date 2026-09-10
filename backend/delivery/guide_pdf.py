@@ -17,9 +17,9 @@ import logging
 from typing import Optional
 
 from ..formatting import format_generated_date, shorten
-from .fonts import pdf_font_css
 from .pdf_render import render_pdf
 from .templates import ASSETS_DIR, render_template
+from .theme import theme_css
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def generate_guide_pdf(case_name: str,
     call_count_display = f"{call_count:,} call{'s' if call_count != 1 else ''}"
 
     ctx = {
-        "fonts_css": pdf_font_css(),
+        "theme_css": theme_css("print"),
         "case_name": case_name,
         "case_name_short": shorten(case_name, 38),
         "gen_date": gen_date,

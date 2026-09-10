@@ -29,10 +29,10 @@ from ..formatting import (
 )
 from ..transcript_layout import LINES_PER_PAGE, MAX_LINE_CHARS
 from .call_view import CallView
-from .fonts import pdf_font_css
 from .pdf_render import render_pdf
 from .summary_layout import PAGE_HEIGHT, inch, paginate_structured_summary
 from .templates import render_template
+from .theme import theme_css
 
 RELEVANCE_DESC: Dict[str, str] = {
     "HIGH": "Potentially jury-relevant or case-substantive content",
@@ -271,7 +271,7 @@ def create_pdf(view: CallView, title_data: dict, *, include_summary: bool = True
 
     ctx = _build_cover_context(title_data, view, include_summary)
     ctx["transcript_sheets"] = _build_transcript_sheets(line_entries, LINES_PER_PAGE)
-    ctx["fonts_css"] = pdf_font_css(("Fraunces", "Public Sans", "IBM Plex Mono", "Courier Prime"))
+    ctx["theme_css"] = theme_css("print", ("Fraunces", "Public Sans", "IBM Plex Mono", "Courier Prime"))
 
     cover_stats = []
     if ctx["file_duration"]:

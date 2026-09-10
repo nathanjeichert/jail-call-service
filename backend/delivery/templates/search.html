@@ -3,31 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>__TITLE__</title>
+<title>{{ title }}</title>
 <style>
-__FONTS_CSS__
+{{ theme_css }}
 
   *, *::before, *::after { box-sizing: border-box; }
-  :root {
-    --paper:       #F5F2EA;
-    --cream:       #FBF9F3;
-    --sheet:       #FFFFFF;
-    --ink:         #16140F;
-    --ink-2:       #45413A;
-    --ink-3:       #807A6E;
-    --rule:        rgba(22,20,15,.18);
-    --rule-faint:  rgba(22,20,15,.09);
-    --signal:      #A8271E;
-    --signal-ink:  #871F18;
-    --signal-bg:   rgba(168,39,30,.07);
-    --med:         #8F6400;
-    --low:         #76796E;
-    --mark:        #F4E9C8;
-    --serif: "Fraunces", Georgia, serif;
-    --sans:  "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    --mono:  "IBM Plex Mono", Menlo, Consolas, monospace;
-    --ctl-h: 0px;
-  }
+  :root { --ctl-h: 0px; }
   html, body { height: 100%; }
   body {
     margin: 0;
@@ -40,38 +21,7 @@ __FONTS_CSS__
     line-height: 1.5;
   }
   ::selection { background: var(--ink); color: var(--paper); }
-  .mono { font-family: var(--mono); font-feature-settings: "tnum"; }
-
-  .lbl {
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-  }
-  .lbl--ink { color: var(--ink); }
-
   /* relevance marker — the only color in the system */
-  .rv {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .13em;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .rv::before { content: ""; width: 8px; height: 8px; border-radius: 1px; flex: none; }
-  .rv--HIGH   { color: var(--signal-ink); }
-  .rv--HIGH::before   { background: var(--signal); }
-  .rv--MEDIUM { color: var(--med); }
-  .rv--MEDIUM::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--med); }
-  .rv--LOW    { color: var(--low); }
-  .rv--LOW::before    { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(118,121,110,.7); }
-  .rv--none   { color: var(--ink-3); }
-  .rv--none::before   { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rule); }
-
   /* ── Confidential band ──────────────────────────────────────────────── */
   .band {
     display: flex;
@@ -116,17 +66,7 @@ __FONTS_CSS__
   .stats { display: flex; flex: none; }
   .stats .cell { padding: 2px 24px 6px; border-left: 1px solid var(--rule); }
   .stats .cell:first-child { border-left: none; }
-  .stats .n {
-    font-family: var(--serif);
-    font-weight: 600;
-    font-size: 36px;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -.01em;
-    white-space: nowrap;
-  }
-  .stats .n small { font-size: .5em; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
-  .stats .lbl { margin-top: 6px; font-size: 9.5px; }
+  .stats .n { font-size: 36px; letter-spacing: -.01em; }  .stats .lbl { margin-top: 6px; font-size: 9.5px; }
 
   .tally {
     margin-top: 20px;
@@ -606,14 +546,14 @@ __FONTS_CSS__
   <div class="band">
     <span class="lbl lbl--ink">Call Index</span>
     <div class="band-right">
-      <span class="lbl">Prepared __GEN_DATE__</span>
+      <span class="lbl">Prepared {{ gen_date }}</span>
     </div>
   </div>
 
   <header class="head">
     <div class="head-top">
       <div class="head-title">
-        <h1>__CASE_TITLE_HTML__</h1>
+        <h1>{{ case_title_html }}</h1>
         <div class="case-meta" id="caseMeta"></div>
       </div>
       <div class="stats">
@@ -624,9 +564,9 @@ __FONTS_CSS__
       </div>
     </div>
     <div class="tally">
-      <span class="rv rv--HIGH" data-tally="HIGH"><b id="tallyHigh">0</b> High</span>
-      <span class="rv rv--MEDIUM" data-tally="MEDIUM"><b id="tallyMed">0</b> Medium</span>
-      <span class="rv rv--LOW" data-tally="LOW"><b id="tallyLow">0</b> Low</span>
+      <span class="rv rv--high" data-tally="HIGH"><b id="tallyHigh">0</b> High</span>
+      <span class="rv rv--medium" data-tally="MEDIUM"><b id="tallyMed">0</b> Medium</span>
+      <span class="rv rv--low" data-tally="LOW"><b id="tallyLow">0</b> Low</span>
       <span class="tally-range" id="tallyRange"></span>
     </div>
   </header>
@@ -680,7 +620,7 @@ __FONTS_CSS__
   </main>
 
 <script>
-  const CALLS = __DATA_JSON__;
+  const CALLS = {{ data_json }};
   const REL_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1, "": 0 };
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -727,7 +667,7 @@ __FONTS_CSS__
     return { d, t };
   }
   function relMark(rel, size) {
-    const cls = rel ? 'rv--' + rel : 'rv--none';
+    const cls = rel ? 'rv--' + rel.toLowerCase() : 'rv--none';
     const txt = rel ? rel.charAt(0) + rel.slice(1).toLowerCase() : '—';
     return '<span class="rv ' + cls + '">' + txt + '</span>';
   }

@@ -1,0 +1,30 @@
+/* Shared components, medium-neutral: every size comes from a token set in
+   print.css or screen.css. Keep this file to the pieces that look the same
+   in every artifact; page layout stays in each template. */
+
+/* Small caps label ("At a Glance", table headers, cover stats). */
+.lbl { font-size: var(--lbl-size); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+.lbl--ink { color: var(--ink); }
+
+/* Section eyebrow above a chapter title. */
+.eyebrow { font-size: var(--eyebrow-size); font-weight: 700; letter-spacing: var(--eyebrow-track); text-transform: uppercase; color: var(--signal-ink); }
+
+.mono { font-family: var(--mono); }
+
+/* Big serif numeral in a stat cell; the template sets size and optical size. */
+.cell .n { font-family: var(--serif); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cell .n small { font-size: 0.5em; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+
+/* Relevance marker: filled crimson square for HIGH, hollow ochre for
+   MEDIUM, hollow gray for LOW, hollow rule-colored for unrated. Modifier
+   classes are lowercase everywhere (rv--high); JS lowercases the tier. */
+.rv { display: inline-flex; align-items: center; gap: var(--rv-gap); font-size: var(--rv-size); font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; white-space: nowrap; }
+.rv::before { content: ""; width: var(--rv-dot); height: var(--rv-dot); border-radius: var(--rv-radius); flex: none; }
+.rv--high { color: var(--signal-ink); }
+.rv--high::before { background: var(--signal); }
+.rv--medium { color: var(--med); }
+.rv--medium::before { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) var(--med); }
+.rv--low { color: var(--low); }
+.rv--low::before { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) rgba(118, 121, 110, 0.7); }
+.rv--none { color: var(--ink-3); }
+.rv--none::before { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) var(--rule); }

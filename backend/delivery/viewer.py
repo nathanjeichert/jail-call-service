@@ -3,7 +3,7 @@
 Renders ``templates/viewer.html`` with all call data embedded as JSON.
 Audio references use paths relative to the delivery root (audio/<file>.mp3),
 since the rendered file ships as viewer.html alongside the audio/ directory.
-Fonts are embedded as base64 data URIs so the page is fully self-contained.
+Fonts and the shared design layer are inlined so the page is fully self-contained.
 
 Input is the per-call :class:`~backend.delivery.call_view.CallView` list the
 delivery stage builds once for every surface.
@@ -14,8 +14,8 @@ from typing import Sequence
 
 from ..html_json import dump_script_safe_json
 from .call_view import CallView
-from .fonts import embedded_font_css
-from .templates import load_static_template
+from .templates import render_template
+from .theme import theme_css
 
 
 def _build_call_entry(view: CallView) -> dict:
@@ -59,11 +59,9 @@ def _build_call_entry(view: CallView) -> dict:
 
 def render_viewer(views: Sequence[CallView], case_name: str = "") -> str:
     """Render the multi-call viewer HTML for the given call views."""
-    calls_json = dump_script_safe_json([_build_call_entry(v) for v in views])
-    return (
-        load_static_template("viewer.html")
-        .replace("{{CALLS_JSON}}", calls_json)
-        .replace("{{ CALLS_JSON }}", calls_json)
-        .replace("{{CASE_NAME}}", html.escape(case_name or "Jail Calls"))
-        .replace("{{FONTS_CSS}}", embedded_font_css(("Fraunces", "Public Sans", "IBM Plex Mono", "Courier Prime")))
+    return render_template(
+        "viewer.html",
+        calls_json=dump_script_safe_json([_build_call_entry(v) for v in views]),
+        case_name=html.escape(case_name or "Jail Calls"),
+        theme_css=theme_css("screen", ("Fraunces", "Public Sans", "IBM Plex Mono", "Courier Prime")),
     )

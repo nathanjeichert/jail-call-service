@@ -5,9 +5,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
-  <title>{{CASE_NAME}} – Call Viewer</title>
+  <title>{{ case_name }} – Call Viewer</title>
   <style>
-{{FONTS_CSS}}
+{{ theme_css }}
 
     *,
     *::before,
@@ -15,28 +15,14 @@
       box-sizing: border-box;
     }
 
-    :root {
-      --rail-calls-w: 264px;
+    :root { --rail-calls-w: 264px;
       --rail-side-w: 304px;
       --rail-collapsed-w: 38px;
-      --paper: #F5F2EA;
-      --cream: #FBF9F3;
-      --sheet: #FFFFFF;
-      --ink: #16140F;
-      --ink-2: #45413A;
-      --ink-3: #807A6E;
-      --rule: rgba(22, 20, 15, .18);
-      --rule-faint: rgba(22, 20, 15, .09);
-      --signal: #A8271E;
-      --signal-ink: #871F18;
-      --signal-bg: rgba(168, 39, 30, .07);
-      --med: #8F6400;
-      --low: #76796E;
-      --mark: #F4E9C8;
-      --serif: "Fraunces", Georgia, serif;
-      --sans: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
-      --mono: "IBM Plex Mono", Menlo, Consolas, monospace;
-    }
+      /* the viewer runs its labels and markers one notch smaller than the index */
+      --lbl-size: 10px;
+      --rv-gap: 6px;
+      --rv-size: 10px;
+      --rv-dot: 7px; }
 
     body {
       margin: 0;
@@ -49,35 +35,6 @@
     }
 
     ::selection { background: var(--ink); color: var(--paper); }
-
-    .lbl {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-      color: var(--ink-3);
-    }
-    .lbl--ink { color: var(--ink); }
-
-    .rv {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .13em;
-      text-transform: uppercase;
-      white-space: nowrap;
-    }
-    .rv::before { content: ""; width: 7px; height: 7px; border-radius: 1px; flex: none; }
-    .rv--HIGH { color: var(--signal-ink); }
-    .rv--HIGH::before { background: var(--signal); }
-    .rv--MEDIUM { color: var(--med); }
-    .rv--MEDIUM::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--med); }
-    .rv--LOW { color: var(--low); }
-    .rv--LOW::before { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(118, 121, 110, .7); }
-    .rv--none { color: var(--ink-3); }
-    .rv--none::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rule); }
 
     /* ── Top band ── */
     .band {
@@ -825,7 +782,7 @@
       <!-- Call list -->
       <div class="rail-calls" id="railCalls">
         <div class="rail-calls-head">
-          <span class="lbl lbl--ink">{{CASE_NAME}}</span>
+          <span class="lbl lbl--ink">{{ case_name }}</span>
           <div class="sub" id="callCount">Loading…</div>
           <button class="rail-toggle" id="callsToggle" title="Collapse call list">&#8249;</button>
           <span class="rail-strip lbl" id="callsStrip">Calls</span>
@@ -926,7 +883,7 @@
 
   <script>
     // ── Data injected by Python ──
-    const CALLS = {{ CALLS_JSON }};
+    const CALLS = {{ calls_json }};
 
     // ── State ──
     let currentCallIdx = -1;
@@ -1043,7 +1000,7 @@
       return { long, short, time };
     }
     function relMark(rel, extra) {
-      const cls = rel ? 'rv--' + rel : 'rv--none';
+      const cls = rel ? 'rv--' + rel.toLowerCase() : 'rv--none';
       const txt = rel ? rel.charAt(0) + rel.slice(1).toLowerCase() : '—';
       return '<span class="rv ' + cls + '">' + esc(txt) + (extra ? esc(extra) : '') + '</span>';
     }

@@ -1,0 +1,28 @@
+/* Record design tokens: the palette and type stacks every delivery artifact
+   shares. Sizes live in print.css / screen.css; shared components in
+   components.css. Composed by backend/delivery/theme.py. */
+:root {
+  --paper:       #F5F2EA;   /* page ground on screen; print.css makes it white */
+  --cream:       #FBF9F3;
+  --sheet:       #FFFFFF;
+  --ink:         #16140F;
+  --ink-2:       #45413A;
+  --ink-3:       #807A6E;
+  --rule:        rgba(22, 20, 15, 0.18);
+  --rule-faint:  rgba(22, 20, 15, 0.09);
+
+  /* One signal color: HIGH relevance, cue timestamps, chart peaks, playhead. */
+  --signal:      #A8271E;
+  --signal-ink:  #871F18;
+  --signal-bg:   rgba(168, 39, 30, 0.07);
+  --med:         #8F6400;   /* MEDIUM: hollow ochre square */
+  --med-bar:     #C9A227;
+  --low:         #76796E;   /* LOW: hollow gray square */
+  --low-bar:     #B9BCB0;
+  --unrated-bar: #DAD7CC;
+  --mark:        #F4E9C8;   /* search-hit highlight */
+
+  --serif: "Fraunces", Georgia, serif;
+  --sans:  "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono:  "IBM Plex Mono", Menlo, Consolas, monospace;
+}

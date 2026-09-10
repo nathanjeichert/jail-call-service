@@ -39,9 +39,9 @@ from ..models import CallResult, Job, call_stem
 from ..summarization.base import CaseReportInputs, SummarizationEngine
 from ..summarization.schemas import CaseReportResponse
 from .call_view import CallView
-from .fonts import pdf_font_css
 from .pdf_render import render_pdf
 from .templates import render_template
+from .theme import theme_css
 
 logger = logging.getLogger(__name__)
 
@@ -805,7 +805,7 @@ def generate_case_report_pdf(
     )
 
     ctx = {
-        "fonts_css": pdf_font_css(),
+        "theme_css": theme_css("print"),
         "case_name": case_name,
         "case_name_short": shorten(case_name, 38),
         "case_caption": case_caption,

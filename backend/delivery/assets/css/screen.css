@@ -1,0 +1,13 @@
+/* Screen medium (self-contained HTML pages): pixel sizes on tinted paper.
+   A page may override any of these after the theme block. */
+:root {
+  --lbl-size: 10.5px;
+  --eyebrow-size: 10px;
+  --eyebrow-track: 0.22em;
+
+  --rv-gap: 7px;
+  --rv-size: 11px;
+  --rv-dot: 8px;
+  --rv-radius: 1px;
+  --rv-ring: 1.5px;
+}
