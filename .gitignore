@@ -20,3 +20,7 @@ jobs/jail_calls.db-wal
 
 # Synthetic test packages (tests/make_test_package.py)
 test-output/
+
+# Real call recordings and local design scratch (never commit; repo is public)
+test files/
+design-mockups/
