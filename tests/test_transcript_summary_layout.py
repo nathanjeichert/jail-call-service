@@ -3,9 +3,10 @@ import unittest
 
 from pypdf import PdfReader
 
+from backend.delivery.call_view import build_call_view
 from backend.delivery.summary_layout import paginate_structured_summary
 from backend.delivery.transcript_pdf import create_pdf
-from backend.models import TranscriptTurn
+from backend.models import CallResult, TranscriptTurn
 from backend.summaries import (
     SUMMARY_NOTE_HARD_MAX,
     normalize_structured_summary,
@@ -47,6 +48,14 @@ def _line_ref_blocks(line_entries, count, *, span=3):
         refs.append(f"{start['page']}:{start['line']}-{end['page']}:{end['line']}")
         cursor += span
     return refs
+
+
+def _view(turns, summary, duration):
+    """A CallView for a fabricated call, the way the pipeline's PDF stage builds one."""
+    return build_call_view(CallResult(
+        index=0, filename="fixture.wav", original_path="/fixture.wav", mp3_path="/fixture.mp3",
+        duration_seconds=duration, turns=turns, summary=summary, status="done",
+    ))
 
 
 class TranscriptSummaryLayoutTests(unittest.TestCase):
@@ -182,6 +191,7 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
         rendered_summary = render_summary_text(normalized, line_entries)
 
         pdf_bytes = create_pdf(
+            _view(turns, rendered_summary, 18 * 60.0),
             {
                 "CASE_NAME": "People v. Fixture",
                 "FILE_NAME": "1646962560_5000_13_159_593.wav",
@@ -190,9 +200,6 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
                 "INMATE_NAME": "Fixture Defendant",
                 "OUTSIDE_NUMBER_FMT": "(555) 010-1234",
             },
-            turns,
-            summary=rendered_summary,
-            audio_duration=18 * 60.0,
         )
 
         reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -226,6 +233,7 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
         rendered_summary = render_summary_text(normalized, line_entries)
 
         pdf_bytes = create_pdf(
+            _view(turns, rendered_summary, 18 * 60.0),
             {
                 "CASE_NAME": "People v. Dense Fixture",
                 "FILE_NAME": "dense-high-call.wav",
@@ -234,9 +242,6 @@ class TranscriptSummaryLayoutTests(unittest.TestCase):
                 "INMATE_NAME": "Fixture Defendant",
                 "OUTSIDE_NUMBER_FMT": "(555) 010-1234",
             },
-            turns,
-            summary=rendered_summary,
-            audio_duration=18 * 60.0,
         )
 
         reader = PdfReader(io.BytesIO(pdf_bytes))

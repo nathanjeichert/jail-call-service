@@ -1,6 +1,7 @@
 import json
 import unittest
 
+from backend.delivery.call_view import build_call_views
 from backend.delivery.search_html import generate_search_html
 from backend.delivery.viewer import render_viewer
 from backend.html_json import dump_script_safe_json
@@ -38,14 +39,14 @@ class DeliveryHtmlTests(unittest.TestCase):
         self.assertEqual(json.loads(escaped.replace("<\\/", "</")), payload)
 
     def test_search_html_uses_script_safe_json_embedding(self):
-        html = generate_search_html([_fixture_call()], case_name="Case </script>")
+        html = generate_search_html(build_call_views([_fixture_call()]), case_name="Case </script>")
 
         self.assertIn("<\\/script>", html)
         self.assertIn("\\u2028", html)
         self.assertIn("\\u2029", html)
 
     def test_viewer_html_uses_script_safe_json_and_has_no_remote_script(self):
-        html = render_viewer([_fixture_call()], case_name="Case </script>")
+        html = render_viewer(build_call_views([_fixture_call()]), case_name="Case </script>")
 
         self.assertIn("<\\/script>", html)
         self.assertIn("\\u2028", html)

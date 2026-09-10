@@ -206,18 +206,18 @@ def _transcript_title_data(call: CallResult, job: Job) -> dict:
 
 async def _generate_pdf_one(job_id, call, job, transcripts_dir, transcripts_no_summary_dir, executor) -> CallResult:
     """Generate both PDF variants (with and without summary) for a single call."""
+    from .delivery.call_view import build_call_view
     from .delivery.transcript_pdf import create_pdf
 
-    stem = call_stem(call.index, call.filename)
     title_data = _transcript_title_data(call, job)
-    turns, summary, duration = call.turns, call.summary, call.duration_seconds or 0
 
     def _gen() -> str:
-        pdf_path = os.path.join(transcripts_dir, f"{stem}.pdf")
+        view = build_call_view(call)
+        pdf_path = os.path.join(transcripts_dir, f"{view.stem}.pdf")
         with open(pdf_path, "wb") as f:
-            f.write(create_pdf(title_data=title_data, turns=turns, summary=summary, audio_duration=duration))
-        with open(os.path.join(transcripts_no_summary_dir, f"{stem}.pdf"), "wb") as f:
-            f.write(create_pdf(title_data=title_data, turns=turns, summary=None, audio_duration=duration))
+            f.write(create_pdf(view, title_data))
+        with open(os.path.join(transcripts_no_summary_dir, f"{view.stem}.pdf"), "wb") as f:
+            f.write(create_pdf(view, title_data, include_summary=False))
         return pdf_path
 
     call.pdf_path = await asyncio.get_event_loop().run_in_executor(executor, _gen)
@@ -586,6 +586,7 @@ async def _stage_generate_delivery_assets(
     ``gen_date`` overrides the "Generated" stamp (tests pin it for the
     golden package); production leaves it as today.
     """
+    from .delivery.call_view import build_call_views
     from .delivery.case_report import generate_case_report_pdf
     from .delivery.guide_pdf import generate_guide_pdf
     from .delivery.search_html import generate_search_html
@@ -593,6 +594,8 @@ async def _stage_generate_delivery_assets(
 
     loop = asyncio.get_event_loop()
     done_calls = [c for c in job.calls if c.status == CallStatus.DONE]
+    # One parse + layout + cue hydration per call, shared by every surface.
+    views = await loop.run_in_executor(None, build_call_views, done_calls)
 
     def _write(name: str, data) -> None:
         mode = "wb" if isinstance(data, bytes) else "w"
@@ -601,15 +604,15 @@ async def _stage_generate_delivery_assets(
 
     writers = {
         "search.html": lambda: _write(
-            "search.html", generate_search_html(done_calls, case_name=job.case_name, gen_date=gen_date)
+            "search.html", generate_search_html(views, case_name=job.case_name, gen_date=gen_date)
         ),
-        "viewer.html": lambda: _write("viewer.html", render_viewer(done_calls, case_name=job.case_name)),
+        "viewer.html": lambda: _write("viewer.html", render_viewer(views, case_name=job.case_name)),
         "guide.pdf": lambda: _write(
-            "guide.pdf", generate_guide_pdf(case_name=job.case_name, call_count=len(done_calls), gen_date=gen_date)
+            "guide.pdf", generate_guide_pdf(case_name=job.case_name, call_count=len(views), gen_date=gen_date)
         ),
         "case-report.pdf": lambda: _write(
             "case-report.pdf",
-            generate_case_report_pdf(job=job, done_calls=done_calls, engine=summarization_engine, gen_date=gen_date),
+            generate_case_report_pdf(job=job, views=views, engine=summarization_engine, gen_date=gen_date),
         ),
     }
 

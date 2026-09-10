@@ -19,7 +19,7 @@ import html
 import io
 import re
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from ..formatting import (
     format_display_datetime,
@@ -27,9 +27,8 @@ from ..formatting import (
     safe_text,
     shorten_middle,
 )
-from ..models import TranscriptTurn
-from ..summaries import parse_summary_sections
-from ..transcript_layout import LINES_PER_PAGE, MAX_LINE_CHARS, compute_line_entries, hydrate_review_cues
+from ..transcript_layout import LINES_PER_PAGE, MAX_LINE_CHARS
+from .call_view import CallView
 from .fonts import pdf_font_css
 from .pdf_render import render_pdf
 from .summary_layout import PAGE_HEIGHT, inch, paginate_structured_summary
@@ -112,12 +111,9 @@ def _raw_summary_blocks(body: str) -> list:
     return raw_blocks
 
 
-def _build_cover_context(
-    title_data: dict,
-    summary: Optional[str],
-    line_entries: Optional[List[dict]] = None,
-) -> dict:
+def _build_cover_context(title_data: dict, view: CallView, include_summary: bool) -> dict:
     """Build the Jinja context for the title sheet and summary sheet(s)."""
+    summary = view.summary if include_summary else ""
     case_name = safe_text(title_data.get("CASE_NAME"))
     file_name = safe_text(title_data.get("FILE_NAME"))
     call_datetime = safe_text(title_data.get("CALL_DATETIME"))
@@ -168,20 +164,16 @@ def _build_cover_context(
     ctx["summary_meta_file"] = shorten_middle(file_name, 34)
     ctx["summary_meta_details"] = " · ".join(p for p in (cover_time, file_duration) if p)
 
-    sections = parse_summary_sections(summary)
-    ctx["is_structured"] = sections.get("structured", False)
+    ctx["is_structured"] = view.structured
 
-    if sections.get("structured"):
-        rel = sections.get("relevance", "")
+    if view.structured:
+        rel = view.relevance
         ctx["relevance"] = rel
         ctx["relevance_desc"] = RELEVANCE_DESC.get(rel, "")
-        ctx["review_cues"] = hydrate_review_cues(sections.get("review_cue_items", []), line_entries)
-        ctx["cue_count"] = len(ctx["review_cues"])
-
-        spk = sections.get("speakers", "")
-        ctx["speakers"] = spk.replace("\n", " ").strip() if spk else ""
-        cs = sections.get("call_summary", "")
-        ctx["call_summary"] = cs.replace("\n", " ").strip() if cs else ""
+        ctx["review_cues"] = view.cues
+        ctx["cue_count"] = len(view.cues)
+        ctx["speakers"] = view.identity
+        ctx["call_summary"] = view.brief
 
         pagination = paginate_structured_summary(
             ctx["review_cues"], speakers=ctx["speakers"], call_summary=ctx["call_summary"],
@@ -260,14 +252,13 @@ def _build_transcript_sheets(line_entries: List[dict], lines_per_page: int) -> L
 
 # ────────────────────────── Entry point ──────────────────────────
 
-def create_pdf(
-    title_data: dict,
-    turns: List[TranscriptTurn],
-    summary: Optional[str] = None,
-    audio_duration: float = 0.0,
-    lines_per_page: int = LINES_PER_PAGE,
-) -> bytes:
+def create_pdf(view: CallView, title_data: dict, *, include_summary: bool = True) -> bytes:
     """Render the per-call transcript PDF.
+
+    ``view`` carries the call's page:line layout and parsed summary (built
+    once by :mod:`call_view`); ``title_data`` carries the cover facts the
+    pipeline derives from the job. ``include_summary=False`` renders the
+    ``transcripts-no-summary/`` variant.
 
     All sheets are rendered in a single headless-Chromium pass. The rendered
     page count is asserted against the emitted sheet count; a mismatch raises
@@ -276,10 +267,10 @@ def create_pdf(
     """
     from pypdf import PdfReader
 
-    line_entries = compute_line_entries(turns, audio_duration, lines_per_page)
+    line_entries = view.line_entries
 
-    ctx = _build_cover_context(title_data, summary, line_entries=line_entries)
-    ctx["transcript_sheets"] = _build_transcript_sheets(line_entries, lines_per_page)
+    ctx = _build_cover_context(title_data, view, include_summary)
+    ctx["transcript_sheets"] = _build_transcript_sheets(line_entries, LINES_PER_PAGE)
     ctx["fonts_css"] = pdf_font_css(("Fraunces", "Public Sans", "IBM Plex Mono", "Courier Prime"))
 
     cover_stats = []

@@ -36,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backend.delivery.call_view import build_call_view
 from backend.delivery.transcript_pdf import create_pdf
 from backend.formatting import format_duration
 from backend.models import CallResult, Job, TranscriptTurn, WordTimestamp, call_stem
@@ -335,12 +336,9 @@ def write_call_pdfs(calls, transcripts_dir: Path, no_summary_dir: Path) -> None:
             "CALL_OUTCOME": call.call_outcome or "",
             "NOTES": call.notes or "",
         }
-        (transcripts_dir / f"{stem}.pdf").write_bytes(
-            create_pdf(title_data, call.turns, call.summary, call.duration_seconds or 0)
-        )
-        (no_summary_dir / f"{stem}.pdf").write_bytes(
-            create_pdf(title_data, call.turns, None, call.duration_seconds or 0)
-        )
+        view = build_call_view(call)
+        (transcripts_dir / f"{stem}.pdf").write_bytes(create_pdf(view, title_data))
+        (no_summary_dir / f"{stem}.pdf").write_bytes(create_pdf(view, title_data, include_summary=False))
         print(f"  transcript {call.index + 1}/{len(calls)}: {stem}.pdf")
 
 

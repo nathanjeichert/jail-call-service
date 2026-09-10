@@ -36,10 +36,9 @@ from ..formatting import (
     shorten_middle,
 )
 from ..models import CallResult, Job, call_stem
-from ..summaries import parse_summary_sections
 from ..summarization.base import CaseReportInputs, SummarizationEngine
 from ..summarization.schemas import CaseReportResponse
-from ..transcript_layout import compute_line_entries, hydrate_review_cues
+from .call_view import CallView
 from .fonts import pdf_font_css
 from .pdf_render import render_pdf
 from .templates import render_template
@@ -184,30 +183,23 @@ def _format_date_range(parsed_dates: List[date]) -> str:
 
 # ────────────────────────── relevance bucketing ──────────────────────────
 
-def _split_by_relevance(
-    done_calls: List[CallResult],
-    parsed_by_index: Dict[int, dict],
-) -> Dict[str, List[Dict[str, Any]]]:
-    buckets: Dict[str, List[Dict[str, Any]]] = {
+def _split_by_relevance(views: List[CallView]) -> Dict[str, List[CallView]]:
+    buckets: Dict[str, List[CallView]] = {
         "HIGH": [], "MEDIUM": [], "LOW": [], "UNKNOWN": [],
     }
-    for call in done_calls:
-        parsed = parsed_by_index.get(call.index, {})
-        if not parsed:
-            buckets["UNKNOWN"].append({"call": call, "parsed": {}})
-            continue
-        rel = (parsed.get("relevance") or "UNKNOWN").upper()
+    for view in views:
+        rel = (view.relevance or "UNKNOWN").upper()
         if rel not in buckets:
             rel = "UNKNOWN"
-        buckets[rel].append({"call": call, "parsed": parsed})
+        buckets[rel].append(view)
     for k in buckets:
-        buckets[k].sort(key=lambda e: (e["call"].call_datetime_str or "", e["call"].index))
+        buckets[k].sort(key=lambda v: (v.call.call_datetime_str or "", v.index))
     return buckets
 
 
 # ────────────────────────── synthesis input ──────────────────────────
 
-def _select_synthesis_calls(buckets: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def _select_synthesis_calls(buckets: Dict[str, List[CallView]]) -> List[CallView]:
     high = list(buckets["HIGH"])
     medium = list(buckets["MEDIUM"])
     if len(high) >= TARGET_FINDINGS_INPUT_COUNT:
@@ -216,11 +208,11 @@ def _select_synthesis_calls(buckets: Dict[str, List[Dict[str, Any]]]) -> List[Di
     return high + medium[:needed]
 
 
-def _format_calls_for_synthesis(call_entries: List[Dict[str, Any]]) -> str:
+def _format_calls_for_synthesis(views: List[CallView]) -> str:
     blocks = []
-    for entry in call_entries:
-        call = entry["call"]
-        parsed = entry["parsed"]
+    for view in views:
+        call = view.call
+        parsed = view.sections
         notes = (parsed.get("review_cues") or parsed.get("key_findings") or "(no notes)").strip()
         brief = (parsed.get("call_summary") or "(no brief summary)").strip()
         speakers = (parsed.get("speakers") or "").strip()
@@ -241,23 +233,20 @@ def _format_calls_for_synthesis(call_entries: List[Dict[str, Any]]) -> str:
     return "\n".join(blocks) if blocks else "(no calls in scope for findings synthesis)"
 
 
-def _collect_identity_inputs(
-    done_calls: List[CallResult],
-    parsed_by_index: Dict[int, dict],
-) -> Dict[str, List[str]]:
+def _collect_identity_inputs(views: List[CallView]) -> Dict[str, List[str]]:
     """Group per-call 'Identity of Outside Party' descriptions by phone number.
 
     Key is the formatted display number; value is a list of unique-ish
     description strings drawn from each call's per-call summary.
     """
     by_number: Dict[str, List[str]] = defaultdict(list)
-    for call in done_calls:
+    for view in views:
+        call = view.call
         number = (call.outside_number or "").strip()
         if not number:
             continue
         display = call.outside_number_fmt or number
-        parsed = parsed_by_index.get(call.index, {})
-        spk = (parsed.get("speakers") or "").strip()
+        spk = (view.sections.get("speakers") or "").strip()
         if not spk:
             continue
         # Deduplicate identical descriptions per number
@@ -354,23 +343,22 @@ def _format_caller_range(parsed_dates: List[date]) -> str:
 # ────────────────────────── caller stats ──────────────────────────
 
 def _build_caller_stats(
-    done_calls: List[CallResult],
-    parsed_by_index: Dict[int, dict],
+    views: List[CallView],
     identity_map: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> List[Dict[str, Any]]:
     identity_map = identity_map or {}
-    by_number: Dict[str, List[CallResult]] = defaultdict(list)
-    for call in done_calls:
-        key = (call.outside_number or "").strip() or "(unknown)"
-        by_number[key].append(call)
+    by_number: Dict[str, List[CallView]] = defaultdict(list)
+    for view in views:
+        key = (view.call.outside_number or "").strip() or "(unknown)"
+        by_number[key].append(view)
 
     stats = []
-    for number, calls in by_number.items():
+    for number, group in by_number.items():
+        calls = [v.call for v in group]
         total_dur = sum((c.duration_seconds or 0) for c in calls)
         rels: List[str] = []
-        for c in calls:
-            parsed = parsed_by_index.get(c.index, {})
-            rel = (parsed.get("relevance") or "").upper()
+        for v in group:
+            rel = v.relevance.upper()
             if rel in ("HIGH", "MEDIUM", "LOW"):
                 rels.append(rel)
         rel_counter = Counter(rels)
@@ -608,10 +596,10 @@ def _format_duration_stat(seconds: float) -> str:
 # ────────────────────────── at-a-glance ──────────────────────────
 
 def _build_at_a_glance(
-    done_calls: List[CallResult],
-    parsed_by_index: Dict[int, dict],
-    buckets: Dict[str, List[Dict[str, Any]]],
+    views: List[CallView],
+    buckets: Dict[str, List[CallView]],
 ) -> Dict[str, Any]:
+    done_calls = [v.call for v in views]
     rel_counts = {
         "HIGH": len(buckets["HIGH"]),
         "MEDIUM": len(buckets["MEDIUM"]),
@@ -634,11 +622,9 @@ def _build_at_a_glance(
     # Notes flagged across all done calls
     total_notes = 0
     calls_with_notes = 0
-    for call in done_calls:
-        parsed = parsed_by_index.get(call.index, {})
-        cues = parsed.get("review_cue_items", []) or []
-        if cues:
-            total_notes += len(cues)
+    for view in views:
+        if view.cues:
+            total_notes += len(view.cues)
             calls_with_notes += 1
 
     # Highlights (for the bottom row of the page)
@@ -686,14 +672,11 @@ def _build_at_a_glance(
 
 # ────────────────────────── call cards ──────────────────────────
 
-def _build_call_card(entry: Dict[str, Any]) -> Dict[str, Any]:
-    call = entry["call"]
-    parsed = entry["parsed"]
+def _build_call_card(view: CallView) -> Dict[str, Any]:
+    call = view.call
 
-    line_entries = compute_line_entries(call.turns or [], call.duration_seconds or 0.0) if call.turns else []
-    cues = hydrate_review_cues(parsed.get("review_cue_items", []) or [], line_entries)
     cue_view = []
-    for cue in cues[:8]:
+    for cue in view.cues[:8]:
         cue_view.append({
             "timestamp": cue.get("timestamp", ""),
             "speaker": cue.get("speaker", ""),
@@ -703,8 +686,8 @@ def _build_call_card(entry: Dict[str, Any]) -> Dict[str, Any]:
             "viewer_link": _viewer_link(call, cue.get("timestamp", "")),
         })
 
-    speakers = (parsed.get("speakers") or "").replace("\n", " ").strip()
-    brief = (parsed.get("call_summary") or "").replace("\n", " ").strip()
+    speakers = view.identity
+    brief = view.brief
 
     return {
         "call_index": call.index + 1,
@@ -725,38 +708,35 @@ def _build_call_card(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 def generate_case_report_pdf(
     job: Job,
-    done_calls: List[CallResult],
+    views: List[CallView],
     engine: SummarizationEngine,
     gen_date: Optional[str] = None,
 ) -> bytes:
-    """Build the case report PDF for a completed job."""
+    """Build the case report PDF for a completed job.
+
+    ``views`` are the completed calls' :class:`CallView` objects (summary
+    parsed, cues hydrated, layout computed once by the delivery stage).
+    """
     gen_date = gen_date or format_generated_date()
 
     case_name = (job.case_name or "Untitled Case").strip() or "Untitled Case"
     defendant_name = (job.defendant_name or "").strip()
+    done_calls = [v.call for v in views]
 
-    # Parse every summary exactly once and reuse the result everywhere downstream.
-    parsed_by_index: Dict[int, dict] = {}
-    for call in done_calls:
-        if call.summary:
-            parsed_by_index[call.index] = parse_summary_sections(call.summary)
-        else:
-            parsed_by_index[call.index] = {}
-
-    rel_buckets = _split_by_relevance(done_calls, parsed_by_index)
-    glance = _build_at_a_glance(done_calls, parsed_by_index, rel_buckets)
+    rel_buckets = _split_by_relevance(views)
+    glance = _build_at_a_glance(views, rel_buckets)
     timeline = _build_timeline(done_calls)
 
     # One synthesis call: top findings AND identity inference together.
     synthesis_inputs = _select_synthesis_calls(rel_buckets)
-    identity_inputs = _collect_identity_inputs(done_calls, parsed_by_index)
+    identity_inputs = _collect_identity_inputs(views)
 
     findings: List[Dict[str, Any]] = []
     identity_map: Dict[str, Dict[str, str]] = {}
     synthesis_state = "no_input"
 
     if synthesis_inputs or identity_inputs:
-        calls_by_id = {entry["call"].index: entry for entry in synthesis_inputs}
+        calls_by_id = {v.index: v for v in synthesis_inputs}
         response = _run_synthesis(engine, CaseReportInputs(
             case_context=_build_case_context(case_name, defendant_name, job.summary_prompt),
             calls_block=_format_calls_for_synthesis(synthesis_inputs),
@@ -768,10 +748,10 @@ def generate_case_report_pdf(
             synthesis_state = "synth_unavailable"
         else:
             for item in response.findings:
-                entry = calls_by_id.get(item.call_id)
-                if not entry:
+                view = calls_by_id.get(item.call_id)
+                if not view:
                     continue
-                call = entry["call"]
+                call = view.call
                 ts_clean = (item.timestamp or "").strip()
                 findings.append({
                     "headline": item.headline.strip(),
@@ -788,17 +768,16 @@ def generate_case_report_pdf(
             }
             synthesis_state = "ok" if (findings or identity_map) else "parse_failed"
 
-    callers = _build_caller_stats(done_calls, parsed_by_index, identity_map)
+    callers = _build_caller_stats(views, identity_map)
     top_callers = callers[:10]
 
-    high_cards = [_build_call_card(entry) for entry in rel_buckets["HIGH"]]
+    high_cards = [_build_call_card(view) for view in rel_buckets["HIGH"]]
 
     medium_rows = []
-    for entry in rel_buckets["MEDIUM"]:
-        call = entry["call"]
-        parsed = entry["parsed"]
-        brief = (parsed.get("call_summary") or "").strip() or "—"
-        cue_count = len(parsed.get("review_cue_items", []) or [])
+    for view in rel_buckets["MEDIUM"]:
+        call = view.call
+        brief = view.brief or "—"
+        cue_count = len(view.cues)
         medium_rows.append({
             "call_index": call.index + 1,
             # Middle-truncated to one line of the mono column (120pt minus
