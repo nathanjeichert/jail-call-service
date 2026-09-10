@@ -1,0 +1,127 @@
+# guide.pdf: 6 page(s)
+## page 1
+USER GUIDE
+DELIVERY REFERENCE
+User Guide
+CASE State v. Marcus Reeves
+CALLS 10 calls
+GENERATED January 15, 2026
+USER GUIDE· COVER 01
+## page 2
+STATE V. MARCUS REEVES
+SECTION 01
+10 CALLSContents of This Delivery
+State v. Marcus Reeves/
+search.html Call index. Sortable, filterable table of every call with summaries, review cues,
+and full-text search across every transcript.
+viewer.html Audio viewer. Synced audio and transcript for every call; citations in the PDFs
+open here at the exact moment.
+case-report.pdf Case report. At-a-glance metrics, top findings, high-relevance call cards, and
+caller statistics across the full set.
+transcripts/ Transcript PDFs in deposition format, one per call, each with a cover and an
+analysis summary sheet.
+transcripts-no-summary/ Clean transcript PDFs: the same transcripts without the analysis pages, for
+filing or production.
+audio/ MP3 audio, repaired and converted from the facility's source recordings. Played
+by the viewer; also opens in any media player.
+guide.pdf This document.
+KEEP THE FOLDER INTACT
+Extract the delivery fully before use and keep the files together: the links between search.html, viewer.html, and
+the PDFs are relative paths that resolve only when the folder structure is unchanged. To share the delivery, copy the
+entire folder.
+USER GUIDE· CONTENTS OF THIS DELIVERY 02
+## page 3
+STATE V. MARCUS REEVES
+SECTION 02
+VIEWER.HTMLUsing the Call Viewer
+01 Select a call
+The left panel lists every call with its date,
+number, and relevance. Selecting a call loads
+its audio and transcript.
+02 Play and navigate the audio
+SPACE plays and pauses; ← → skip five
+seconds; the −15s / +15s buttons skip further.
+Red ticks on the progress bar mark the call's
+review cues.
+03 Seek and search the transcript
+Printed-format pages follow the audio with the
+current line highlighted. Click any line or word
+to jump to that exact moment; ↑ ↓ turn
+pages. The search box shows every page
+containing a term; “Return to playback” re-
+syncs.
+04 Analysis panel and Present mode
+The right panel shows the call's relevance,
+summary, outside party, and clickable review
+cues; both side panels collapse with their ‹ ›
+buttons. P enters Present mode: audio controls
+and the transcript page only; ESC exits.
+USER GUIDE· USING THE CALL VIEWER 03
+## page 4
+STATE V. MARCUS REEVES
+SECTION 03
+SEARCH.HTMLUsing the Call Index
+01 Search every word spoken
+The search box covers every transcript,
+summary, cue, and phone number in the
+delivery. While a search is active, each row
+shows the matching transcript excerpts with
+timestamps, and the counter reports matching
+calls and total mentions.
+02 Filter and sort
+Narrow by date range, outside number, or
+relevance: the High / Medium / Low counts
+under the case name are clickable filters too.
+Click a column heading to sort.
+03 Expand a row
+Selecting a row opens the call's summary,
+outside-party identity, review cues, and the full
+transcript. The ‹ › arrows above the
+transcript step through search matches, or
+through the flagged passages when no search
+is active.
+04 Open the source
+Excerpts, cues, and transcript lines open
+viewer.html with the audio cued to that exact
+moment. Each cue also cites the transcript PDF
+by page and line (Tr. page:line), and the row
+buttons open the viewer or the transcript PDF
+directly.
+USER GUIDE· USING THE SEARCH PAGE 04
+## page 5
+STATE V. MARCUS REEVES
+SECTION 04
+CASE-REPORT.PDFUsing the Case Report
+AT A GLANCE Delivery-level metrics: call volume over time, relevance distribution, and highlights such
+as the most active day and most frequent caller.
+TOP FINDINGS Cross-call findings synthesized from the highest-relevance calls, each citing its source
+call and timestamp.
+HIGH-RELEVANCE CALLS One card per HIGH call with its summary, outside-party identity, and timestamped
+review cues quoting the transcript.
+MEDIUM-RELEVANCE
+CALLS Compact rows for MEDIUM calls: date, number, brief summary, and cue count.
+CALLER STATISTICS Outside numbers ranked by volume, with call counts, total duration, active period, and
+the inferred identity with its confidence level.
+LINKED CITATIONS
+Every citation in the report is a clickable link: call references open viewer.html at the cited moment, and PDF
+references open the transcript. Keep case-report.pdf inside the delivery folder so its links can resolve.
+USER GUIDE· USING THE CASE REPORT 05
+## page 6
+STATE V. MARCUS REEVES
+SECTION 05
+SUMMARY SHEETS · SEARCH · VIEWERReading the Analysis
+RELEVANCE RATINGS ASSIGNED PER CALL
+HIGH Potentially jury-relevant or case-substantive content: charges, witnesses, evidence,
+admissions, or statements bearing on the case.
+MEDIUM Substantive legal or case context, not clearly central: court dates, counsel, custody status,
+or indirect references to the case.
+LOW Little to no apparent case relevance: routine personal conversation.
+SUMMARY SECTIONS ON EACH TRANSCRIPT'S SUMMARY SHEET
+NOTES Timestamped review cues: only moments flagged as needing attorney attention. Each
+carries the audio timestamp [MM:SS] and a TR. page:line cite that matches the printed
+transcript exactly. “No relevant information found” means nothing was flagged.
+OUTSIDE PARTY Who the defendant appears to be speaking with, populated only when the call itself
+supports the inference. Case-level identity inferences in the report carry a confidence
+level.
+BRIEF SUMMARY A one- or two-sentence overview of the call.
+USER GUIDE· UNDERSTANDING AI ANALYSIS 06

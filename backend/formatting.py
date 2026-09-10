@@ -152,3 +152,13 @@ def format_call_datetime_short(raw: Optional[str], fallback_date: Optional[str] 
 def format_date_short(d: date) -> str:
     """Portable short date: ``Mar 15, 2024`` (avoids non-portable ``%-d``)."""
     return f"{d.strftime('%b')} {d.day}, {d.year}"
+
+
+def format_generated_date(d: Optional[date] = None) -> str:
+    """The "Generated" / "Prepared" date stamped on delivery artifacts: ``March 5, 2026``.
+
+    Defaults to today. Every artifact uses this one format; tests pass a fixed
+    date so the golden package is reproducible.
+    """
+    d = d or date.today()
+    return f"{d.strftime('%B')} {d.day}, {d.year}"

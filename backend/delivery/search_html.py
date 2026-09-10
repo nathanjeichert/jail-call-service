@@ -15,10 +15,9 @@ with ``__PLACEHOLDER__`` substitution (its CSS/JS is full of braces).
 import html
 import os
 import re
-from datetime import datetime
-from typing import List
+from typing import List, Optional
 
-from ..formatting import format_duration, timestamp_to_seconds
+from ..formatting import format_duration, format_generated_date, timestamp_to_seconds
 from ..html_json import dump_script_safe_json
 from ..models import call_stem
 from ..summaries import DUMMY_SUMMARY_PREFIX, parse_summary_sections
@@ -123,12 +122,10 @@ def _case_title_html(case_name: str) -> str:
     return _escape(name)
 
 
-def generate_search_html(calls, case_name: str = "") -> str:
+def generate_search_html(calls, case_name: str = "", gen_date: Optional[str] = None) -> str:
     call_data: List[dict] = [_build_call_datum(c) for c in calls]
     title = f"{case_name} — Call Index" if case_name else "Call Index"
-
-    now = datetime.now()
-    gen_date = f"{now.strftime('%B')} {now.day}, {now.year}"
+    gen_date = gen_date or format_generated_date()
 
     return (
         load_static_template("search.html")

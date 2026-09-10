@@ -357,18 +357,13 @@ def make_zip(output_dir: Path, case_name: str) -> Path:
     return zip_path
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--out", default="test-output", help="output directory (default: test-output/)")
-    parser.add_argument("--calls", type=int, default=10, help="number of fake calls (default: 10)")
-    parser.add_argument("--zip", action="store_true", help="also build the delivery zip")
-    parser.add_argument("--no-audio", action="store_true", help="skip MP3 generation (faster; viewer audio won't play)")
-    args = parser.parse_args()
+def build_package(output_dir: Path, count: int = 10, *, with_audio: bool = True,
+                  gen_date: str | None = None) -> list:
+    """Build the full synthetic package at *output_dir* (replaced if present).
 
-    if not args.no_audio and shutil.which("ffmpeg") is None:
-        sys.exit("ffmpeg not found — install it or pass --no-audio")
-
-    output_dir = Path(args.out).resolve() / "REEVES_TEST_PACKAGE"
+    Returns the fabricated calls. ``gen_date`` pins the "Generated" stamp so
+    the golden regression test gets byte-identical output run to run.
+    """
     if output_dir.exists():
         shutil.rmtree(output_dir)
     audio_dir = output_dir / "audio"
@@ -377,8 +372,8 @@ def main() -> None:
     for d in (audio_dir, transcripts_dir, no_summary_dir):
         d.mkdir(parents=True)
 
-    print(f"Building {args.calls} synthetic calls …")
-    calls = build_calls(args.calls, audio_dir, with_audio=not args.no_audio)
+    print(f"Building {count} synthetic calls …")
+    calls = build_calls(count, audio_dir, with_audio=with_audio)
 
     print("Rendering per-call transcript PDFs …")
     write_call_pdfs(calls, transcripts_dir, no_summary_dir)
@@ -400,12 +395,33 @@ def main() -> None:
     synthesis = CANNED_SYNTHESIS.format(ts0=first_cue_ts(calls[0]), ts1=first_cue_ts(calls[1]))
 
     print("Generating search.html, viewer.html, guide.pdf, case-report.pdf …")
-    asyncio.run(_stage_generate_delivery_assets(job, str(output_dir), StubSynthesisEngine(synthesis)))
+    asyncio.run(_stage_generate_delivery_assets(
+        job, str(output_dir), StubSynthesisEngine(synthesis), gen_date=gen_date,
+    ))
 
     expected = ["search.html", "viewer.html", "guide.pdf", "case-report.pdf"]
     missing = [name for name in expected if not (output_dir / name).is_file()]
     if missing:
-        sys.exit(f"FAILED — missing delivery assets: {', '.join(missing)}")
+        raise RuntimeError(f"missing delivery assets: {', '.join(missing)}")
+    return calls
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--out", default="test-output", help="output directory (default: test-output/)")
+    parser.add_argument("--calls", type=int, default=10, help="number of fake calls (default: 10)")
+    parser.add_argument("--zip", action="store_true", help="also build the delivery zip")
+    parser.add_argument("--no-audio", action="store_true", help="skip MP3 generation (faster; viewer audio won't play)")
+    args = parser.parse_args()
+
+    if not args.no_audio and shutil.which("ffmpeg") is None:
+        sys.exit("ffmpeg not found — install it or pass --no-audio")
+
+    output_dir = Path(args.out).resolve() / "REEVES_TEST_PACKAGE"
+    try:
+        calls = build_package(output_dir, args.calls, with_audio=not args.no_audio)
+    except RuntimeError as e:
+        sys.exit(f"FAILED — {e}")
 
     zip_note = ""
     if args.zip:

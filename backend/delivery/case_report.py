@@ -31,6 +31,7 @@ from ..formatting import (
     format_date_short,
     format_duration,
     format_duration_long,
+    format_generated_date,
     shorten,
     shorten_middle,
 )
@@ -729,8 +730,7 @@ def generate_case_report_pdf(
     gen_date: Optional[str] = None,
 ) -> bytes:
     """Build the case report PDF for a completed job."""
-    if not gen_date:
-        gen_date = datetime.now().strftime("%B %d, %Y")
+    gen_date = gen_date or format_generated_date()
 
     case_name = (job.case_name or "Untitled Case").strip() or "Untitled Case"
     defendant_name = (job.defendant_name or "").strip()

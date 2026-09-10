@@ -14,10 +14,9 @@ fixed-size sheets like the transcript PDF:
 """
 
 import logging
-from datetime import datetime
 from typing import Optional
 
-from ..formatting import shorten
+from ..formatting import format_generated_date, shorten
 from .fonts import pdf_font_css
 from .pdf_render import render_pdf
 from .templates import ASSETS_DIR, render_template
@@ -45,9 +44,7 @@ def _shot_url(key: str) -> Optional[str]:
 def generate_guide_pdf(case_name: str,
                        call_count: int,
                        gen_date: Optional[str] = None) -> bytes:
-    if not gen_date:
-        gen_date = datetime.now().strftime("%B %d, %Y")
-
+    gen_date = gen_date or format_generated_date()
     case_name = (case_name or "Case").strip() or "Case"
     call_count_display = f"{call_count:,} call{'s' if call_count != 1 else ''}"
 

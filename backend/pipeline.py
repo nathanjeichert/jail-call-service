@@ -575,6 +575,7 @@ async def _stage_generate_delivery_assets(
     job: Job,
     output_dir: str,
     summarization_engine: Optional[SummarizationEngine] = None,
+    gen_date: Optional[str] = None,
 ) -> None:
     """Write search.html, viewer.html, guide.pdf, and case-report.pdf.
 
@@ -582,6 +583,8 @@ async def _stage_generate_delivery_assets(
     to call from concurrent threads and gates real render concurrency with
     its own semaphore, so wall time is close to the slowest single asset.
     A failed asset is reported as a warning and does not fail the job.
+    ``gen_date`` overrides the "Generated" stamp (tests pin it for the
+    golden package); production leaves it as today.
     """
     from .delivery.case_report import generate_case_report_pdf
     from .delivery.guide_pdf import generate_guide_pdf
@@ -597,12 +600,16 @@ async def _stage_generate_delivery_assets(
             f.write(data)
 
     writers = {
-        "search.html": lambda: _write("search.html", generate_search_html(done_calls, case_name=job.case_name)),
+        "search.html": lambda: _write(
+            "search.html", generate_search_html(done_calls, case_name=job.case_name, gen_date=gen_date)
+        ),
         "viewer.html": lambda: _write("viewer.html", render_viewer(done_calls, case_name=job.case_name)),
-        "guide.pdf": lambda: _write("guide.pdf", generate_guide_pdf(case_name=job.case_name, call_count=len(done_calls))),
+        "guide.pdf": lambda: _write(
+            "guide.pdf", generate_guide_pdf(case_name=job.case_name, call_count=len(done_calls), gen_date=gen_date)
+        ),
         "case-report.pdf": lambda: _write(
             "case-report.pdf",
-            generate_case_report_pdf(job=job, done_calls=done_calls, engine=summarization_engine),
+            generate_case_report_pdf(job=job, done_calls=done_calls, engine=summarization_engine, gen_date=gen_date),
         ),
     }
 

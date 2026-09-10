@@ -1,0 +1,194 @@
+# case-report.pdf: 7 page(s)
+## page 1
+CASE REPORT
+JAIL CALL REVIEW
+State
+v.
+Marcus Reeves
+10
+CALLS
+1h 10m
+AUDIO
+3
+HIGH RELEVANCE
+4
+NUMBERS
+DEFENDANT Marcus Reeves
+COVERAGE Mar 3 – May 30, 2026
+REVIEW CUES 15 across 6 calls
+GENERATED January 15, 2026
+01At a Glance p.2
+02Top Findings p.3
+03High-Relevance Calls p.4
+04Medium-Relevance Calls p.6
+05Caller Statistics p.7
+  link /Dest /sec-glance
+  link /Dest /sec-findings
+  link /Dest /sec-high
+  link /Dest /sec-medium
+  link /Dest /sec-callers
+## page 2
+AT A GLANCE PRIVILEGED & CONFIDENTIAL 02 / 07
+STATE V. MARCUS REEVES
+SECTION 01
+10
+TOTAL CALLS
+3
+HIGH RELEVANCE
+7:04
+AVERAGE LENGTH
+15
+REVIEW CUES
+CALL VOLUME BY WEEK PEAK: 1 CALL, WEEK OF MAR 3, 2026
+1
+3/3 3/17 3/31 4/14 4/28 5/12 5/26
+RELEVANCE DISTRIBUTION ALL 10 CALLS
+3HIGH30.0% 3MEDIUM30.0% 2LOW20.0% 2UNRATED20.0%
+HIGHLIGHTS
+Most active day Mar 3, 2026 · 1 call
+Longest call 10:28 · (909) 555-0144
+Most frequent caller (909) 555-0144 · 3 calls
+Calls with review cues 6 of 10
+10 CALLS · MAR 3 – MAY 30, 2026At a Glance
+## page 3
+TOP FINDINGS PRIVILEGED & CONFIDENTIAL 03 / 07
+STATE V. MARCUS REEVES
+SECTION 02
+01
+Pre-Hearing Contact With a Listed Witness
+Across multiple calls, the defendant asked the outside party to keep a man named Darnell from
+speaking to investigators until defense counsel made contact. The outside party reported a DA
+investigator had already visited the witness's apartment.
+20260303_093302_9095550144.wav Mar 3, 2026 · 9:33 AM [00:21] VIEWER → PDF
+02
+Items Removed From the Impounded Vehicle
+An outside party retrieving the defendant's car reported that police removed items from the trunk
+before towing and that no inventory list was available at the lot.
+20260313_123302_9095550226.wav Mar 13, 2026 · 12:33 PM [01:14] VIEWER → PDF
+03
+Employer Statement on the Night of the Incident
+The defendant stated his employer could confirm he was closing the shop until at least 9:40 PM on
+the night in question and expected investigators to contact the employer.
+20260323_153302_7605550317.wav Mar 23, 2026 · 3:33 PM VIEWER → PDF
+3 FINDINGSTop Findings
+  link /Launch viewer.html?call=001-20260303_093302_9095550144.mp3&t=00%3A21
+  link /Launch transcripts/001-20260303_093302_9095550144.pdf
+  link /Launch viewer.html?call=002-20260313_123302_9095550226.mp3&t=01%3A14
+  link /Launch transcripts/002-20260313_123302_9095550226.pdf
+  link /Launch viewer.html?call=003-20260323_153302_7605550317.mp3
+  link /Launch transcripts/003-20260323_153302_7605550317.pdf
+## page 4
+HIGH-RELEVANCE CALLS PRIVILEGED & CONFIDENTIAL 04 / 07
+STATE V. MARCUS REEVES
+SECTION 03
+HIGH(909) 555-0144 CALL 001 · MAR 3, 2026 · 9:33 AM · 4:00
+The defendant coordinates legal paperwork and instructs the outside party to keep a witness from
+speaking to investigators before counsel calls; the hearing was rescheduled to the twenty-second.
+Outside party: Sister; addressed as 'Tanya' across multiple calls.
+00:21 Defendant instructs the outside party to keep a named witness from speaking to
+investigators before counsel makes contact.: “Hey, it's me. Did you get the paperwork
+from Castillo's office yet or are they still dragging their feet on it?”
+TR. 1:4-1:6
+01:05 Outside party reports items were removed from the impounded vehicle before
+towing; no inventory was provided.: “Okay good. Listen, when you talk to Darnell, tell
+him not to say anything about that night until the lawyer calls him first. I mean it.”
+TR. 1:10-1:12
+01:49 Statement about the defendant's whereabouts and timeline on the night of the
+incident.: “They came to the house? Man. That's exactly what Castillo said would
+happen. Don't let him talk to anybody, period.”
+TR. 1:16-1:18
+OPEN IN VIEWER → TRANSCRIPT PDF
+HIGH(909) 555-0226 CALL 002 · MAR 13, 2026 · 12:33 PM · 5:37
+Discussion of retrieving the defendant's car from impound; the outside party reports police removed
+items from the trunk before towing.
+Outside party: Mother; defendant uses 'Mama' throughout.
+01:14 Outside party reports items were removed from the impounded vehicle before
+towing; no inventory was provided.: “Three hundred eighty to release it. I'm not paying
+that until your hearing — it just sits there racking up fees either way.”
+TR. 1:6-1:8
+3 CALLS FLAGGED HIGHHigh-Relevance Calls
+  link /Launch viewer.html?call=001-20260303_093302_9095550144.mp3&t=00%3A21
+  link /Launch viewer.html?call=001-20260303_093302_9095550144.mp3&t=01%3A05
+  link /Launch viewer.html?call=001-20260303_093302_9095550144.mp3&t=01%3A49
+  link /Launch viewer.html?call=001-20260303_093302_9095550144.mp3
+  link /Launch transcripts/001-20260303_093302_9095550144.pdf
+  link /Launch viewer.html?call=002-20260313_123302_9095550226.mp3&t=01%3A14
+## page 5
+HIGH-RELEVANCE CALLS PRIVILEGED & CONFIDENTIAL 05 / 07
+02:29 Statement about the defendant's whereabouts and timeline on the night of the
+incident.: “The guy at the lot said the police took some stuff out of the trunk before it got
+towed. He didn't have a list.”
+TR. 1:11-1:13
+03:44 Preliminary hearing date moved from the fourteenth to the twenty-second per
+defense counsel.: “I'll call the office tomorrow. Hector says he can cover your shifts
+through the end of the month, by the way.”
+TR. 1:17-1:19
+OPEN IN VIEWER → TRANSCRIPT PDF
+HIGH(760) 555-0317 CALL 003 · MAR 23, 2026 · 3:33 PM · 7:14
+Routine family conversation about the defendant's daughter, church, and commissary money.
+Outside party: Friend; handled the impound retrieval.
+02:24 Statement about the defendant's whereabouts and timeline on the night of the
+incident.: “Put her on next time, alright? I don't want her hearing all this through other
+people.”
+TR. 1:8-1:9
+04:01 Preliminary hearing date moved from the fourteenth to the twenty-second per
+defense counsel.: “Tell them I'm good. I've been keeping my head down, going to the law
+library, all of that.”
+TR. 1:12-1:13
+05:37 Defendant instructs the outside party to keep a named witness from speaking to
+investigators before counsel makes contact.: “I heard you. The money came through
+Tuesday, by the way. I'm set for a couple weeks.”
+TR. 1:16-1:17
+OPEN IN VIEWER → TRANSCRIPT PDF
+  link /Launch viewer.html?call=002-20260313_123302_9095550226.mp3&t=02%3A29
+  link /Launch viewer.html?call=002-20260313_123302_9095550226.mp3&t=03%3A44
+  link /Launch viewer.html?call=002-20260313_123302_9095550226.mp3
+  link /Launch transcripts/002-20260313_123302_9095550226.pdf
+  link /Launch viewer.html?call=003-20260323_153302_7605550317.mp3&t=02%3A24
+  link /Launch viewer.html?call=003-20260323_153302_7605550317.mp3&t=04%3A01
+  link /Launch viewer.html?call=003-20260323_153302_7605550317.mp3&t=05%3A37
+  link /Launch viewer.html?call=003-20260323_153302_7605550317.mp3
+  link /Launch transcripts/003-20260323_153302_7605550317.pdf
+## page 6
+MEDIUM-RELEVANCE CALLS PRIVILEGED & CONFIDENTIAL 06 / 07
+STATE V. MARCUS REEVES
+SECTION 04
+Apr 1, 2026 · 6:33 PM 8:51(951) 555-0419
+20260401_18...550419.wav
+The defendant coordinates legal
+paperwork and instructs the outside
+party to keep a witness from speaking
+to investigators before counsel calls;
+the hearing was rescheduled to the
+twenty-second. · 2 CUES
+PDF →
+Apr 11, 2026 · 10:33 AM 10:28(909) 555-0144
+20260411_10...550144.wav
+Discussion of retrieving the defendant's
+car from impound; the outside party
+reports police removed items from the
+trunk before towing. · 2 CUES
+PDF →
+Apr 21, 2026 · 1:33 PM 5:05(909) 555-0226
+20260421_13...550226.wav
+Routine family conversation about the
+defendant's daughter, church, and
+commissary money. · 2 CUES
+PDF →
+3 CALLS FLAGGED MEDIUMMedium-Relevance Calls
+  link /Launch viewer.html?call=004-20260401_183302_9515550419.mp3
+  link /Launch transcripts/004-20260401_183302_9515550419.pdf
+  link /Launch viewer.html?call=005-20260411_103302_9095550144.mp3
+  link /Launch transcripts/005-20260411_103302_9095550144.pdf
+  link /Launch viewer.html?call=006-20260421_133302_9095550226.mp3
+  link /Launch transcripts/006-20260421_133302_9095550226.pdf
+## page 7
+CALLER STATISTICS PRIVILEGED & CONFIDENTIAL 07 / 07
+STATE V. MARCUS REEVES
+SECTION 05
+OUTSIDE NUMBER INFERRED IDENTITY CALLS DURATION ACTIVE TOP REL.
+(909) 555-0144 Tanya, sister HIGH CONF 3 24:24 Mar 3 – May 20 HIGH
+(909) 555-0226 Mother of defendant HIGH CONF 3 15:15 Mar 13 – May 30 HIGH
+(951) 555-0419 — 2 17:10 Apr 1 – May 10 MEDIUM
+(760) 555-0317 FriendMEDIUM CONF 2 13:56 Mar 23 – May 1 HIGH
+4 OUTSIDE NUMBERS · BY VOLUMECaller Statistics

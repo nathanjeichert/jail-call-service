@@ -8,7 +8,9 @@ on:
 jobs:
   backend:
     name: Backend (pytest + ruff)
-    runs-on: ubuntu-latest
+    # macOS on purpose: the app only runs on a Mac (CoreML/MLX), and the
+    # golden PDF digests depend on the platform's font metrics.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
