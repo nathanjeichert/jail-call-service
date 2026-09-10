@@ -1,6 +1,4 @@
-"""
-Gemini-specific structured-output schemas and helpers.
-"""
+"""Structured-output schemas shared by the summarization engines."""
 
 from typing import List, Literal, Optional
 
@@ -103,44 +101,3 @@ GEMINI_SUMMARY_JSON_INSTRUCTIONS = (
     "Set identity_of_outside_party to null when the caller cannot be reasonably identified.\n"
     "Ignore any transcript lines spoken by AUTOMATED MESSAGE when choosing notes or writing the brief summary."
 )
-
-
-def render_summary_text(summary: SummaryResponse, line_entries: List[dict]) -> str:
-    """Render a structured Gemini summary back into the app's text summary format."""
-    from .transcript_formatting import resolve_line_ref_context
-
-    blocks: List[str] = [f"RELEVANCE: {summary.relevance}"]
-
-    note_lines = []
-    rendered_notes = []
-    for note in summary.notes:
-        ctx = resolve_line_ref_context(note.line_ref, line_entries)
-        if not ctx:
-            continue
-        reason = " ".join((note.reason or "").split()).strip()
-        if not reason:
-            continue
-        rendered_notes.append((
-            float(ctx["start"]),
-            f'- {ctx["timestamp"]} {ctx["speaker"]} [{ctx["line_cite"]}] — {reason}',
-        ))
-
-    rendered_notes.sort(key=lambda item: item[0])
-    note_lines = [line for _, line in rendered_notes]
-
-    if note_lines:
-        blocks.append("NOTES:\n" + "\n".join(note_lines))
-    else:
-        blocks.append("NOTES: NONE")
-
-    identity = (summary.identity_of_outside_party or "").strip()
-    if identity:
-        blocks.append(f"IDENTITY OF OUTSIDE PARTY:\n{identity}")
-
-    brief = " ".join((summary.brief_summary or "").split()).strip()
-    if brief:
-        blocks.append(f"BRIEF SUMMARY:\n{brief}")
-    else:
-        blocks.append("BRIEF SUMMARY:\n")
-
-    return "\n\n".join(blocks).strip()

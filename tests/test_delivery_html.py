@@ -3,8 +3,8 @@ import unittest
 
 from backend.html_json import dump_script_safe_json
 from backend.models import CallResult, CallStatus, TranscriptTurn
-from backend.search_html import generate_search_html
-from backend.viewer import render_viewer
+from backend.delivery.search_html import generate_search_html
+from backend.delivery.viewer import render_viewer
 
 
 def _fixture_call() -> CallResult:

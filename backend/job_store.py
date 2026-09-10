@@ -20,8 +20,7 @@ from .models import (
     normalize_speaker_assignment,
 )
 from . import config as cfg
-from .db import SessionLocal, engine, Base
-from .db_models import DBJob, DBCall
+from .db import Base, DBCall, DBJob, SessionLocal, engine
 
 logger = logging.getLogger(__name__)
 

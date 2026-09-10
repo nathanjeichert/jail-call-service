@@ -6,7 +6,7 @@ import unittest
 from pypdf import PdfReader, PdfWriter
 from pypdf.annotations import Link
 
-from backend.case_report import (
+from backend.delivery.case_report import (
     _extract_local_target,
     _rewrite_local_links_to_launch_actions,
 )

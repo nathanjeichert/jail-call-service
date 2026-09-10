@@ -1,9 +1,9 @@
 import unittest
 
-from backend.gemini_structured import SummaryNote, SummaryResponse, render_summary_text
+from backend.summarization.schemas import SummaryNote, SummaryResponse
 from backend.models import TranscriptTurn
-from backend.pdf_utils import parse_summary_sections
-from backend.transcript_formatting import compute_line_entries, hydrate_review_cues
+from backend.summaries import parse_summary_sections, render_summary_text
+from backend.transcript_layout import compute_line_entries, hydrate_review_cues
 
 
 class QuoteLineRefTests(unittest.TestCase):

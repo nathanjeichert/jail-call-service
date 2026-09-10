@@ -31,7 +31,8 @@ from .models import (
     normalize_speaker_assignment,
 )
 from .icm_parser import find_icm_report, parse_icm_report
-from . import job_store, config as cfg, pdf_utils as U
+from . import job_store, config as cfg
+from .formatting import format_duration
 from .job_settings import resolve_runtime_selection, validate_runtime_selection
 
 logger = logging.getLogger(__name__)
@@ -81,14 +82,6 @@ def _discover_audio_files(input_folder: str) -> List[str]:
     return sorted(audio_files)
 
 
-def _call_stem(index: int, filename: str) -> str:
-    return call_stem(index, filename)
-
-
-def _format_duration(seconds: Optional[float]) -> str:
-    return U.format_duration(seconds)
-
-
 def _build_channel_labels(
     call: CallResult,
     defendant_name: Optional[str],
@@ -113,7 +106,7 @@ async def _convert_one(job_id, call, audio_dir, executor):
     """Convert a single call's audio. Returns updated call or None on failure."""
     from .audio_converter import convert_single
 
-    stem = _call_stem(call.index, call.filename)
+    stem = call_stem(call.index, call.filename)
     # Keep working copies outside output/ so they never ship in the delivery ZIP.
     working_dir = os.path.join(job_store._job_dir(job_id), "source-working")
     job_store.update_call(job_id, call.index, status=CallStatus.CONVERTING)
@@ -165,14 +158,13 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
         apply_system_audio_filter,
     )
     from .summarization.base import build_full_prompt, build_turn_transcript_text, build_transcript_text
-    from .gemini_structured import (
+    from .summarization.schemas import (
         GEMINI_SUMMARY_JSON_INSTRUCTIONS,
         SummaryResponse,
         SystemAudioResponse,
-        render_summary_text,
     )
-    from .summary_normalization import normalize_structured_summary, normalize_summary_text
-    from .transcript_formatting import compute_line_entries
+    from .summaries import normalize_structured_summary, normalize_summary_text, render_summary_text
+    from .transcript_layout import compute_line_entries
 
     job_store.update_call(job_id, call.index, status=CallStatus.SUMMARIZING)
 
@@ -285,15 +277,15 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
 
 async def _generate_pdf_one(job_id, call, case_name, transcripts_dir, transcripts_no_summary_dir, executor):
     """Generate both PDF variants (with and without summary) for a single call."""
-    from .transcript_formatting import create_pdf
+    from .delivery.transcript_pdf import create_pdf
 
-    stem = _call_stem(call.index, call.filename)
+    stem = call_stem(call.index, call.filename)
     audio_filename = os.path.basename(call.mp3_path) if call.mp3_path else f"{stem}.mp3"
     title_data = {
         "CASE_NAME": case_name,
         "FILE_NAME": call.filename,
         "AUDIO_FILENAME": audio_filename,
-        "FILE_DURATION": _format_duration(call.duration_seconds),
+        "FILE_DURATION": format_duration(call.duration_seconds),
         "INMATE_NAME": call.inmate_name or "",
         "CALL_DATETIME": call.call_datetime_str or "",
         "FACILITY": call.facility or "",
@@ -790,8 +782,8 @@ async def _stage_generate_delivery_assets(
     audio_dir: str,
     summarization_engine=None,
 ) -> None:
-    from .search_html import generate_search_html
-    from .viewer import render_viewer
+    from .delivery.search_html import generate_search_html
+    from .delivery.viewer import render_viewer
 
     loop = asyncio.get_event_loop()
     done_calls = [c for c in job.calls if c.status == CallStatus.DONE]
@@ -807,13 +799,13 @@ async def _stage_generate_delivery_assets(
             f.write(html)
 
     def write_guide():
-        from .guide_pdf import generate_guide_pdf
+        from .delivery.guide_pdf import generate_guide_pdf
         guide_bytes = generate_guide_pdf(case_name=job.case_name, call_count=len(done_calls))
         with open(os.path.join(output_dir, "guide.pdf"), 'wb') as f:
             f.write(guide_bytes)
 
     def write_case_report():
-        from .case_report import generate_case_report_pdf
+        from .delivery.case_report import generate_case_report_pdf
         report_bytes = generate_case_report_pdf(
             job=job,
             done_calls=done_calls,
@@ -823,7 +815,7 @@ async def _stage_generate_delivery_assets(
             f.write(report_bytes)
 
     # All four writers run in parallel: the shared Chromium PDF renderer
-    # (backend.pdf_render) is safe to call from concurrent threads and gates
+    # (backend.delivery.pdf_render) is safe to call from concurrent threads and gates
     # real render concurrency with its own semaphore, so the overall wall
     # time is close to the longest single output rather than the sum of all
     # four.

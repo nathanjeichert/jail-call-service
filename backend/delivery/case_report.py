@@ -10,8 +10,7 @@ Aggregates per-call summaries into a standalone case-level report:
   - At-a-glance metrics, daily call timeline, relevance distribution
 
 Renders via headless Chromium (backend.pdf_render) with Paged.js paged-media
-support, sharing all design tokens with pdf_cover_template.html and
-guide_template.html.
+support, sharing the "Record" design tokens with the other delivery templates.
 """
 
 import asyncio
@@ -26,13 +25,23 @@ from urllib.parse import quote
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from . import config as cfg
-from . import pdf_utils as U
-from .design_fonts import pdf_font_css
-from .gemini_structured import CaseReportResponse
-from .models import CallResult, Job, call_stem
-from .summarization.base import SummarizationEngine
-from .transcript_formatting import compute_line_entries, hydrate_review_cues
+from .. import config as cfg
+from ..formatting import (
+    format_call_datetime_short,
+    format_date_short,
+    format_duration,
+    format_duration_long,
+    shorten,
+    shorten_middle,
+)
+from ..models import CallResult, Job, call_stem
+from ..summaries import parse_summary_sections
+from ..summarization.base import SummarizationEngine
+from ..summarization.schemas import CaseReportResponse
+from ..transcript_layout import compute_line_entries, hydrate_review_cues
+from .fonts import pdf_font_css
+from .pdf_render import render_pdf
+from .templates import render_template
 
 logger = logging.getLogger(__name__)
 
@@ -257,11 +266,11 @@ def _transcript_pdf_link(call: CallResult) -> str:
 
 
 def _format_duration(seconds: Optional[float]) -> str:
-    return U.format_duration(seconds, empty="—")
+    return format_duration(seconds, empty="—")
 
 
 def _format_call_datetime_short(call: CallResult) -> str:
-    return U.format_call_datetime_short(
+    return format_call_datetime_short(
         call.call_datetime_str, fallback_date=call.call_date,
     )
 
@@ -282,13 +291,13 @@ def _format_date_range(parsed_dates: List[date]) -> str:
         return "—"
     start, end = parsed_dates[0], parsed_dates[-1]
     if start == end:
-        return U.format_date_short(start)
+        return format_date_short(start)
     if start.year == end.year:
         return (
             f"{start.strftime('%b')} {start.day} – "
             f"{end.strftime('%b')} {end.day}, {end.year}"
         )
-    return f"{U.format_date_short(start)} – {U.format_date_short(end)}"
+    return f"{format_date_short(start)} – {format_date_short(end)}"
 
 
 # ────────────────────────── relevance bucketing ──────────────────────────
@@ -720,9 +729,9 @@ def _build_timeline(done_calls: List[CallResult]) -> Optional[Dict[str, Any]]:
     peak_index = next(i for i, b in enumerate(buckets) if b["count"] == max_count)
     peak = buckets[peak_index]
     if granularity == "day":
-        peak_label = U.format_date_short(peak["start"]).upper()
+        peak_label = format_date_short(peak["start"]).upper()
     elif granularity == "week":
-        peak_label = "WEEK OF " + U.format_date_short(peak["start"]).upper()
+        peak_label = "WEEK OF " + format_date_short(peak["start"]).upper()
     elif granularity == "month":
         peak_label = peak["start"].strftime("%B %Y").upper()
     else:
@@ -737,8 +746,8 @@ def _build_timeline(done_calls: List[CallResult]) -> Optional[Dict[str, Any]]:
         "unit_name": unit_names[granularity],
         "tick_count": len(buckets),
         "span_days": span_days,
-        "start_label": U.format_date_short(start),
-        "end_label": U.format_date_short(end),
+        "start_label": format_date_short(start),
+        "end_label": format_date_short(end),
         "peak_label": peak_label,
         "svg": _build_timeline_svg(buckets, max_count, peak_index),
     }
@@ -893,7 +902,7 @@ def _build_at_a_glance(
         "rel_counts": rel_counts,
         "rel_percents": rel_percents,
         "total_duration_sec": total_dur,
-        "total_duration_display": U.format_duration_long(total_dur),
+        "total_duration_display": format_duration_long(total_dur),
         "total_duration_stat": _format_duration_stat(total_dur),
         "avg_duration_display": _format_duration(avg_dur),
         "date_range": date_range,
@@ -901,7 +910,7 @@ def _build_at_a_glance(
         "total_notes": total_notes,
         "calls_with_notes": calls_with_notes,
         "most_active_day_display": (
-            U.format_date_short(most_active_day) if most_active_day else "—"
+            format_date_short(most_active_day) if most_active_day else "—"
         ),
         "most_active_day_count": most_active_count,
         "longest_call_display": _format_duration(longest_dur) if longest_call else "—",
@@ -958,8 +967,6 @@ def generate_case_report_pdf(
     gen_date: Optional[str] = None,
 ) -> bytes:
     """Build the case report PDF for a completed job."""
-    from .pdf_render import render_pdf
-
     if not gen_date:
         gen_date = datetime.now().strftime("%B %d, %Y")
 
@@ -970,7 +977,7 @@ def generate_case_report_pdf(
     parsed_by_index: Dict[int, dict] = {}
     for call in done_calls:
         if call.summary:
-            parsed_by_index[call.index] = U.parse_summary_sections(call.summary)
+            parsed_by_index[call.index] = parse_summary_sections(call.summary)
         else:
             parsed_by_index[call.index] = {}
 
@@ -1012,7 +1019,7 @@ def generate_case_report_pdf(
                         "headline": item.headline.strip(),
                         "detail": item.detail.strip(),
                         "timestamp": ts_clean,
-                        "call_filename": U.shorten(call.filename, 56),
+                        "call_filename": shorten(call.filename, 56),
                         "call_date": _format_call_datetime_short(call),
                         "viewer_link": _viewer_link(call, ts_clean or None),
                         "pdf_link": _transcript_pdf_link(call),
@@ -1053,7 +1060,7 @@ def generate_case_report_pdf(
                         "headline": f.get("HEADLINE", "").strip(),
                         "detail": f.get("DETAIL", "").strip(),
                         "timestamp": ts_clean,
-                        "call_filename": U.shorten(call.filename, 56),
+                        "call_filename": shorten(call.filename, 56),
                         "call_date": _format_call_datetime_short(call),
                         "viewer_link": _viewer_link(call, ts_clean or None),
                         "pdf_link": _transcript_pdf_link(call),
@@ -1082,7 +1089,7 @@ def generate_case_report_pdf(
             # Middle-truncated to one line of the mono column (120pt minus
             # 12pt padding at 7.1pt IBM Plex Mono ≈ 25 chars); a tail spilling
             # one or two characters onto a second line reads badly.
-            "filename": U.shorten_middle(call.filename, 24),
+            "filename": shorten_middle(call.filename, 24),
             "datetime": _format_call_datetime_short(call),
             "duration": _format_duration(call.duration_seconds),
             "party": call.outside_number_fmt or call.outside_number or "—",
@@ -1106,7 +1113,7 @@ def generate_case_report_pdf(
     ctx = {
         "fonts_css": pdf_font_css(),
         "case_name": case_name,
-        "case_name_short": U.shorten(case_name, 38),
+        "case_name_short": shorten(case_name, 38),
         "case_caption": case_caption,
         "defendant_name": defendant_name,
         "gen_date": gen_date,
@@ -1127,8 +1134,7 @@ def generate_case_report_pdf(
         "identity_inferred_count": sum(1 for c in callers if c.get("inferred")),
     }
 
-    template = U.get_jinja_env().get_template("case_report_template.html")
-    html_str = template.render(**ctx)
+    html_str = render_template("case_report.html", **ctx)
     # Chromium resolves the relative <a href> values ("viewer.html?call=...",
     # "transcripts/xxx.pdf") against the temp file it renders from, baking
     # absolute file:///tmp/... URIs into the link annotations. The rewriter

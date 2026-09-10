@@ -12,7 +12,7 @@ relevance tier (plus the unstructured-fallback and skip-summary paths),
 ICM-style metadata, and real tone MP3s generated with ffmpeg — then runs
 them through the REAL delivery code:
 
-  * per-call transcript PDFs via ``transcript_formatting.create_pdf``
+  * per-call transcript PDFs via ``delivery.transcript_pdf.create_pdf``
     (both ``transcripts/`` and ``transcripts-no-summary/`` variants)
   * ``search.html`` / ``viewer.html`` / ``guide.pdf`` / ``case-report.pdf``
     via the pipeline's own ``_stage_generate_delivery_assets``
@@ -36,11 +36,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from backend.gemini_structured import SummaryNote, SummaryResponse, render_summary_text
+from backend.delivery.transcript_pdf import create_pdf
+from backend.formatting import format_duration
 from backend.models import CallResult, Job, TranscriptTurn, WordTimestamp, call_stem
-from backend.pipeline import _format_duration, _stage_generate_delivery_assets
-from backend.summary_normalization import normalize_structured_summary
-from backend.transcript_formatting import compute_line_entries, create_pdf
+from backend.pipeline import _stage_generate_delivery_assets
+from backend.summaries import normalize_structured_summary, parse_summary_sections, render_summary_text
+from backend.summarization.schemas import SummaryNote, SummaryResponse
+from backend.transcript_layout import compute_line_entries
 
 CASE_NAME = "State v. Marcus Reeves"
 DEFENDANT = "Marcus Reeves"
@@ -319,7 +321,7 @@ def write_call_pdfs(calls, transcripts_dir: Path, no_summary_dir: Path) -> None:
             "CASE_NAME": CASE_NAME,
             "FILE_NAME": call.filename,
             "AUDIO_FILENAME": os.path.basename(call.mp3_path),
-            "FILE_DURATION": _format_duration(call.duration_seconds),
+            "FILE_DURATION": format_duration(call.duration_seconds),
             "INMATE_NAME": call.inmate_name or "",
             "CALL_DATETIME": call.call_datetime_str or "",
             "FACILITY": call.facility or "",
@@ -386,7 +388,6 @@ def main() -> None:
     )
 
     # Timestamps for the canned findings: first cue of calls 0 and 1.
-    from backend.pdf_utils import parse_summary_sections
     def first_cue_ts(call):
         items = parse_summary_sections(call.summary or "").get("review_cue_items") or []
         return (items[0].get("timestamp", "[01:00]") if items else "[01:00]").strip("[]")

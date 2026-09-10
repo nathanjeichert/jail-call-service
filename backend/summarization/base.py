@@ -4,15 +4,12 @@ Base protocol and shared utilities for summarization engines.
 
 from typing import Dict, List, Optional, Protocol
 
+from ..formatting import format_timestamp
 from ..models import TranscriptTurn
+from ..transcript_layout import compute_line_entries
 
 
 # ── Shared utilities ──
-
-def _seconds_to_timestamp_label(seconds: float) -> str:
-    total = max(int(seconds or 0), 0)
-    mins, secs = divmod(total, 60)
-    return f"{mins:02d}:{secs:02d}"
 
 
 def build_transcript_text(turns: List[TranscriptTurn], audio_duration: float = 0.0) -> str:
@@ -22,8 +19,6 @@ def build_transcript_text(turns: List[TranscriptTurn], audio_duration: float = 0
     ``[Page:Line]`` format. We therefore feed it the exact same wrapped line
     layout the transcript PDF/viewer/search surfaces use later.
     """
-    from ..transcript_formatting import compute_line_entries
-
     if not turns:
         return ""
 
@@ -37,7 +32,7 @@ def build_transcript_text(turns: List[TranscriptTurn], audio_duration: float = 0
         speaker = str(entry.get("speaker", "SPEAKER")).strip() or "SPEAKER"
         text = str(entry.get("text", "")).strip()
         lines.append(
-            f"[{turn_index}] [{page}:{line}] [{_seconds_to_timestamp_label(start)}] {speaker}: {text}"
+            f"[{turn_index}] [{page}:{line}] [{format_timestamp(start, brackets=False)}] {speaker}: {text}"
         )
     return "\n".join(lines)
 

@@ -3,7 +3,7 @@ import unittest
 
 from pypdf import PdfReader
 
-from backend.guide_pdf import generate_guide_pdf
+from backend.delivery.guide_pdf import generate_guide_pdf
 
 
 def _page_text_entries(page):

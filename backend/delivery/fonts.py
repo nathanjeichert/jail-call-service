@@ -1,7 +1,7 @@
 """Embedded font assets for the delivery artifacts.
 
 All client-facing artifacts share one type system (SIL OFL 1.1, license
-texts alongside the font files in ``backend/fonts/``):
+texts alongside the font files in ``delivery/assets/fonts/``):
 
 * **Fraunces** (variable, wght 100–900 + opsz 9–144, roman + italic) —
   display serif for document titles and large numerals. The optical-size
@@ -11,7 +11,7 @@ texts alongside the font files in ``backend/fonts/``):
 * **IBM Plex Mono** (static 400/600) — timestamps, phone numbers, and
   page:line cites.
 * **Courier Prime** (TTF) — transcript sheets only; metric-locked, the
-  62-char line geometry in ``transcript_formatting.py`` depends on it.
+  62-char line geometry in ``transcript_layout.py`` depends on it.
 
 Two delivery mechanisms, because the artifacts have different constraints:
 
@@ -28,7 +28,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
-FONTS_DIR = Path(__file__).parent / "fonts"
+FONTS_DIR = Path(__file__).parent / "assets" / "fonts"
 
 # (css family name, css font-weight value, style, file name)
 _FACES: List[Tuple[str, str, str, str]] = [

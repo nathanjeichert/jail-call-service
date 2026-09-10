@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from pypdf import PdfReader
 
-from backend.pdf_render import render_pdf
+from backend.delivery.pdf_render import render_pdf
 
 LETTER_WIDTH_PTS = 612.0
 LETTER_HEIGHT_PTS = 792.0

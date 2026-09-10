@@ -23,7 +23,7 @@ crashes mid-render (``TargetClosedError`` and friends) it is relaunched once
 and the render retried a single time before the error propagates.
 
 Paged.js support: with ``paged=True`` the vendored Paged.js polyfill
-(``backend/vendor/paged.polyfill.js``) is injected after page load with
+(``delivery/assets/vendor/paged.polyfill.js``) is injected after page load with
 ``window.PagedConfig = { auto: false }`` pre-set, then pagination is driven
 explicitly via ``window.PagedPolyfill.preview()`` so we know exactly when
 fragmentation has finished before printing.
@@ -46,7 +46,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_VENDOR_DIR = Path(__file__).resolve().parent / "vendor"
+_VENDOR_DIR = Path(__file__).resolve().parent / "assets" / "vendor"
 _PAGED_POLYFILL_PATH = _VENDOR_DIR / "paged.polyfill.js"
 
 #: Maximum simultaneous in-flight renders on the shared browser.

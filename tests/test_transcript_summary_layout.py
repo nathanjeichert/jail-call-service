@@ -3,20 +3,18 @@ import unittest
 
 from pypdf import PdfReader
 
-from backend.gemini_structured import SummaryNote, SummaryResponse, render_summary_text
+from backend.summarization.schemas import SummaryNote, SummaryResponse
 from backend.models import TranscriptTurn
-from backend.pdf_utils import parse_summary_sections
-from backend.summary_normalization import (
+from backend.delivery.summary_layout import paginate_structured_summary
+from backend.delivery.transcript_pdf import create_pdf
+from backend.summaries import (
     SUMMARY_NOTE_HARD_MAX,
     normalize_structured_summary,
     normalize_summary_text,
+    parse_summary_sections,
+    render_summary_text,
 )
-from backend.transcript_formatting import (
-    compute_line_entries,
-    create_pdf,
-    hydrate_review_cues,
-    paginate_structured_summary,
-)
+from backend.transcript_layout import compute_line_entries, hydrate_review_cues
 
 
 def _fixture_001_1646962560_5000_13_159_593():

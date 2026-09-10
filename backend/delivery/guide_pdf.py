@@ -1,5 +1,5 @@
 """
-PDF user guide generation — HTML/CSS via headless Chromium (backend.pdf_render).
+PDF user guide generation via headless Chromium (pdf_render).
 
 Renders a 6-page guide in the shared "Record" design language (Fraunces /
 Public Sans / IBM Plex Mono, ink spine, one signal color), as explicit
@@ -15,15 +15,16 @@ fixed-size sheets like the transcript PDF:
 
 import logging
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
-from . import pdf_utils as U
-from .design_fonts import pdf_font_css
+from ..formatting import shorten
+from .fonts import pdf_font_css
+from .pdf_render import render_pdf
+from .templates import ASSETS_DIR, render_template
 
 logger = logging.getLogger(__name__)
 
-ASSETS_DIR = Path(__file__).parent / "guide_assets"
+SCREENSHOTS_DIR = ASSETS_DIR / "guide"
 
 SCREENSHOT_FILES = {
     "viewer": "viewer_screenshot.png",
@@ -35,7 +36,7 @@ def _shot_url(key: str) -> Optional[str]:
     filename = SCREENSHOT_FILES.get(key)
     if not filename:
         return None
-    path = ASSETS_DIR / filename
+    path = SCREENSHOTS_DIR / filename
     if path.is_file():
         return path.as_uri()
     return None
@@ -44,8 +45,6 @@ def _shot_url(key: str) -> Optional[str]:
 def generate_guide_pdf(case_name: str,
                        call_count: int,
                        gen_date: Optional[str] = None) -> bytes:
-    from .pdf_render import render_pdf
-
     if not gen_date:
         gen_date = datetime.now().strftime("%B %d, %Y")
 
@@ -55,7 +54,7 @@ def generate_guide_pdf(case_name: str,
     ctx = {
         "fonts_css": pdf_font_css(),
         "case_name": case_name,
-        "case_name_short": U.shorten(case_name, 38),
+        "case_name_short": shorten(case_name, 38),
         "gen_date": gen_date,
         "call_count": call_count,
         "call_count_display": call_count_display,
@@ -63,8 +62,7 @@ def generate_guide_pdf(case_name: str,
         "search_shot_url": _shot_url("search"),
     }
 
-    template = U.get_jinja_env().get_template("guide_template.html")
-    html_str = template.render(**ctx)
+    html_str = render_template("guide.html", **ctx)
 
     # Screenshots are referenced by absolute file:// URIs (_shot_url), so no
     # base URL is needed for resource resolution. Every page is an explicit
