@@ -389,8 +389,8 @@ body {
 
     <div class="body">
         <div class="shot">
-            {% if search_shot_url %}
-            <img class="shot-img" src="{{ search_shot_url }}" alt="Call index screenshot">
+            {% if index_view_shot_url %}
+            <img class="shot-img" src="{{ index_view_shot_url }}" alt="Call index screenshot">
             {% else %}
             <div class="shot-placeholder">Call index screenshot</div>
             {% endif %}
@@ -443,8 +443,8 @@ body {
 
     <div class="body">
         <div class="shot">
-            {% if viewer_shot_url %}
-            <img class="shot-img" src="{{ viewer_shot_url }}" alt="Call viewer screenshot">
+            {% if call_view_shot_url %}
+            <img class="shot-img" src="{{ call_view_shot_url }}" alt="Call viewer screenshot">
             {% else %}
             <div class="shot-placeholder">Call view screenshot</div>
             {% endif %}

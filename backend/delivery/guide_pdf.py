@@ -25,9 +25,11 @@ logger = logging.getLogger(__name__)
 
 SCREENSHOTS_DIR = ASSETS_DIR / "guide"
 
+# Regenerate with `python tests/render_guide_screenshots.py` after a visual
+# change to index.html (synthetic case, safe to ship).
 SCREENSHOT_FILES = {
-    "viewer": "viewer_screenshot.png",
-    "search": "search_screenshot.png",
+    "index_view": "index_view_screenshot.png",
+    "call_view": "call_view_screenshot.png",
 }
 
 
@@ -55,8 +57,8 @@ def generate_guide_pdf(case_name: str,
         "gen_date": gen_date,
         "call_count": call_count,
         "call_count_display": call_count_display,
-        "viewer_shot_url": _shot_url("viewer"),
-        "search_shot_url": _shot_url("search"),
+        "index_view_shot_url": _shot_url("index_view"),
+        "call_view_shot_url": _shot_url("call_view"),
     }
 
     html_str = render_template("guide.html", **ctx)
