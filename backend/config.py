@@ -1,8 +1,11 @@
+"""Runtime settings, read once from the environment (and .env)."""
+
 import logging
 import os
+
 from dotenv import load_dotenv
 
-from .prompts import DEFAULT_SUMMARY_PROMPT  # noqa: F401  (re-exported for callers using cfg.DEFAULT_SUMMARY_PROMPT)
+from .prompts import DEFAULT_SUMMARY_PROMPT  # noqa: F401  re-exported as cfg.DEFAULT_SUMMARY_PROMPT
 
 load_dotenv()
 
@@ -14,6 +17,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", 
 
 
 def validate_api_keys() -> None:
+    """Log a warning at startup for missing cloud keys (local engines don't need them)."""
     missing = []
     if not ASSEMBLYAI_API_KEY:
         missing.append("ASSEMBLYAI_API_KEY")
@@ -24,13 +28,13 @@ def validate_api_keys() -> None:
         logger.warning(msg)
 
 # Paths
-JOBS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "jobs")
+_REPO_ROOT = os.path.dirname(os.path.dirname(__file__))
+JOBS_DIR = os.path.join(_REPO_ROOT, "jobs")
+UPLOADS_DIR = os.path.join(_REPO_ROOT, "uploads")
 os.makedirs(JOBS_DIR, exist_ok=True)
-
-UPLOADS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-# 50 keeps AssemblyAI submission bursts well under the 100/min new-stream rate
+# Concurrency. 50 keeps AssemblyAI submission bursts well under the 100/min new-stream rate
 # and Gemini Flash Tier 1's 300 RPM with headroom for retries.
 MAX_TRANSCRIPTION_CONCURRENT = int(os.getenv("MAX_TRANSCRIPTION_CONCURRENT", "50"))
 MAX_SUMMARIZATION_CONCURRENT = int(os.getenv("MAX_SUMMARIZATION_CONCURRENT", "50"))

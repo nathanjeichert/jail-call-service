@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 from typing import Dict, List, Optional
 
-from ..audio_converter import FFMPEG_PATH, _find_binary
+from ..audio_converter import FFMPEG_PATH, find_binary
 from ..models import TranscriptTurn, WordTimestamp
 from .base import default_channel_speaker, mark_continuation_turns
 
@@ -35,7 +35,7 @@ def _find_fluidaudiocli() -> Optional[str]:
     if _FLUIDAUDIO_PATH is not None:
         return _FLUIDAUDIO_PATH
 
-    # Project-bundled binary (not covered by the generic _find_binary)
+    # Project-bundled binary first
     project_bin = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
         "bin", "fluidaudiocli",
@@ -45,7 +45,7 @@ def _find_fluidaudiocli() -> Optional[str]:
         return _FLUIDAUDIO_PATH
 
     # Reuse the generic env / PATH / common-locations search
-    found = _find_binary("fluidaudiocli", "FLUIDAUDIO_PATH")
+    found = find_binary("fluidaudiocli", "FLUIDAUDIO_PATH")
     if found:
         _FLUIDAUDIO_PATH = found
     return _FLUIDAUDIO_PATH

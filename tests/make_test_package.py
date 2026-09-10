@@ -400,9 +400,7 @@ def main() -> None:
     synthesis = CANNED_SYNTHESIS.format(ts0=first_cue_ts(calls[0]), ts1=first_cue_ts(calls[1]))
 
     print("Generating search.html, viewer.html, guide.pdf, case-report.pdf …")
-    asyncio.run(_stage_generate_delivery_assets(
-        job, str(output_dir), str(audio_dir), StubSynthesisEngine(synthesis),
-    ))
+    asyncio.run(_stage_generate_delivery_assets(job, str(output_dir), StubSynthesisEngine(synthesis)))
 
     expected = ["search.html", "viewer.html", "guide.pdf", "case-report.pdf"]
     missing = [name for name in expected if not (output_dir / name).is_file()]

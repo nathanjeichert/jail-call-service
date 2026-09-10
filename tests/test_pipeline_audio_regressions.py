@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from backend.audio_converter import convert_single
+from backend.audio_converter import convert_single, discover_audio_files
 from backend.models import (
     AUDIO_EXTENSIONS,
     DEFAULT_SPEAKER_ASSIGNMENT,
@@ -15,7 +15,7 @@ from backend.models import (
     call_stem,
     normalize_speaker_assignment,
 )
-from backend.pipeline import _build_channel_labels, _discover_audio_files, _record_pdf_failure
+from backend.pipeline import _build_channel_labels, _record_pdf_failure
 
 
 def _sha256(path: str) -> str:
@@ -77,7 +77,7 @@ class PipelineAudioRegressionTests(unittest.TestCase):
             (nested / "c.m4a").write_bytes(b"m4a")
             (nested / "ignore.txt").write_bytes(b"text")
 
-            discovered = _discover_audio_files(tmpdir)
+            discovered = discover_audio_files(tmpdir)
 
             self.assertEqual(
                 [Path(path).name for path in discovered],

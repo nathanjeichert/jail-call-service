@@ -10,7 +10,7 @@ Usage:
 import logging
 
 from .. import config as cfg
-from .base import TranscriptionEngine, normalize_speaker_label, mark_continuation_turns
+from .base import TranscriptionEngine
 from .assemblyai_engine import AssemblyAIEngine, ASSEMBLYAI_AVAILABLE
 from .parakeet_engine import ParakeetEngine, _find_fluidaudiocli
 
@@ -19,8 +19,6 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "AVAILABLE_ENGINES",
     "get_engine",
-    "mark_continuation_turns",
-    "normalize_speaker_label",
     "TranscriptionEngine",
 ]
 

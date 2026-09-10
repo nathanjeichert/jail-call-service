@@ -2,17 +2,12 @@
 Base protocol and shared utilities for transcription engines.
 """
 
-import re
 from typing import Dict, List, Optional, Protocol
 
 from ..models import TranscriptTurn
 
 
 # ── Shared utilities ──
-
-_SPEAKER_LETTER_RE = re.compile(r"^[A-Z]$")
-_SPEAKER_NUMERIC_RE = re.compile(r"^[0-9]+$")
-
 
 def default_channel_speaker(channel: int) -> str:
     return {
@@ -21,25 +16,8 @@ def default_channel_speaker(channel: int) -> str:
     }.get(int(channel), f"SPEAKER {channel}")
 
 
-def normalize_speaker_label(raw_value: object, fallback: str = "SPEAKER A") -> str:
-    fallback_value = str(fallback or "").strip().upper() or "SPEAKER A"
-    candidate = str(raw_value or "").strip()
-    candidate = re.sub(r":+$", "", candidate).strip().upper()
-
-    if not candidate or candidate == "UNKNOWN":
-        return fallback_value
-
-    if candidate.startswith("SPEAKER"):
-        suffix = candidate[len("SPEAKER"):].strip()
-        return f"SPEAKER {suffix}" if suffix else "SPEAKER"
-
-    if _SPEAKER_LETTER_RE.fullmatch(candidate) or _SPEAKER_NUMERIC_RE.fullmatch(candidate):
-        return f"SPEAKER {candidate}"
-
-    return candidate
-
-
 def mark_continuation_turns(turns: List[TranscriptTurn]) -> List[TranscriptTurn]:
+    """Flag turns whose speaker matches the previous turn (rendered without a speaker prefix)."""
     prev_speaker = None
     for turn in turns:
         normalized = turn.speaker.strip().upper()

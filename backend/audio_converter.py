@@ -1,5 +1,5 @@
 """
-Batch audio -> MP3 converter using native ffmpeg subprocess.
+Audio discovery and WAV -> MP3 conversion via the ffmpeg CLI.
 
 Copies each source file into a job-local working directory before any repair
 attempt so original evidence files are never mutated in place.
@@ -11,71 +11,44 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
+from .models import AUDIO_EXTENSIONS
 from .wav_repair import repair_file_in_place
 
 logger = logging.getLogger(__name__)
 
 
-def _find_binary(name: str, env_var: str) -> Optional[str]:
-    """Search for an ffmpeg/ffprobe binary via env var, PATH, and common locations."""
-    # 1. Explicit env override
+_COMMON_BIN_DIRS = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin")
+
+
+def find_binary(name: str, env_var: str) -> Optional[str]:
+    """Locate a CLI tool via an env override, then PATH, then common install dirs."""
     env_path = os.getenv(env_var)
     if env_path and os.path.isfile(env_path):
         return env_path
-
-    # 2. System PATH
     path = shutil.which(name)
     if path:
         return path
-
-    # 3. Common install locations
-    candidates = [
-        '/usr/local/bin', '/opt/homebrew/bin', '/usr/bin',
-        r'C:\ffmpeg\bin',
-    ]
-
-    # 4. Auto-discover ffmpeg installs under user home (Windows)
-    if os.name == 'nt':
-        home = os.path.expanduser("~")
-        for search_dir in [home, os.path.join(home, "Downloads")]:
-            if not os.path.isdir(search_dir):
-                continue
-            try:
-                for entry in os.scandir(search_dir):
-                    if not entry.is_dir() or 'ffmpeg' not in entry.name.lower():
-                        continue
-                    bin_dir = os.path.join(entry.path, 'bin')
-                    if os.path.isdir(bin_dir):
-                        candidates.append(bin_dir)
-                    try:
-                        for sub in os.scandir(entry.path):
-                            if sub.is_dir() and 'build' in sub.name.lower():
-                                nested_bin = os.path.join(sub.path, 'bin')
-                                if os.path.isdir(nested_bin):
-                                    candidates.append(nested_bin)
-                    except OSError:
-                        pass
-            except OSError:
-                pass
-
-    ext = '.exe' if os.name == 'nt' else ''
-    for d in candidates:
-        full = os.path.join(d, f'{name}{ext}')
-        if os.path.isfile(full):
-            return full
+    for d in _COMMON_BIN_DIRS:
+        candidate = os.path.join(d, name)
+        if os.path.isfile(candidate):
+            return candidate
     return None
 
 
-def _find_ffmpeg() -> Optional[str]:
-    return _find_binary('ffmpeg', 'FFMPEG_PATH')
+FFMPEG_PATH = find_binary("ffmpeg", "FFMPEG_PATH")
+FFPROBE_PATH = find_binary("ffprobe", "FFPROBE_PATH")
 
 
-def _find_ffprobe() -> Optional[str]:
-    return _find_binary('ffprobe', 'FFPROBE_PATH')
-
-
-FFMPEG_PATH = _find_ffmpeg()
-FFPROBE_PATH = _find_ffprobe()
+def discover_audio_files(folder: Optional[str]) -> list[str]:
+    """Sorted absolute paths of every supported audio file under *folder* (recursive)."""
+    if not folder or not os.path.isdir(folder):
+        return []
+    found = []
+    for root, _dirs, files in os.walk(folder):
+        for f in files:
+            if os.path.splitext(f)[1].lower() in AUDIO_EXTENSIONS:
+                found.append(os.path.abspath(os.path.join(root, f)))
+    return sorted(found)
 
 
 @dataclass

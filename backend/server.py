@@ -1,46 +1,45 @@
-"""
-FastAPI server for the jail-call-service.
+"""FastAPI server for the jail-call-service.
 
-Endpoints:
-  POST   /api/upload/audio                  Upload audio files
-  POST   /api/upload/xml                    Upload XML metadata
-  POST   /api/jobs                          Create job
-  GET    /api/jobs                          List jobs
-  DELETE /api/jobs                          Clear completed/errored jobs
-  DELETE /api/jobs/{id}                     Delete a single job
-  GET    /api/jobs/{id}                     Job detail
-  POST   /api/jobs/{id}/start               Start processing
-  GET    /api/jobs/{id}/events              SSE progress stream
-  GET    /api/jobs/{id}/calls/{i}/transcript  Review transcript text
+  POST   /api/scan/folder                     List audio files under a local folder
+  POST   /api/upload/audio                    Upload audio files
+  POST   /api/upload/xml                      Upload an ICM report (returns a parsed preview)
+  POST   /api/xml/preview                     Preview an ICM report already on disk
+  GET    /api/config                          Engine availability, defaults, readiness checks
+  POST   /api/jobs                            Create job
+  GET    /api/jobs                            List jobs
+  DELETE /api/jobs                            Delete completed/errored jobs
+  GET    /api/jobs/{id}                       Job detail (calls without transcripts)
+  DELETE /api/jobs/{id}                       Delete one job
+  GET    /api/jobs/{id}/settings              Original creation settings (for re-runs)
+  POST   /api/jobs/{id}/start|pause|resume    Control processing
+  POST   /api/jobs/{id}/retry-errors          Re-queue errored calls
+  GET    /api/jobs/{id}/events                SSE progress stream
+  GET    /api/jobs/{id}/calls/{i}/transcript  Review transcript
   GET    /api/jobs/{id}/calls/{i}/summary     Review summary
   PUT    /api/jobs/{id}/calls/{i}/summary     Edit summary
-  POST   /api/jobs/{id}/package             Re-package zip
-  GET    /api/jobs/{id}/download            Download zip
+  POST   /api/jobs/{id}/package               Rebuild delivery assets + zip
+  GET    /api/jobs/{id}/download              Download zip
+  GET    /health
 """
 
 import asyncio
 import json
 import logging
 import os
+import queue
 import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from . import job_store, pipeline
-from .models import (
-    AUDIO_EXTENSIONS,
-    DEFAULT_SPEAKER_ASSIGNMENT,
-    Job,
-    CallStatus,
-    normalize_speaker_assignment,
-)
 from . import config as cfg
+from . import events, job_store, pipeline
+from .audio_converter import FFMPEG_PATH, discover_audio_files
 from .icm_parser import parse_icm_report
 from .job_settings import (
     compose_summary_prompt,
@@ -49,16 +48,24 @@ from .job_settings import (
     normalize_optional_name,
     resolve_default_engine,
 )
+from .models import AUDIO_EXTENSIONS, DEFAULT_SPEAKER_ASSIGNMENT, CallStatus, Job, normalize_speaker_assignment
+from .summarization import AVAILABLE_ENGINES as SUMMARIZATION_ENGINES
+from .transcription import AVAILABLE_ENGINES as TRANSCRIPTION_ENGINES
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+XML_EXTENSIONS = {".xml"}
+UPLOAD_CHUNK_SIZE = 1024 * 1024
+DELETABLE_STAGES = ("created", "done", "error", "paused")
+STARTABLE_STAGES = ("created", "error", "paused")
+UNPAUSABLE_STAGES = ("done", "error", "created", "paused", "packaging")
+PACKAGEABLE_STAGES = ("done", "error", "generating")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Pause any jobs that were mid-flight when the server last shut down.
-    # Pipeline tasks are killed on shutdown but DB state is preserved, so
-    # without this a job would appear "in progress" and resume on first click.
+    cfg.validate_api_keys()
     paused = job_store.pause_orphaned_jobs()
     for jid in paused:
         logger.info("Startup: paused orphaned job %s", jid)
@@ -68,8 +75,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Jail Call Service", version="1.0.0", lifespan=lifespan)
-cfg.validate_api_keys()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -79,7 +84,7 @@ app.add_middleware(
 )
 
 
-# ── Request/Response models ──
+# ────────────────────────── Request models ──────────────────────────
 
 class CreateJobRequest(BaseModel):
     case_name: Optional[str] = ""
@@ -91,7 +96,7 @@ class CreateJobRequest(BaseModel):
     xml_metadata_path: Optional[str] = None
     transcription_engine: Optional[str] = None
     summarization_engine: Optional[str] = None
-    auto_message_mode: Optional[str] = None  # "exclude", "label", or None
+    auto_message_mode: Optional[str] = None  # "exclude", "label", or None (keep)
     speaker_assignment: Optional[str] = None
 
 
@@ -99,7 +104,11 @@ class UpdateSummaryRequest(BaseModel):
     summary: str
 
 
-# ── Helpers ──
+class PathRequest(BaseModel):
+    path: str
+
+
+# ────────────────────────── Helpers ──────────────────────────
 
 def _job_or_404(job_id: str) -> Job:
     job = job_store.get_job(job_id)
@@ -108,29 +117,19 @@ def _job_or_404(job_id: str) -> Job:
     return job
 
 
-def _call_or_404(job: Job, call_index: int):
-    call = next((c for c in job.calls if c.index == call_index), None)
-    if not call:
-        raise HTTPException(status_code=404, detail="Call not found")
-    return call
-
-
 def _job_summary(job: Job) -> dict:
-    total = len(job.calls)
-    done = sum(1 for c in job.calls if c.status == CallStatus.DONE)
-    errors = sum(1 for c in job.calls if c.status == CallStatus.ERROR)
     return {
         "id": job.id,
         "case_name": job.case_name,
         "input_folder": job.input_folder,
         "stage": job.stage,
-        "total_calls": total,
-        "done_calls": done,
-        "error_calls": errors,
+        "total_calls": len(job.calls),
+        "done_calls": sum(1 for c in job.calls if c.status == CallStatus.DONE),
+        "error_calls": sum(1 for c in job.calls if c.status == CallStatus.ERROR),
         "created_at": job.created_at,
         "started_at": job.started_at,
         "completed_at": job.completed_at,
-        "has_zip": job.zip_path is not None and os.path.exists(job.zip_path or ""),
+        "has_zip": bool(job.zip_path) and os.path.exists(job.zip_path),
         "error": job.error,
         "defendant_name": job.defendant_name,
         "summary_prompt": job.summary_prompt,
@@ -148,11 +147,7 @@ _TRANSCRIPT_READY_STATUSES = {
 def _call_has_transcript(call) -> bool:
     if call.turns is not None:
         return len(call.turns) > 0
-    return (
-        call.status in _TRANSCRIPT_READY_STATUSES
-        or bool(call.summary)
-        or bool(call.pdf_path)
-    )
+    return call.status in _TRANSCRIPT_READY_STATUSES or bool(call.summary) or bool(call.pdf_path)
 
 
 def _call_summary(call) -> dict:
@@ -173,93 +168,77 @@ def _call_summary(call) -> dict:
     }
 
 
-# ── Endpoints ──
-
-XML_EXTENSIONS = {".xml"}
-UPLOAD_CHUNK_SIZE = 1024 * 1024
-
-
-class ScanFolderRequest(BaseModel):
-    path: str
-
-
-async def _write_upload_file(upload: UploadFile, dest_path: str) -> None:
-    try:
-        with open(dest_path, "wb") as fp:
-            while True:
-                chunk = await upload.read(UPLOAD_CHUNK_SIZE)
-                if not chunk:
-                    break
-                fp.write(chunk)
-    finally:
-        await upload.close()
-
-
-@app.post("/api/scan/folder")
-def scan_folder(req: ScanFolderRequest):
-    """List audio files in a local directory. Returns absolute paths."""
-    folder = req.path.strip()
-    if not os.path.isdir(folder):
-        raise HTTPException(status_code=400, detail=f"Not a valid folder: {folder}")
-    paths: list[str] = []
-    for root, _dirs, files in os.walk(folder):
-        for fname in sorted(files):
-            if os.path.splitext(fname)[1].lower() in AUDIO_EXTENSIONS:
-                paths.append(os.path.abspath(os.path.join(root, fname)))
-    return {"paths": paths}
-
-
-@app.post("/api/upload/audio")
-async def upload_audio(files: list[UploadFile] = File(...)):
-    """Accept multiple audio files, save to uploads/<uuid>/, return absolute paths."""
-    batch_id = str(uuid.uuid4())
-    dest_dir = os.path.join(cfg.UPLOADS_DIR, batch_id)
-    os.makedirs(dest_dir, exist_ok=True)
-
-    saved_paths: list[str] = []
-    for f in files:
-        ext = os.path.splitext(f.filename or "")[1].lower()
-        if ext not in AUDIO_EXTENSIONS:
-            raise HTTPException(status_code=400, detail=f"Unsupported audio format: {f.filename}")
-        safe_name = os.path.basename(f.filename or "") or f"audio_{len(saved_paths)}{ext}"
-        dest_path = os.path.join(dest_dir, safe_name)
-        await _write_upload_file(f, dest_path)
-        saved_paths.append(os.path.abspath(dest_path))
-
-    return {"paths": saved_paths}
-
-
 def _icm_preview(xml_path: str) -> dict:
-    """Parse an uploaded ICM report and summarize it for the job-setup UI.
-
-    The summary lets the operator confirm the right report was uploaded and
-    prefill/tweak job metadata (defendant name, etc.) before starting the job.
-    """
+    """Summarize an ICM report so the operator can confirm it and prefill job metadata."""
     icm_map = parse_icm_report(xml_path)
     if not icm_map:
         return {"parsed": False, "call_count": 0}
 
     metas = list(icm_map.values())
-    inmate_names = sorted({m.inmate_name for m in metas if m.inmate_name and m.inmate_name != "INMATE"})
-    facilities = sorted({m.facility for m in metas if m.facility})
     dates = sorted(m.call_date for m in metas if m.call_date)
-    numbers = {m.outside_number for m in metas if m.outside_number}
     return {
         "parsed": True,
         "call_count": len(metas),
-        "inmate_names": inmate_names,
-        "facilities": facilities,
+        "inmate_names": sorted({m.inmate_name for m in metas if m.inmate_name and m.inmate_name != "INMATE"}),
+        "facilities": sorted({m.facility for m in metas if m.facility}),
         "date_range": {"start": dates[0], "end": dates[-1]} if dates else None,
-        "unique_numbers": len(numbers),
+        "unique_numbers": len({m.outside_number for m in metas if m.outside_number}),
     }
 
 
-class XmlPreviewRequest(BaseModel):
-    path: str
+async def _save_upload(upload: UploadFile, dest_dir: str, fallback_name: str) -> str:
+    os.makedirs(dest_dir, exist_ok=True)
+    dest_path = os.path.join(dest_dir, os.path.basename(upload.filename or "") or fallback_name)
+    try:
+        with open(dest_path, "wb") as fp:
+            while chunk := await upload.read(UPLOAD_CHUNK_SIZE):
+                fp.write(chunk)
+    finally:
+        await upload.close()
+    return os.path.abspath(dest_path)
+
+
+def _run_in_thread(coro) -> None:
+    """Drive a pipeline coroutine on its own loop (FastAPI runs sync tasks in a worker thread)."""
+    asyncio.run(coro)
+
+
+# ────────────────────────── Inputs ──────────────────────────
+
+@app.post("/api/scan/folder")
+def scan_folder(req: PathRequest):
+    """List audio files in a local directory. Returns absolute paths."""
+    folder = req.path.strip()
+    if not os.path.isdir(folder):
+        raise HTTPException(status_code=400, detail=f"Not a valid folder: {folder}")
+    return {"paths": discover_audio_files(folder)}
+
+
+@app.post("/api/upload/audio")
+async def upload_audio(files: list[UploadFile] = File(...)):
+    """Accept multiple audio files, save to uploads/<uuid>/, return absolute paths."""
+    dest_dir = os.path.join(cfg.UPLOADS_DIR, str(uuid.uuid4()))
+    saved_paths: list[str] = []
+    for f in files:
+        ext = os.path.splitext(f.filename or "")[1].lower()
+        if ext not in AUDIO_EXTENSIONS:
+            raise HTTPException(status_code=400, detail=f"Unsupported audio format: {f.filename}")
+        saved_paths.append(await _save_upload(f, dest_dir, f"audio_{len(saved_paths)}{ext}"))
+    return {"paths": saved_paths}
+
+
+@app.post("/api/upload/xml")
+async def upload_xml(file: UploadFile = File(...)):
+    """Accept an ICM report XML, save it, and return its path plus a parsed preview."""
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in XML_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Expected an XML file, got: {file.filename}")
+    abs_path = await _save_upload(file, os.path.join(cfg.UPLOADS_DIR, str(uuid.uuid4())), "metadata.xml")
+    return {"path": abs_path, "preview": _icm_preview(abs_path)}
 
 
 @app.post("/api/xml/preview")
-def preview_xml(req: XmlPreviewRequest):
+def preview_xml(req: PathRequest):
     """Parse an ICM report already on disk (pasted path) and summarize it."""
     path = req.path.strip()
     if not os.path.isfile(path):
@@ -267,36 +246,35 @@ def preview_xml(req: XmlPreviewRequest):
     return {"path": os.path.abspath(path), "preview": _icm_preview(path)}
 
 
-@app.post("/api/upload/xml")
-async def upload_xml(file: UploadFile = File(...)):
-    """Accept a single XML file, save it, and return its path plus a parsed
-    metadata preview the UI can prefill job fields from."""
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in XML_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Expected an XML file, got: {file.filename}")
+@app.get("/api/config")
+def get_config():
+    """Safe config and readiness checks for the frontend."""
+    return {
+        "assemblyai_configured": bool(cfg.ASSEMBLYAI_API_KEY),
+        "gemini_configured": bool(cfg.GEMINI_API_KEY),
+        "ffmpeg_found": bool(FFMPEG_PATH),
+        "ffmpeg_path": FFMPEG_PATH or "",
+        "default_summary_prompt": cfg.DEFAULT_SUMMARY_PROMPT,
+        "gemini_model": cfg.GEMINI_MODEL,
+        "default_transcription_engine": resolve_default_engine(cfg.DEFAULT_TRANSCRIPTION_ENGINE, TRANSCRIPTION_ENGINES),
+        "available_transcription_engines": TRANSCRIPTION_ENGINES,
+        "default_summarization_engine": resolve_default_engine(cfg.DEFAULT_SUMMARIZATION_ENGINE, SUMMARIZATION_ENGINES),
+        "available_summarization_engines": SUMMARIZATION_ENGINES,
+    }
 
-    batch_id = str(uuid.uuid4())
-    dest_dir = os.path.join(cfg.UPLOADS_DIR, batch_id)
-    os.makedirs(dest_dir, exist_ok=True)
 
-    safe_name = os.path.basename(file.filename or "") or "metadata.xml"
-    dest_path = os.path.join(dest_dir, safe_name)
-    await _write_upload_file(file, dest_path)
-
-    abs_path = os.path.abspath(dest_path)
-    return {"path": abs_path, "preview": _icm_preview(abs_path)}
+# ────────────────────────── Jobs ──────────────────────────
 
 @app.post("/api/jobs", status_code=201)
 def create_job(req: CreateJobRequest):
     if not req.file_paths and not os.path.isdir(req.input_folder or ""):
         raise HTTPException(status_code=400, detail=f"Input folder not found: {req.input_folder}")
-    file_paths = [path.strip() for path in (req.file_paths or []) if path and path.strip()]
-    full_prompt = compose_summary_prompt(req.summary_prompt)
+    file_paths = [p.strip() for p in (req.file_paths or []) if p and p.strip()]
 
     job = job_store.create_job(
         case_name=(req.case_name or "").strip(),
         input_folder=req.input_folder or "",
-        summary_prompt=full_prompt,
+        summary_prompt=compose_summary_prompt(req.summary_prompt),
         defendant_name=req.defendant_name,
         skip_summary=req.skip_summary,
         file_paths=file_paths or None,
@@ -304,9 +282,7 @@ def create_job(req: CreateJobRequest):
         transcription_engine=normalize_optional_name(req.transcription_engine),
         summarization_engine=normalize_optional_name(req.summarization_engine),
         auto_message_mode=(
-            normalize_auto_message_mode(req.auto_message_mode)
-            if req.auto_message_mode is not None
-            else "label"
+            normalize_auto_message_mode(req.auto_message_mode) if req.auto_message_mode is not None else "label"
         ),
         speaker_assignment=normalize_speaker_assignment(req.speaker_assignment),
     )
@@ -318,26 +294,14 @@ def list_jobs():
     return [_job_summary(j) for j in job_store.list_jobs()]
 
 
-@app.delete("/api/jobs", status_code=200)
+@app.delete("/api/jobs")
 def clear_completed_jobs():
-    """Delete all completed/errored jobs and their output files."""
-    count = job_store.delete_completed_jobs()
-    return {"deleted": count}
-
-
-@app.delete("/api/jobs/{job_id}", status_code=200)
-def delete_job(job_id: str):
-    job = _job_or_404(job_id)
-    if job.stage not in ("created", "done", "error", "paused"):
-        raise HTTPException(status_code=409, detail=f"Cannot delete job in stage: {job.stage}")
-    job_store.delete_job(job_id)
-    return {"deleted": job_id}
+    return {"deleted": job_store.delete_completed_jobs()}
 
 
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str):
-    # Use lite query — skips loading heavy transcript JSON blobs
-    job = job_store.get_job_lite(job_id)
+    job = job_store.get_job_lite(job_id)  # skips the transcript JSON blobs
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     summary = _job_summary(job)
@@ -345,9 +309,18 @@ def get_job(job_id: str):
     return summary
 
 
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: str):
+    job = _job_or_404(job_id)
+    if job.stage not in DELETABLE_STAGES:
+        raise HTTPException(status_code=409, detail=f"Cannot delete job in stage: {job.stage}")
+    job_store.delete_job(job_id)
+    return {"deleted": job_id}
+
+
 @app.get("/api/jobs/{job_id}/settings")
 def get_job_settings(job_id: str):
-    """Return the original creation settings for re-running a job."""
+    """Original creation settings, for re-running a job."""
     job = _job_or_404(job_id)
     return {
         "case_name": job.case_name,
@@ -360,29 +333,27 @@ def get_job_settings(job_id: str):
         "transcription_engine": job.transcription_engine or "",
         "summarization_engine": job.summarization_engine or "",
         "auto_message_mode": job.auto_message_mode or "",
-        "speaker_assignment": normalize_speaker_assignment(
-            job.speaker_assignment or DEFAULT_SPEAKER_ASSIGNMENT
-        ),
+        "speaker_assignment": normalize_speaker_assignment(job.speaker_assignment or DEFAULT_SPEAKER_ASSIGNMENT),
     }
 
+
+# ────────────────────────── Processing control ──────────────────────────
 
 @app.post("/api/jobs/{job_id}/start")
 def start_job(job_id: str, background_tasks: BackgroundTasks):
     job = _job_or_404(job_id)
-    if job.stage not in ("created", "error", "paused"):
+    if job.stage not in STARTABLE_STAGES:
         raise HTTPException(status_code=409, detail=f"Job is already in stage: {job.stage}")
-
-    background_tasks.add_task(_run_job_async, job_id)
+    background_tasks.add_task(_run_in_thread, pipeline.run_job(job_id))
     return {"status": "started", "job_id": job_id}
 
 
 @app.post("/api/jobs/{job_id}/pause")
 def pause_job(job_id: str):
     job = _job_or_404(job_id)
-    if job.stage in ("done", "error", "created", "paused", "packaging"):
+    if job.stage in UNPAUSABLE_STAGES:
         raise HTTPException(status_code=409, detail=f"Cannot pause job in stage: {job.stage}")
-    
-    pipeline._emit(job_id, {"type": "stage", "stage": "paused"})
+    events.emit(job_id, {"type": "stage", "stage": "paused"})
     job.stage = "paused"
     job_store.update_job(job)
     return {"status": "paused", "job_id": job_id}
@@ -392,69 +363,58 @@ def pause_job(job_id: str):
 def resume_job(job_id: str, background_tasks: BackgroundTasks):
     job = _job_or_404(job_id)
     if job.stage != "paused":
-        raise HTTPException(status_code=409, detail=f"Job is not paused, mostly in: {job.stage}")
-        
-    background_tasks.add_task(_run_job_async, job_id)
+        raise HTTPException(status_code=409, detail=f"Job is not paused (stage: {job.stage})")
+    background_tasks.add_task(_run_in_thread, pipeline.run_job(job_id))
     return {"status": "resumed", "job_id": job_id}
 
 
 @app.post("/api/jobs/{job_id}/retry-errors")
 def retry_errors(job_id: str, background_tasks: BackgroundTasks):
+    """Reset errored calls to the stage they can resume from, then re-run the pipeline."""
     job = _job_or_404(job_id)
-    
-    # reset all error calls to appropriate stage
     for c in job.calls:
-        if c.status == CallStatus.ERROR:
-            if not c.mp3_path:
-                new_status = CallStatus.PENDING
-            elif not c.turns:
-                new_status = CallStatus.TRANSCRIBING
-            elif not c.summary:
-                new_status = CallStatus.SUMMARIZING
-            else:
-                new_status = CallStatus.GENERATING_PDF
-                
-            c.status = new_status
-            c.error = None
-    
-    job.stage = "converting" # The pipeline will skip what's already done
+        if c.status != CallStatus.ERROR:
+            continue
+        if not c.mp3_path:
+            c.status = CallStatus.PENDING
+        elif not c.turns:
+            c.status = CallStatus.TRANSCRIBING
+        elif not c.summary:
+            c.status = CallStatus.SUMMARIZING
+        else:
+            c.status = CallStatus.GENERATING_PDF
+        c.error = None
+
+    job.stage = "converting"  # the pipeline skips whatever is already done
     job.error = None
     job_store.update_job(job)
-    
-    pipeline._emit(job_id, {"type": "stage", "stage": "retrying_errors"})
-    background_tasks.add_task(_run_job_async, job_id)
+    events.emit(job_id, {"type": "stage", "stage": "retrying_errors"})
+    background_tasks.add_task(_run_in_thread, pipeline.run_job(job_id))
     return {"status": "retrying", "job_id": job_id}
-
-
-def _run_job_async(job_id: str):
-    """Run the pipeline in a new event loop (called from a background thread)."""
-    asyncio.run(pipeline.run_job(job_id))
 
 
 @app.get("/api/jobs/{job_id}/events")
 async def job_events(job_id: str):
     _job_or_404(job_id)
-    q = pipeline.get_event_queue(job_id)
+    q = events.get_event_queue(job_id)
 
     async def event_generator():
-        import queue as _queue
         loop = asyncio.get_event_loop()
         while True:
             try:
-                # q is a thread-safe stdlib queue.Queue — read via executor
-                # so we don't block the event loop.
-                event = await asyncio.wait_for(
-                    loop.run_in_executor(None, q.get, True, 25),
-                    timeout=30,
-                )
+                # q is a thread-safe stdlib queue: read via executor so the
+                # event loop is never blocked.
+                event = await asyncio.wait_for(loop.run_in_executor(None, q.get, True, 25), timeout=30)
                 yield {"data": json.dumps(event)}
                 if event.get("type") in ("done", "error"):
                     break
-            except (asyncio.TimeoutError, _queue.Empty):
+            except (asyncio.TimeoutError, queue.Empty):
                 yield {"data": json.dumps({"type": "ping"})}
 
     return EventSourceResponse(event_generator())
 
+
+# ────────────────────────── Review ──────────────────────────
 
 @app.get("/api/jobs/{job_id}/calls/{call_index}/transcript")
 def get_transcript(job_id: str, call_index: int):
@@ -476,75 +436,27 @@ def get_summary(job_id: str, call_index: int):
     call = job_store.get_call(job_id, call_index)
     if not call:
         raise HTTPException(status_code=404, detail="Call not found")
-    return {
-        "index": call.index,
-        "filename": call.filename,
-        "summary": call.summary or "",
-    }
+    return {"index": call.index, "filename": call.filename, "summary": call.summary or ""}
 
 
 @app.put("/api/jobs/{job_id}/calls/{call_index}/summary")
 def update_summary(job_id: str, call_index: int, req: UpdateSummaryRequest):
-    job = _job_or_404(job_id)
-    call = _call_or_404(job, call_index)
+    if not job_store.get_call(job_id, call_index):
+        raise HTTPException(status_code=404, detail="Call not found")
     job_store.update_call(job_id, call_index, summary=req.summary)
-    return {"index": call.index, "summary": req.summary}
+    return {"index": call_index, "summary": req.summary}
 
+
+# ────────────────────────── Delivery ──────────────────────────
 
 @app.post("/api/jobs/{job_id}/package")
 def package_job(job_id: str, background_tasks: BackgroundTasks):
-    """Re-generate output files and zip (useful after editing summaries)."""
+    """Regenerate delivery assets and the zip (useful after editing summaries)."""
     job = _job_or_404(job_id)
-    if job.stage not in ("done", "error", "generating"):
+    if job.stage not in PACKAGEABLE_STAGES:
         raise HTTPException(status_code=409, detail="Job must be complete before packaging")
-
-    background_tasks.add_task(_repackage_async, job_id)
+    background_tasks.add_task(_run_in_thread, pipeline.repackage_job(job_id))
     return {"status": "packaging", "job_id": job_id}
-
-
-def _repackage_async(job_id: str):
-    asyncio.run(_do_repackage(job_id))
-
-
-async def _do_repackage(job_id: str):
-    from .pipeline import _stage_generate_delivery_assets, _stage_package
-    from .job_settings import resolve_runtime_selection
-    from .summarization import get_engine as get_summarization_engine
-
-    job = job_store.get_job(job_id)
-    if not job:
-        return
-    output_dir = job_store.get_job_output_dir(job_id)
-    audio_dir = os.path.join(output_dir, "audio")
-
-    # Re-create the same summarization engine the job used originally so
-    # case-report synthesis stays consistent across the original run and any
-    # later re-package. Engine is None when the job ran with skip_summary.
-    runtime_selection = resolve_runtime_selection(
-        job.transcription_engine,
-        job.summarization_engine,
-        skip_summary=job.skip_summary,
-        auto_message_mode=job.auto_message_mode,
-    )
-    engine = (
-        get_summarization_engine(runtime_selection.summarization_engine)
-        if not job.skip_summary
-        else None
-    )
-
-    try:
-        try:
-            await _stage_generate_delivery_assets(job, output_dir, audio_dir, engine)
-            zip_path = await _stage_package(job, output_dir)
-        finally:
-            if engine:
-                engine.unload()
-        job.zip_path = zip_path
-        job_store.update_job(job)
-        pipeline._emit(job_id, {"type": "packaged", "zip_path": zip_path})
-    except Exception as e:
-        logger.error("Repackage failed: %s", e)
-        pipeline._emit(job_id, {"type": "error", "message": str(e)})
 
 
 @app.get("/api/jobs/{job_id}/download")
@@ -552,77 +464,7 @@ def download_zip(job_id: str):
     job = _job_or_404(job_id)
     if not job.zip_path or not os.path.exists(job.zip_path):
         raise HTTPException(status_code=404, detail="Zip not yet generated")
-    filename = os.path.basename(job.zip_path)
-    return FileResponse(
-        job.zip_path,
-        media_type="application/zip",
-        filename=filename,
-    )
-
-
-@app.get("/api/config")
-def get_config():
-    """Return safe config and readiness checks for the frontend."""
-    from .audio_converter import FFMPEG_PATH
-    from .transcription import AVAILABLE_ENGINES as TRANSCRIPTION_ENGINES
-    from .summarization import AVAILABLE_ENGINES as SUMMARIZATION_ENGINES
-    return {
-        "assemblyai_configured": bool(cfg.ASSEMBLYAI_API_KEY),
-        "gemini_configured": bool(cfg.GEMINI_API_KEY),
-        "ffmpeg_found": bool(FFMPEG_PATH),
-        "ffmpeg_path": FFMPEG_PATH or "",
-        "default_summary_prompt": cfg.DEFAULT_SUMMARY_PROMPT,
-        "gemini_model": cfg.GEMINI_MODEL,
-        "default_transcription_engine": resolve_default_engine(
-            cfg.DEFAULT_TRANSCRIPTION_ENGINE, TRANSCRIPTION_ENGINES
-        ),
-        "available_transcription_engines": TRANSCRIPTION_ENGINES,
-        "default_summarization_engine": resolve_default_engine(
-            cfg.DEFAULT_SUMMARIZATION_ENGINE, SUMMARIZATION_ENGINES
-        ),
-        "available_summarization_engines": SUMMARIZATION_ENGINES,
-    }
-
-
-@app.get("/api/debug/mem")
-def debug_mem():
-    """Live memory snapshot — intended for pipeline benchmarking.
-
-    `ps`-RSS alone undercounts MLX on Apple Silicon because unified memory is
-    billed separately from the resident Python heap. `mx.metal.*` exposes the
-    Metal-side allocations directly, so we surface both alongside a
-    resource-module RSS reading from inside the server process.
-    """
-    import resource
-
-    rusage = resource.getrusage(resource.RUSAGE_SELF)
-    # macOS reports ru_maxrss in bytes, Linux in KB — normalize to bytes.
-    maxrss_bytes = rusage.ru_maxrss
-    if maxrss_bytes < 1024 * 1024 * 16:  # heuristic: looks like KB, not bytes
-        maxrss_bytes *= 1024
-
-    mlx: dict = {}
-    try:
-        import mlx.core as mx
-        metal = mx.metal
-        for name, fn in (
-            ("active_memory_bytes", getattr(metal, "get_active_memory", None)),
-            ("peak_memory_bytes", getattr(metal, "get_peak_memory", None)),
-            ("cache_memory_bytes", getattr(metal, "get_cache_memory", None)),
-        ):
-            if fn is None:
-                continue
-            try:
-                mlx[name] = int(fn())
-            except Exception:
-                pass
-    except ImportError:
-        pass
-
-    return {
-        "ps_maxrss_bytes": int(maxrss_bytes),
-        "mlx": mlx,
-    }
+    return FileResponse(job.zip_path, media_type="application/zip", filename=os.path.basename(job.zip_path))
 
 
 @app.get("/health")

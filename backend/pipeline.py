@@ -1,116 +1,80 @@
-"""
-Streaming pipeline orchestrator for jail call transcription jobs.
+"""Streaming pipeline orchestrator for jail call transcription jobs.
 
-Architecture: Assembly-line model where each call flows independently
-through four concurrent worker pools connected by asyncio.Queues:
+Assembly-line model: each call flows independently through four concurrent
+worker pools connected by asyncio queues::
 
-  [Convert workers] → q → [Transcribe workers] → q → [Summarize workers] → q → [PDF workers]
+  [convert] -> q -> [transcribe] -> q -> [summarize] -> q -> [pdf]
 
-After all calls complete, runs batch delivery-asset generation and ZIP packaging.
-SSE progress is broadcast via a thread-safe queue per job.
+After every call has passed through, the batch stage builds the delivery
+assets (search.html, viewer.html, guide.pdf, case-report.pdf) and zips the
+output folder. Progress is broadcast through ``backend.events``.
+
+Resumability: every per-call stage transition is checkpointed in the job
+store, and ``_run_pipeline`` routes each call back into the queue matching
+its stored status, so a paused or crashed job resumes without re-spending
+API credits. Pausing is cooperative: workers poll the job's stage between
+items and stop pulling work once it reads "paused".
 """
 
 import asyncio
 import logging
 import os
-import queue
-import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 
+from . import config as cfg
+from . import job_store
+from .audio_converter import convert_single, discover_audio_files
+from .events import cleanup_event_queue, emit
+from .formatting import format_duration
+from .icm_parser import find_icm_report, parse_icm_report
+from .job_settings import RuntimeSelection, resolve_runtime_selection, validate_runtime_selection
 from .models import (
-    AUDIO_EXTENSIONS,
     DEFAULT_SPEAKER_ASSIGNMENT,
-    Job,
-    JobStage,
     CallResult,
     CallStatus,
+    Job,
+    JobStage,
     call_stem,
     normalize_speaker_assignment,
 )
-from .icm_parser import find_icm_report, parse_icm_report
-from . import job_store, config as cfg
-from .formatting import format_duration
-from .job_settings import resolve_runtime_selection, validate_runtime_selection
 from .summaries import DUMMY_SUMMARY_PREFIX
-from .summarization import TokenUsage
+from .summarization import SummarizationEngine, TokenUsage
 
 logger = logging.getLogger(__name__)
 
-# ── SSE event infrastructure (thread-safe) ──
-
-_event_queues: Dict[str, queue.Queue] = {}
-_queue_lock = threading.Lock()
-
 _SENTINEL = object()
 _QUEUE_POLL_TIMEOUT_SEC = 1.0
+_MAX_PDF_WORKERS = 8
 
 
-def get_event_queue(job_id: str) -> queue.Queue:
-    with _queue_lock:
-        if job_id not in _event_queues:
-            _event_queues[job_id] = queue.Queue(maxsize=2000)
-        return _event_queues[job_id]
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-def cleanup_event_queue(job_id: str) -> None:
-    """Remove event queue for a completed job to prevent memory leaks."""
-    with _queue_lock:
-        _event_queues.pop(job_id, None)
-
-
-def _emit(job_id: str, event: dict) -> None:
-    """Put an event on the job's SSE queue (non-blocking, thread-safe)."""
-    q = get_event_queue(job_id)
-    try:
-        q.put_nowait(event)
-    except queue.Full:
-        pass
-
-
-# ── Helpers ──
-
-def _discover_audio_files(input_folder: str) -> List[str]:
-    """Find all supported audio files in the input folder (recursive)."""
-    if not input_folder or not os.path.isdir(input_folder):
-        return []
-    audio_files = []
-    for root, _dirs, files in os.walk(input_folder):
-        for f in files:
-            if os.path.splitext(f)[1].lower() in AUDIO_EXTENSIONS:
-                audio_files.append(os.path.join(root, f))
-    return sorted(audio_files)
-
+# ────────────────────────── Per-call work ──────────────────────────
 
 def _build_channel_labels(
     call: CallResult,
     defendant_name: Optional[str],
     speaker_assignment: Optional[str],
 ) -> Dict[int, str]:
+    """Map stereo channels to speaker labels (channel 1 = left)."""
     inmate_label = call.inmate_name or defendant_name or "INMATE"
     assignment = normalize_speaker_assignment(speaker_assignment or DEFAULT_SPEAKER_ASSIGNMENT)
     if assignment == "right_inmate":
-        return {
-            1: "OUTSIDE PARTY",
-            2: inmate_label,
-        }
-    return {
-        1: inmate_label,
-        2: "OUTSIDE PARTY",
-    }
+        return {1: "OUTSIDE PARTY", 2: inmate_label}
+    return {1: inmate_label, 2: "OUTSIDE PARTY"}
 
 
-# ── Per-call worker functions ──
-
-async def _convert_one(job_id, call, audio_dir, executor):
-    """Convert a single call's audio. Returns updated call or None on failure."""
-    from .audio_converter import convert_single
-
+async def _convert_one(job_id, call, audio_dir, executor) -> Optional[CallResult]:
+    """Convert a single call's audio. Returns the call, or None on failure."""
     stem = call_stem(call.index, call.filename)
-    # Keep working copies outside output/ so they never ship in the delivery ZIP.
-    working_dir = os.path.join(job_store._job_dir(job_id), "source-working")
+    # Working copies live outside output/ so they never ship in the delivery ZIP.
+    working_dir = os.path.join(job_store.job_dir(job_id), "source-working")
     job_store.update_call(job_id, call.index, status=CallStatus.CONVERTING)
 
     loop = asyncio.get_event_loop()
@@ -118,39 +82,34 @@ async def _convert_one(job_id, call, audio_dir, executor):
         executor, convert_single, call.index, call.original_path, audio_dir, stem, working_dir,
     )
 
-    if result.success:
-        job_store.update_call(
-            job_id, call.index,
-            mp3_path=result.mp3_path,
-            duration_seconds=result.duration_seconds,
-            repaired=result.repaired,
-            status=CallStatus.TRANSCRIBING,
-        )
-        call.mp3_path = result.mp3_path
-        call.duration_seconds = result.duration_seconds
-        call.repaired = result.repaired
-        call.status = CallStatus.TRANSCRIBING
-        return call
-    else:
+    if not result.success:
         job_store.update_call(job_id, call.index, status=CallStatus.ERROR, error=result.error)
         call.status = CallStatus.ERROR
         logger.error("Conversion failed for %s: %s", call.filename, result.error)
         return None
 
-
-async def _transcribe_one(job_id, call, defendant_name, speaker_assignment, engine):
-    """Transcribe a single call using the configured transcription engine."""
-    job_store.update_call(job_id, call.index, status=CallStatus.TRANSCRIBING)
-
-    channel_labels = _build_channel_labels(call, defendant_name, speaker_assignment)
-    turns = await engine.transcribe(call.mp3_path, channel_labels=channel_labels)
-    job_store.update_call(job_id, call.index, turns=turns, status=CallStatus.SUMMARIZING)
-    call.turns = turns
-    call.status = CallStatus.SUMMARIZING
+    call.mp3_path = result.mp3_path
+    call.duration_seconds = result.duration_seconds
+    call.repaired = result.repaired
+    call.status = CallStatus.TRANSCRIBING
+    job_store.update_call(
+        job_id, call.index,
+        mp3_path=call.mp3_path, duration_seconds=call.duration_seconds,
+        repaired=call.repaired, status=call.status,
+    )
     return call
 
 
-async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, auto_message_mode=None):
+async def _transcribe_one(job_id, call, defendant_name, speaker_assignment, engine) -> CallResult:
+    job_store.update_call(job_id, call.index, status=CallStatus.TRANSCRIBING)
+    channel_labels = _build_channel_labels(call, defendant_name, speaker_assignment)
+    call.turns = await engine.transcribe(call.mp3_path, channel_labels=channel_labels)
+    call.status = CallStatus.SUMMARIZING
+    job_store.update_call(job_id, call.index, turns=call.turns, status=call.status)
+    return call
+
+
+async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, auto_message_mode=None) -> CallResult:
     """Summarize a single call's transcript using the provided engine instance."""
     job_store.update_call(job_id, call.index, status=CallStatus.SUMMARIZING)
 
@@ -169,15 +128,15 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
             job_id, call, engine, summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT, auto_message_mode,
         )
 
-    job_store.update_call(
-        job_id, call.index, summary=summary_text, status=CallStatus.GENERATING_PDF, **usage.as_dict(),
-    )
     call.summary = summary_text
     call.status = CallStatus.GENERATING_PDF
+    job_store.update_call(
+        job_id, call.index, summary=summary_text, status=call.status, **usage.as_dict(),
+    )
     return call
 
 
-async def _summarize_with_engine(job_id, call, engine, prompt, auto_message_mode):
+async def _summarize_with_engine(job_id, call, engine: SummarizationEngine, prompt, auto_message_mode):
     """Run one call through the engine and return ``(canonical_summary_text, usage)``.
 
     Automated-message filtering happens here because it mutates the
@@ -227,16 +186,12 @@ async def _summarize_with_engine(job_id, call, engine, prompt, auto_message_mode
     return normalize_summary_text(summary_text, line_entries), usage
 
 
-async def _generate_pdf_one(job_id, call, case_name, transcripts_dir, transcripts_no_summary_dir, executor):
-    """Generate both PDF variants (with and without summary) for a single call."""
-    from .delivery.transcript_pdf import create_pdf
-
+def _transcript_title_data(call: CallResult, case_name: str) -> dict:
     stem = call_stem(call.index, call.filename)
-    audio_filename = os.path.basename(call.mp3_path) if call.mp3_path else f"{stem}.mp3"
-    title_data = {
+    return {
         "CASE_NAME": case_name,
         "FILE_NAME": call.filename,
-        "AUDIO_FILENAME": audio_filename,
+        "AUDIO_FILENAME": os.path.basename(call.mp3_path) if call.mp3_path else f"{stem}.mp3",
         "FILE_DURATION": format_duration(call.duration_seconds),
         "INMATE_NAME": call.inmate_name or "",
         "CALL_DATETIME": call.call_datetime_str or "",
@@ -246,33 +201,26 @@ async def _generate_pdf_one(job_id, call, case_name, transcripts_dir, transcript
         "NOTES": call.notes or "",
     }
 
-    loop = asyncio.get_event_loop()
-    # Capture values for thread safety
-    turns = call.turns
-    summary = call.summary
-    duration = call.duration_seconds or 0
 
-    def _gen():
+async def _generate_pdf_one(job_id, call, case_name, transcripts_dir, transcripts_no_summary_dir, executor) -> CallResult:
+    """Generate both PDF variants (with and without summary) for a single call."""
+    from .delivery.transcript_pdf import create_pdf
+
+    stem = call_stem(call.index, call.filename)
+    title_data = _transcript_title_data(call, case_name)
+    turns, summary, duration = call.turns, call.summary, call.duration_seconds or 0
+
+    def _gen() -> str:
         pdf_path = os.path.join(transcripts_dir, f"{stem}.pdf")
-        pdf_bytes = create_pdf(
-            title_data=title_data, turns=turns, summary=summary, audio_duration=duration,
-        )
-        with open(pdf_path, 'wb') as f:
-            f.write(pdf_bytes)
-
-        pdf_no_summary_path = os.path.join(transcripts_no_summary_dir, f"{stem}.pdf")
-        pdf_clean_bytes = create_pdf(
-            title_data=title_data, turns=turns, summary=None, audio_duration=duration,
-        )
-        with open(pdf_no_summary_path, 'wb') as f:
-            f.write(pdf_clean_bytes)
-
+        with open(pdf_path, "wb") as f:
+            f.write(create_pdf(title_data=title_data, turns=turns, summary=summary, audio_duration=duration))
+        with open(os.path.join(transcripts_no_summary_dir, f"{stem}.pdf"), "wb") as f:
+            f.write(create_pdf(title_data=title_data, turns=turns, summary=None, audio_duration=duration))
         return pdf_path
 
-    pdf_path = await loop.run_in_executor(executor, _gen)
-    job_store.update_call(job_id, call.index, pdf_path=pdf_path, status=CallStatus.DONE)
-    call.pdf_path = pdf_path
+    call.pdf_path = await asyncio.get_event_loop().run_in_executor(executor, _gen)
     call.status = CallStatus.DONE
+    job_store.update_call(job_id, call.index, pdf_path=call.pdf_path, status=call.status)
     return call
 
 
@@ -284,10 +232,10 @@ def _record_pdf_failure(job_id: str, call: CallResult, error: Exception | str) -
     call.error = message
 
 
-# ── Main pipeline ──
+# ────────────────────────── Job entry points ──────────────────────────
 
 async def run_job(job_id: str) -> None:
-    """Main pipeline entry point. Call from a background task."""
+    """Main pipeline entry point. Run from a background thread."""
     job = job_store.get_job(job_id)
     if not job:
         logger.error("Job not found: %s", job_id)
@@ -302,9 +250,107 @@ async def run_job(job_id: str) -> None:
             job.stage = JobStage.ERROR
             job.error = str(e)
             job_store.update_job(job)
-        _emit(job_id, {"type": "error", "message": str(e)})
+        emit(job_id, {"type": "error", "message": str(e)})
     finally:
         cleanup_event_queue(job_id)
+
+
+async def repackage_job(job_id: str) -> None:
+    """Regenerate the delivery assets and zip for a finished job (e.g. after editing summaries)."""
+    job = job_store.get_job(job_id)
+    if not job:
+        return
+    output_dir = job_store.get_job_output_dir(job_id)
+
+    # Re-create the same summarization engine the job used so case-report
+    # synthesis stays consistent between the original run and a re-package.
+    runtime = _runtime_selection(job)
+    engine = _make_summarization_engine(runtime, job.skip_summary)
+    try:
+        try:
+            await _stage_generate_delivery_assets(job, output_dir, engine)
+            zip_path = await _stage_package(job, output_dir)
+        finally:
+            if engine:
+                engine.unload()
+        job.zip_path = zip_path
+        job_store.update_job(job)
+        emit(job_id, {"type": "packaged", "zip_path": zip_path})
+    except Exception as e:
+        logger.error("Repackage failed: %s", e)
+        emit(job_id, {"type": "error", "message": str(e)})
+
+
+def _runtime_selection(job: Job) -> RuntimeSelection:
+    return resolve_runtime_selection(
+        job.transcription_engine,
+        job.summarization_engine,
+        skip_summary=job.skip_summary,
+        auto_message_mode=job.auto_message_mode,
+    )
+
+
+def _make_summarization_engine(runtime: RuntimeSelection, skip_summary: bool) -> Optional[SummarizationEngine]:
+    from .summarization import get_engine
+    return None if skip_summary else get_engine(runtime.summarization_engine)
+
+
+# ────────────────────────── Pipeline ──────────────────────────
+
+@dataclass
+class _Stage:
+    """One worker pool in the assembly line."""
+    name: str                      # progress key and SSE stage label
+    job_stage: JobStage
+    workers: int
+    process: Callable[[CallResult], Awaitable[Optional[CallResult]]]
+    # Called when `process` raises. Returns the call to forward downstream
+    # (soft failure) or None to stop the call here.
+    on_error: Callable[[CallResult, Exception], Optional[CallResult]]
+    queue: asyncio.Queue
+    downstream: Optional["_Stage"] = None
+
+
+def _init_calls(job: Job, audio_files: List[str], icm_map: dict) -> None:
+    """Add call records for files the job has not seen yet (resume keeps existing ones)."""
+    existing = {c.original_path for c in job.calls}
+    for i, path in enumerate(audio_files):
+        if path in existing:
+            continue
+        meta = icm_map.get(os.path.basename(path))
+        job.calls.append(CallResult(
+            index=i,
+            filename=os.path.basename(path),
+            original_path=path,
+            **(asdict(meta) if meta else {}),
+        ))
+
+
+def _load_icm_metadata(job: Job) -> dict:
+    if job.xml_metadata_path and os.path.exists(job.xml_metadata_path):
+        icm_xml = job.xml_metadata_path
+    else:
+        icm_xml = find_icm_report(job.input_folder) if job.input_folder else None
+    if not icm_xml:
+        return {}
+
+    try:
+        icm_map = parse_icm_report(icm_xml)
+    except Exception as e:
+        logger.warning("ICM XML parsing failed: %s", e)
+        emit(job.id, {"type": "warning", "message": (
+            f"Metadata file found but could not be read: {os.path.basename(icm_xml)}. "
+            "Call details (inmate name, phone, date) will be blank."
+        )})
+        return {}
+    if icm_map:
+        logger.info("ICM report loaded: %d records", len(icm_map))
+    else:
+        emit(job.id, {"type": "warning", "message": (
+            f"Metadata file ({os.path.basename(icm_xml)}) contained no matching call records. "
+            "Call details will be blank."
+        )})
+    return icm_map
 
 
 async def _run_pipeline(job: Job) -> None:
@@ -313,136 +359,114 @@ async def _run_pipeline(job: Job) -> None:
     audio_dir = os.path.join(output_dir, "audio")
     transcripts_dir = os.path.join(output_dir, "transcripts")
     transcripts_no_summary_dir = os.path.join(output_dir, "transcripts-no-summary")
-    os.makedirs(audio_dir, exist_ok=True)
-    os.makedirs(transcripts_dir, exist_ok=True)
-    os.makedirs(transcripts_no_summary_dir, exist_ok=True)
+    for d in (audio_dir, transcripts_dir, transcripts_no_summary_dir):
+        os.makedirs(d, exist_ok=True)
 
-    # ── Stage 0: Discover files & initialize call records ──
-    _emit(job_id, {"type": "stage", "stage": "discovering"})
-
-    wav_files = job.file_paths if job.file_paths else _discover_audio_files(job.input_folder)
-    if not wav_files:
+    # ── Discover files & initialize call records ──
+    emit(job_id, {"type": "stage", "stage": "discovering"})
+    audio_files = job.file_paths or discover_audio_files(job.input_folder)
+    if not audio_files:
         raise RuntimeError(
             f"No supported audio files found in: {job.input_folder} and no files explicitly provided."
         )
+    emit(job_id, {"type": "discovered", "count": len(audio_files)})
+    logger.info("Discovered %d audio files for job %s", len(audio_files), job_id)
 
-    _emit(job_id, {"type": "discovered", "count": len(wav_files)})
-    logger.info("Discovered %d audio files for job %s", len(wav_files), job_id)
-
-    # Load ICM report metadata if present
-    if job.xml_metadata_path and os.path.exists(job.xml_metadata_path):
-        icm_xml = job.xml_metadata_path
-    else:
-        icm_xml = find_icm_report(job.input_folder) if job.input_folder else None
-
-    icm_map = {}
-    if icm_xml:
-        try:
-            icm_map = parse_icm_report(icm_xml)
-        except Exception as e:
-            logger.warning("ICM XML parsing failed: %s", e)
-            _emit(job_id, {"type": "warning", "message": f"Metadata file found but could not be read: {os.path.basename(icm_xml)}. Call details (inmate name, phone, date) will be blank."})
-    if icm_map:
-        logger.info("ICM report loaded: %d records", len(icm_map))
-    elif icm_xml:
-        _emit(job_id, {"type": "warning", "message": f"Metadata file ({os.path.basename(icm_xml)}) contained no matching call records. Call details will be blank."})
-
-    # Initialize call records (skip already-existing ones for resumability)
-    existing = {c.original_path: c for c in job.calls}
-    calls_to_add = []
-    for i, wav_path in enumerate(wav_files):
-        if wav_path not in existing:
-            meta = icm_map.get(os.path.basename(wav_path))
-            calls_to_add.append(CallResult(
-                index=i,
-                filename=os.path.basename(wav_path),
-                original_path=wav_path,
-                inmate_name=meta.inmate_name if meta else None,
-                inmate_pin=meta.inmate_pin if meta else None,
-                outside_number=meta.outside_number if meta else None,
-                outside_number_fmt=meta.outside_number_fmt if meta else None,
-                call_date=meta.call_date if meta else None,
-                call_time=meta.call_time if meta else None,
-                call_datetime_str=meta.call_datetime_str if meta else None,
-                facility=meta.facility if meta else None,
-                call_outcome=meta.call_outcome if meta else None,
-                call_type=meta.call_type if meta else None,
-                xml_duration_seconds=meta.xml_duration_seconds if meta else None,
-                notes=meta.notes if meta else None,
-            ))
-
-    if calls_to_add:
-        job.calls.extend(calls_to_add)
-
+    _init_calls(job, audio_files, _load_icm_metadata(job))
     job.stage = JobStage.CONVERTING
-    job.started_at = job.started_at or datetime.now(timezone.utc).isoformat()
+    job.started_at = job.started_at or _utc_now()
     job_store.update_job(job)
-
-    # Reload to get DB-synced copies
-    job = job_store.get_job(job_id)
+    job = job_store.get_job(job_id)  # reload DB-synced copies
     total_calls = len(job.calls)
 
-    # ── Route calls to appropriate starting queues ──
-    convert_q: asyncio.Queue = asyncio.Queue()
-    transcribe_q: asyncio.Queue = asyncio.Queue()
-    summarize_q: asyncio.Queue = asyncio.Queue()
-    pdf_q: asyncio.Queue = asyncio.Queue()
+    # ── Engines & worker counts ──
+    runtime = _runtime_selection(job)
+    validate_runtime_selection(runtime)
+    from .transcription import get_engine as get_transcription_engine
+    transcription_engine = get_transcription_engine(runtime.transcription_engine)
+    summarization_engine = _make_summarization_engine(runtime, job.skip_summary)
 
+    n_convert = max(1, (os.cpu_count() or 2) - 1)
+    n_pdf = min(_MAX_PDF_WORKERS, max(1, total_calls))
+    convert_executor = ThreadPoolExecutor(max_workers=n_convert)
+    pdf_executor = ThreadPoolExecutor(max_workers=n_pdf)
+
+    # ── Stage definitions ──
+    def _fail(status_error_prefix: str):
+        def handler(call: CallResult, exc: Exception) -> Optional[CallResult]:
+            job_store.update_call(
+                job_id, call.index, status=CallStatus.ERROR, error=f"{status_error_prefix}{exc}",
+            )
+            return None
+        return handler
+
+    def _summary_soft_fail(call: CallResult, exc: Exception) -> CallResult:
+        # A failed summary must not block the transcript PDF: record the
+        # error, stamp a placeholder summary, and keep the call moving.
+        call.summary = "Summary unavailable for this call."
+        call.status = CallStatus.GENERATING_PDF
+        call.error = f"Summarization failed: {exc}"
+        job_store.update_call(job_id, call.index, summary=call.summary, status=call.status, error=call.error)
+        return call
+
+    def _pdf_fail(call: CallResult, exc: Exception) -> None:
+        _record_pdf_failure(job_id, call, exc)
+        return None
+
+    pdf = _Stage(
+        "generating_pdf", JobStage.GENERATING, n_pdf,
+        lambda c: _generate_pdf_one(job_id, c, job.case_name, transcripts_dir, transcripts_no_summary_dir, pdf_executor),
+        _pdf_fail, asyncio.Queue(),
+    )
+    summarize = _Stage(
+        "summarizing", JobStage.SUMMARIZING, runtime.summarization_workers(total_calls),
+        lambda c: _summarize_one(
+            job_id, c, job.summary_prompt, job.skip_summary, summarization_engine,
+            runtime.effective_auto_message_mode,
+        ),
+        _summary_soft_fail, asyncio.Queue(), downstream=pdf,
+    )
+    transcribe = _Stage(
+        "transcribing", JobStage.TRANSCRIBING, runtime.transcription_workers(total_calls),
+        lambda c: _transcribe_one(job_id, c, job.defendant_name, job.speaker_assignment, transcription_engine),
+        _fail("Transcription failed: "), asyncio.Queue(), downstream=summarize,
+    )
+    convert = _Stage(
+        "converting", JobStage.CONVERTING, n_convert,
+        lambda c: _convert_one(job_id, c, audio_dir, convert_executor),
+        _fail(""), asyncio.Queue(), downstream=transcribe,
+    )
+
+    # ── Route each call to the queue matching its checkpointed status ──
     for call in job.calls:
         if call.status in (CallStatus.PENDING, CallStatus.CONVERTING):
-            await convert_q.put(call)
+            await convert.queue.put(call)
         elif call.status == CallStatus.TRANSCRIBING and call.mp3_path and not call.turns:
-            await transcribe_q.put(call)
+            await transcribe.queue.put(call)
         elif call.status == CallStatus.SUMMARIZING and call.turns and not call.summary:
-            await summarize_q.put(call)
+            await summarize.queue.put(call)
         elif call.status == CallStatus.GENERATING_PDF and call.turns:
-            await pdf_q.put(call)
+            await pdf.queue.put(call)
         # DONE or ERROR calls: skip
-
-    # ── Worker counts ──
-    n_convert = max(1, (os.cpu_count() or 2) - 1)
-    runtime_selection = resolve_runtime_selection(
-        job.transcription_engine,
-        job.summarization_engine,
-        skip_summary=job.skip_summary,
-        auto_message_mode=job.auto_message_mode,
-    )
-    validate_runtime_selection(runtime_selection)
-
-    n_transcribe = runtime_selection.transcription_workers(total_calls)
-    n_summarize = runtime_selection.summarization_workers(total_calls)
-    n_pdf = min(8, max(1, total_calls))
-
-    # Create engine instances once per pipeline run. This avoids repeated
-    # initialization and keeps local/cloud capability decisions centralized.
-    from .transcription import get_engine as get_transcription_engine
-    from .summarization import get_engine as get_summarization_engine
-    transcription_engine = get_transcription_engine(runtime_selection.transcription_engine)
-    summarization_engine = (
-        get_summarization_engine(runtime_selection.summarization_engine)
-        if not job.skip_summary
-        else None
-    )
-
-    # Seed convert_q with sentinels (one per worker)
     for _ in range(n_convert):
-        await convert_q.put(_SENTINEL)
+        await convert.queue.put(_SENTINEL)
 
-    # Progress counters (safe — asyncio is single-threaded between awaits)
-    progress = {"converting": 0, "transcribing": 0, "summarizing": 0, "generating_pdf": 0}
-    stage_entered: set = set()
+    # ── Shared worker machinery ──
+    progress = {stage.name: 0 for stage in (convert, transcribe, summarize, pdf)}
+    stages_entered: set = set()
 
-    def _advance_stage(stage: JobStage):
-        """Update job.stage when first call enters a new pipeline stage."""
-        if stage.value not in stage_entered:
-            stage_entered.add(stage.value)
+    def _advance_stage(stage: JobStage) -> None:
+        """Update job.stage when the first call enters a new pipeline stage."""
+        if stage.value not in stages_entered:
+            stages_entered.add(stage.value)
             job_store.update_job_stage(job_id, stage)
-            _emit(job_id, {"type": "stage", "stage": stage.value, "total": total_calls})
+            emit(job_id, {"type": "stage", "stage": stage.value, "total": total_calls})
 
     def _is_paused() -> bool:
         return job_store.get_job_stage(job_id) == JobStage.PAUSED.value
 
-    async def _get_next_item(work_q: asyncio.Queue):
+    async def _next_item(work_q: asyncio.Queue):
+        """Next call, the sentinel, or None once the job is paused."""
         while True:
             if _is_paused():
                 return None
@@ -455,245 +479,67 @@ async def _run_pipeline(job: Job) -> None:
                 return None
             return item
 
-    # ── Worker loops ──
-
-    async def convert_loop(executor):
+    async def _worker(stage: _Stage) -> None:
         while True:
-            item = await _get_next_item(convert_q)
+            item = await _next_item(stage.queue)
             if item is None or item is _SENTINEL:
                 return
-            _advance_stage(JobStage.CONVERTING)
+            _advance_stage(stage.job_stage)
             try:
-                result = await _convert_one(job_id, item, audio_dir, executor)
-                progress["converting"] += 1
-                if result:
-                    _emit(job_id, {
-                        "type": "call_update", "index": result.index,
-                        "status": result.status, "stage": "converting",
-                        "completed": progress["converting"], "total": total_calls,
-                    })
-                    if _is_paused():
-                        return
-                    await transcribe_q.put(result)
-                else:
-                    _emit(job_id, {
-                        "type": "call_update", "index": item.index,
-                        "status": item.status, "stage": "converting",
-                        "completed": progress["converting"], "total": total_calls,
-                    })
-                    if _is_paused():
-                        return
+                forward = await stage.process(item)
+                status = forward.status if forward else item.status
             except Exception as e:
-                logger.error("Convert error for %s: %s", item.filename, e)
-                job_store.update_call(job_id, item.index, status=CallStatus.ERROR, error=str(e))
-                progress["converting"] += 1
-                _emit(job_id, {
-                    "type": "call_update", "index": item.index,
-                    "status": "error", "stage": "converting",
-                    "completed": progress["converting"], "total": total_calls,
-                })
-                if _is_paused():
-                    return
-
-    async def transcribe_loop():
-        while True:
-            item = await _get_next_item(transcribe_q)
-            if item is None or item is _SENTINEL:
-                return
-            _advance_stage(JobStage.TRANSCRIBING)
-            try:
-                result = await _transcribe_one(
-                    job_id,
-                    item,
-                    job.defendant_name,
-                    job.speaker_assignment,
-                    transcription_engine,
-                )
-                progress["transcribing"] += 1
-                _emit(job_id, {
-                    "type": "call_update", "index": result.index,
-                    "status": result.status, "stage": "transcribing",
-                    "completed": progress["transcribing"], "total": total_calls,
-                })
-                if _is_paused():
-                    return
-                await summarize_q.put(result)
-            except Exception as e:
-                logger.error("Transcription error for %s: %s", item.filename, e)
-                job_store.update_call(
-                    job_id, item.index,
-                    status=CallStatus.ERROR, error=f"Transcription failed: {e}",
-                )
-                progress["transcribing"] += 1
-                _emit(job_id, {
-                    "type": "call_update", "index": item.index,
-                    "status": "error", "stage": "transcribing",
-                    "completed": progress["transcribing"], "total": total_calls,
-                })
-                if _is_paused():
-                    return
-
-    async def summarize_loop():
-        while True:
-            item = await _get_next_item(summarize_q)
-            if item is None or item is _SENTINEL:
-                return
-            _advance_stage(JobStage.SUMMARIZING)
-            try:
-                result = await _summarize_one(
-                    job_id,
-                    item,
-                    job.summary_prompt,
-                    job.skip_summary,
-                    summarization_engine,
-                    runtime_selection.effective_auto_message_mode,
-                )
-                progress["summarizing"] += 1
-                _emit(job_id, {
-                    "type": "call_update", "index": result.index,
-                    "status": result.status, "stage": "summarizing",
-                    "completed": progress["summarizing"], "total": total_calls,
-                })
-                if _is_paused():
-                    return
-                await pdf_q.put(result)
-            except Exception as e:
-                logger.error("Summarization error for %s: %s", item.filename, e)
-                err_msg = "Summary unavailable for this call."
-                job_store.update_call(
-                    job_id, item.index,
-                    summary=err_msg,
-                    status=CallStatus.GENERATING_PDF,
-                    error=f"Summarization failed: {e}",
-                )
-                item.summary = err_msg
-                item.status = CallStatus.GENERATING_PDF
-                item.error = f"Summarization failed: {e}"
-                progress["summarizing"] += 1
-                _emit(job_id, {
-                    "type": "call_update", "index": item.index,
-                    "status": item.status, "stage": "summarizing",
-                    "completed": progress["summarizing"], "total": total_calls,
-                })
-                if _is_paused():
-                    return
-                await pdf_q.put(item)
-
-    async def pdf_loop(executor):
-        while True:
-            item = await _get_next_item(pdf_q)
-            if item is None or item is _SENTINEL:
-                return
-            _advance_stage(JobStage.GENERATING)
-            try:
-                result = await _generate_pdf_one(
-                    job_id, item, job.case_name,
-                    transcripts_dir, transcripts_no_summary_dir, executor,
-                )
-                progress["generating_pdf"] += 1
-                _emit(job_id, {
-                    "type": "call_update", "index": result.index,
-                    "status": result.status, "stage": "generating_pdf",
-                    "completed": progress["generating_pdf"], "total": total_calls,
-                })
-                if _is_paused():
-                    return
-            except Exception as e:
-                logger.error("PDF error for %s: %s", item.filename, e)
-                _record_pdf_failure(job_id, item, e)
-                progress["generating_pdf"] += 1
-                _emit(job_id, {
-                    "type": "call_update", "index": item.index,
-                    "status": "error", "stage": "generating_pdf",
-                    "completed": progress["generating_pdf"], "total": total_calls,
-                })
-                if _is_paused():
-                    return
-
-    # ── Stage group coordinator ──
-
-    async def run_stage_group(workers, downstream_q, n_downstream):
-        """Run all workers in a group, then send sentinels downstream."""
-        await asyncio.gather(*workers)
-        if downstream_q is not None:
-            for _ in range(n_downstream):
-                await downstream_q.put(_SENTINEL)
-
-    # ── Execute streaming pipeline ──
-
-    _advance_stage(JobStage.CONVERTING)
-
-    convert_executor = ThreadPoolExecutor(max_workers=n_convert)
-    pdf_executor = ThreadPoolExecutor(max_workers=n_pdf)
-
-    try:
-        if runtime_selection.all_local:
-            # Two-phase mode: avoid loading both local models simultaneously on 8 GB.
-            # Phase 1: Convert + Transcribe (Parakeet memory freed when phase ends)
-            logger.info("All-local mode: running two-phase pipeline for job %s", job_id)
-            await asyncio.gather(
-                run_stage_group(
-                    [convert_loop(convert_executor) for _ in range(n_convert)],
-                    transcribe_q, n_transcribe,
-                ),
-                run_stage_group(
-                    [transcribe_loop() for _ in range(n_transcribe)],
-                    summarize_q, n_summarize,
-                ),
-            )
-
+                logger.error("%s error for %s: %s", stage.name, item.filename, e)
+                forward = stage.on_error(item, e)
+                status = forward.status if forward else "error"
+            progress[stage.name] += 1
+            emit(job_id, {
+                "type": "call_update", "index": item.index, "status": status,
+                "stage": stage.name, "completed": progress[stage.name], "total": total_calls,
+            })
             if _is_paused():
                 return
+            if forward is not None and stage.downstream is not None:
+                await stage.downstream.queue.put(forward)
 
-            # Phase 2: Summarize + PDF (summarize_q already has items + sentinels)
-            await asyncio.gather(
-                run_stage_group(
-                    [summarize_loop() for _ in range(n_summarize)],
-                    pdf_q, n_pdf,
-                ),
-                run_stage_group(
-                    [pdf_loop(pdf_executor) for _ in range(n_pdf)],
-                    None, 0,
-                ),
-            )
-        else:
-            # Standard streaming pipeline: all four stages run concurrently
-            await asyncio.gather(
-                run_stage_group(
-                    [convert_loop(convert_executor) for _ in range(n_convert)],
-                    transcribe_q, n_transcribe,
-                ),
-                run_stage_group(
-                    [transcribe_loop() for _ in range(n_transcribe)],
-                    summarize_q, n_summarize,
-                ),
-                run_stage_group(
-                    [summarize_loop() for _ in range(n_summarize)],
-                    pdf_q, n_pdf,
-                ),
-                run_stage_group(
-                    [pdf_loop(pdf_executor) for _ in range(n_pdf)],
-                    None, 0,
-                ),
-            )
+    async def _run_stage(stage: _Stage) -> None:
+        """Run a stage's workers to completion, then release the downstream pool."""
+        await asyncio.gather(*[_worker(stage) for _ in range(stage.workers)])
+        if stage.downstream is not None:
+            for _ in range(stage.downstream.workers):
+                await stage.downstream.queue.put(_SENTINEL)
+
+    # ── Execute ──
+    # All-local mode runs in two phases so Parakeet and Gemma never share
+    # unified memory; otherwise all four stages stream concurrently.
+    if runtime.all_local:
+        logger.info("All-local mode: running two-phase pipeline for job %s", job_id)
+        phases = [(convert, transcribe), (summarize, pdf)]
+    else:
+        phases = [(convert, transcribe, summarize, pdf)]
+
+    _advance_stage(JobStage.CONVERTING)
+    try:
+        for phase in phases:
+            await asyncio.gather(*[_run_stage(stage) for stage in phase])
+            if _is_paused():
+                break
     finally:
         convert_executor.shutdown(wait=False)
         pdf_executor.shutdown(wait=False)
 
-    # ── Check for pause before finishing ──
     if _is_paused():
-        # If we bail here with the local model still resident, release it so
-        # memory isn't held indefinitely while the job sits paused.
+        # Release a resident local model rather than holding memory while paused.
         if summarization_engine:
             summarization_engine.unload()
         return
 
-    # ── Post-pipeline: delivery assets + packaging ──
-    # Keep the summarization engine loaded — case-report synthesis reuses it.
-    _emit(job_id, {"type": "stage", "stage": "generating_indexes"})
+    # ── Delivery assets + packaging ──
+    # The summarization engine stays loaded: case-report synthesis reuses it.
+    emit(job_id, {"type": "stage", "stage": "generating_indexes"})
     job = job_store.get_job(job_id)
     try:
-        await _stage_generate_delivery_assets(job, output_dir, audio_dir, summarization_engine)
+        await _stage_generate_delivery_assets(job, output_dir, summarization_engine)
     finally:
         if summarization_engine:
             summarization_engine.unload()
@@ -703,109 +549,91 @@ async def _run_pipeline(job: Job) -> None:
 
     job.stage = JobStage.PACKAGING
     job_store.update_job(job)
-    _emit(job_id, {"type": "stage", "stage": "packaging"})
+    emit(job_id, {"type": "stage", "stage": "packaging"})
     zip_path = await _stage_package(job, output_dir)
 
     job.stage = JobStage.DONE
     job.zip_path = zip_path
-    job.completed_at = datetime.now(timezone.utc).isoformat()
+    job.completed_at = _utc_now()
     job_store.update_job(job)
-    _emit(job_id, {"type": "done", "zip_path": zip_path})
+    emit(job_id, {"type": "done", "zip_path": zip_path})
 
-    done_count = sum(1 for c in job.calls if c.status == CallStatus.DONE and not c.error)
-    hard_error_count = sum(1 for c in job.calls if c.status == CallStatus.ERROR)
-    partial_error_count = sum(1 for c in job.calls if c.status == CallStatus.DONE and c.error)
+    clean = sum(1 for c in job.calls if c.status == CallStatus.DONE and not c.error)
+    partial = sum(1 for c in job.calls if c.status == CallStatus.DONE and c.error)
+    errored = sum(1 for c in job.calls if c.status == CallStatus.ERROR)
     logger.info(
         "Job %s completed: %d clean, %d partial (summary failed), %d errored. Zip: %s",
-        job_id, done_count, partial_error_count, hard_error_count, zip_path,
+        job_id, clean, partial, errored, zip_path,
     )
 
 
-# ── Batch stages (kept for repackaging and delivery-asset generation) ──
+# ────────────────────────── Batch stages ──────────────────────────
 
 async def _stage_generate_delivery_assets(
     job: Job,
     output_dir: str,
-    audio_dir: str,
-    summarization_engine=None,
+    summarization_engine: Optional[SummarizationEngine] = None,
 ) -> None:
+    """Write search.html, viewer.html, guide.pdf, and case-report.pdf.
+
+    The four writers run in parallel: the shared Chromium renderer is safe
+    to call from concurrent threads and gates real render concurrency with
+    its own semaphore, so wall time is close to the slowest single asset.
+    A failed asset is reported as a warning and does not fail the job.
+    """
+    from .delivery.case_report import generate_case_report_pdf
+    from .delivery.guide_pdf import generate_guide_pdf
     from .delivery.search_html import generate_search_html
     from .delivery.viewer import render_viewer
 
     loop = asyncio.get_event_loop()
     done_calls = [c for c in job.calls if c.status == CallStatus.DONE]
 
-    def write_search():
-        html = generate_search_html(done_calls, case_name=job.case_name)
-        with open(os.path.join(output_dir, "search.html"), 'w', encoding='utf-8') as f:
-            f.write(html)
+    def _write(name: str, data) -> None:
+        mode = "wb" if isinstance(data, bytes) else "w"
+        with open(os.path.join(output_dir, name), mode, **({} if mode == "wb" else {"encoding": "utf-8"})) as f:
+            f.write(data)
 
-    def write_viewer():
-        html = render_viewer(done_calls, case_name=job.case_name)
-        with open(os.path.join(output_dir, "viewer.html"), 'w', encoding='utf-8') as f:
-            f.write(html)
+    writers = {
+        "search.html": lambda: _write("search.html", generate_search_html(done_calls, case_name=job.case_name)),
+        "viewer.html": lambda: _write("viewer.html", render_viewer(done_calls, case_name=job.case_name)),
+        "guide.pdf": lambda: _write("guide.pdf", generate_guide_pdf(case_name=job.case_name, call_count=len(done_calls))),
+        "case-report.pdf": lambda: _write(
+            "case-report.pdf",
+            generate_case_report_pdf(job=job, done_calls=done_calls, engine=summarization_engine),
+        ),
+    }
 
-    def write_guide():
-        from .delivery.guide_pdf import generate_guide_pdf
-        guide_bytes = generate_guide_pdf(case_name=job.case_name, call_count=len(done_calls))
-        with open(os.path.join(output_dir, "guide.pdf"), 'wb') as f:
-            f.write(guide_bytes)
+    failures: List[str] = []
 
-    def write_case_report():
-        from .delivery.case_report import generate_case_report_pdf
-        report_bytes = generate_case_report_pdf(
-            job=job,
-            done_calls=done_calls,
-            engine=summarization_engine,
-        )
-        with open(os.path.join(output_dir, "case-report.pdf"), 'wb') as f:
-            f.write(report_bytes)
-
-    # All four writers run in parallel: the shared Chromium PDF renderer
-    # (backend.delivery.pdf_render) is safe to call from concurrent threads and gates
-    # real render concurrency with its own semaphore, so the overall wall
-    # time is close to the longest single output rather than the sum of all
-    # four.
-    asset_failures: List[str] = []
-
-    async def _run(fn):
+    async def _run(name: str, fn) -> None:
         try:
             await loop.run_in_executor(None, fn)
         except Exception as e:
-            logger.error("Delivery asset generation failed (%s): %s", fn.__name__, e)
-            asset_failures.append(fn.__name__)
-            _emit(job.id, {
-                "type": "warning",
-                "message": f"{fn.__name__} failed: {e}",
-            })
+            logger.error("Delivery asset generation failed (%s): %s", name, e)
+            failures.append(name)
+            emit(job.id, {"type": "warning", "message": f"{name} failed: {e}"})
 
-    await asyncio.gather(
-        _run(write_search),
-        _run(write_viewer),
-        _run(write_guide),
-        _run(write_case_report),
-    )
+    await asyncio.gather(*[_run(name, fn) for name, fn in writers.items()])
+    if failures:
+        logger.warning("Delivery asset generation completed with %d failure(s): %s", len(failures), ", ".join(failures))
 
-    if asset_failures:
-        logger.warning(
-            "Delivery asset generation completed with %d failure(s): %s",
-            len(asset_failures), ", ".join(asset_failures),
-        )
+
+def _safe_case_name(case_name: str) -> str:
+    safe = "".join(c if c.isalnum() or c in "-_ " else "_" for c in case_name).strip()
+    return safe or "Jail Calls"
 
 
 async def _stage_package(job: Job, output_dir: str) -> str:
-    loop = asyncio.get_event_loop()
-
+    """Zip the output folder as ``<CaseName>/...`` and return the zip path."""
     def make_zip() -> str:
-        safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in job.case_name).strip()
-        safe_name = safe_name or "Jail Calls"
-        zip_path = os.path.join(job_store._job_dir(job.id), f"{safe_name}.zip")
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        safe_name = _safe_case_name(job.case_name)
+        zip_path = os.path.join(job_store.job_dir(job.id), f"{safe_name}.zip")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for root, _dirs, files in os.walk(output_dir):
                 for file in files:
                     abs_path = os.path.join(root, file)
-                    arcname = os.path.join(safe_name, os.path.relpath(abs_path, output_dir))
-                    zf.write(abs_path, arcname)
+                    zf.write(abs_path, os.path.join(safe_name, os.path.relpath(abs_path, output_dir)))
         return zip_path
 
-    return await loop.run_in_executor(None, make_zip)
+    return await asyncio.get_event_loop().run_in_executor(None, make_zip)

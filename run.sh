@@ -14,18 +14,10 @@ if [ ! -f "$SCRIPT_DIR/.env" ]; then
   echo ""
 fi
 
-# Kill anything already on our ports (avoids EADDRINUSE / WinError 10013)
+# Kill anything already on our ports (avoids EADDRINUSE)
 cleanup_ports() {
   for port in 8000 3000; do
-    if command -v lsof &>/dev/null; then
-      lsof -ti :$port 2>/dev/null | xargs -r kill -9 2>/dev/null || true
-    elif command -v powershell.exe &>/dev/null; then
-      powershell.exe -NoProfile -Command "
-        Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty OwningProcess -Unique |
-        ForEach-Object { if (\$_ -ne 0) { Stop-Process -Id \$_ -Force -ErrorAction SilentlyContinue } }
-      " 2>/dev/null || true
-    fi
+    lsof -ti :$port 2>/dev/null | xargs kill -9 2>/dev/null || true
   done
 }
 
