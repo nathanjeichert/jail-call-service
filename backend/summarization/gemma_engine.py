@@ -1,8 +1,9 @@
-"""
-Local Gemma 4 summarization engine via MLX on Apple Silicon.
+"""Local Gemma 4 summarization engine via MLX on Apple Silicon.
 
-Uses mlx-lm for native Metal-accelerated inference with the
-Gemma 4 E2B model (4-bit quantized, ~3.6 GB RAM).
+Uses mlx-lm for Metal-accelerated inference with the Gemma 4 E2B model
+(4-bit quantized, ~3.6 GB RAM). Speaks the block-delimited text protocol
+(``text_protocol.py``); automated-message detection is folded into the
+summary call so each call costs a single local generation.
 """
 
 import asyncio
@@ -10,33 +11,50 @@ import gc
 import importlib.util
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import List, Optional, Tuple
 
 from ..models import TranscriptTurn
-from .base import build_transcript_text, build_full_prompt
+from .base import (
+    CallSummary,
+    CaseReportInputs,
+    SummarizationEngine,
+    TokenUsage,
+    build_full_prompt,
+    build_transcript_text,
+    metadata_duration,
+)
+from .schemas import CaseReportResponse
+from .text_protocol import (
+    CASE_REPORT_SYNTHESIS_PROMPT,
+    SYSTEM_AUDIO_DETECTION_PROMPT,
+    parse_case_report_text,
+    parse_system_audio_response,
+)
 
 logger = logging.getLogger(__name__)
 
 # Gemma 4 (unsloth MLX build) emits a reasoning channel before the final
 # answer:  <|channel>thought ...reasoning... <channel|>FINAL_ANSWER
-# We only want the final answer in the summary output; the thought trace
-# is noisy and breaks downstream structured-section parsing. `_CLOSE_MARKER`
-# matches the transition to the final channel. `_OPEN_MARKER` catches a
-# stray opener in case the close marker was stripped upstream.
+# Only the final answer is wanted; the thought trace breaks downstream
+# section parsing. `_CLOSE_MARKER` matches the transition to the final
+# channel; `_OPEN_MARKER` catches a stray opener if the close was stripped.
 _CLOSE_MARKER = re.compile(r"<\s*channel\s*\|\s*>", re.IGNORECASE)
 _OPEN_MARKER = re.compile(r"<\s*\|\s*channel\s*>\s*thought\b", re.IGNORECASE)
 
-GEMMA_AVAILABLE = False
-if importlib.util.find_spec("mlx_lm") is not None:
-    GEMMA_AVAILABLE = True
+SYSTEM_PROMPT = (
+    "You are a legal analyst reviewing jail call transcripts. Follow the "
+    "user's instructions precisely and produce structured analysis."
+)
+
+GEMMA_AVAILABLE = importlib.util.find_spec("mlx_lm") is not None
 
 
 def _strip_thinking(text: str) -> str:
     """Remove Gemma's chain-of-thought prelude, keeping only the final answer.
 
     Raises RuntimeError when max_tokens ran out mid-thinking (no final channel
-    produced) so the pipeline can record this as a partial failure instead of
-    saving the raw reasoning as the summary.
+    produced) so the pipeline records a partial failure instead of saving the
+    raw reasoning as the summary.
     """
     close = list(_CLOSE_MARKER.finditer(text))
     if close:
@@ -49,8 +67,11 @@ def _strip_thinking(text: str) -> str:
     return text.strip()
 
 
-class GemmaEngine:
+class GemmaEngine(SummarizationEngine):
     """Local summarization via Gemma 4 E2B on Apple Silicon (MLX)."""
+
+    name = "gemma"
+    system_audio_prepass = False
 
     def __init__(
         self,
@@ -67,6 +88,8 @@ class GemmaEngine:
         from mlx_lm.sample_utils import make_sampler
         self._sampler = make_sampler(temp=0.3)
 
+    # ── model lifecycle ──
+
     def _ensure_loaded(self):
         """Lazy-load the model and run a warm-up pass to trigger Metal JIT compilation."""
         if self._model is not None:
@@ -76,16 +99,12 @@ class GemmaEngine:
 
         logger.info("Loading Gemma model: %s", self._model_name)
         self._model, self._tokenizer = load(self._model_name)
-
-        # Warm-up: trigger Metal kernel JIT compilation so the first real
-        # call doesn't pay a 5-15s penalty.
         for _ in stream_generate(self._model, self._tokenizer, prompt="warmup", max_tokens=1):
             pass
         mx.clear_cache()
         logger.info("Gemma model loaded and warmed up")
 
-    def unload(self):
-        """Free model memory. Call after batch processing completes."""
+    def unload(self) -> None:
         if self._model is None:
             return
         logger.info("Unloading Gemma model")
@@ -100,43 +119,16 @@ class GemmaEngine:
         except Exception:
             pass
 
-    async def summarize(
-        self,
-        turns: List[TranscriptTurn],
-        prompt: str,
-        metadata: Optional[dict] = None,
-    ) -> Dict:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._summarize_sync, turns, prompt, metadata)
+    # ── generation ──
 
-    async def generate(self, prompt_text: str) -> Dict:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._generate_sync, prompt_text)
-
-    def _summarize_sync(
-        self,
-        turns: List[TranscriptTurn],
-        prompt: str,
-        metadata: Optional[dict] = None,
-    ) -> Dict:
-        duration = float((metadata or {}).get("duration_seconds") or 0.0)
-        transcript_text = build_transcript_text(turns, duration)
-        full_prompt = build_full_prompt(prompt, transcript_text, metadata)
-        return self._generate_sync(full_prompt)
-
-    def _generate_sync(self, user_prompt: str) -> Dict:
+    def _generate_sync(self, user_prompt: str) -> Tuple[str, TokenUsage]:
         from mlx_lm import stream_generate
 
         self._ensure_loaded()
-
         messages = [
-            {
-                "role": "system",
-                "content": "You are a legal analyst reviewing jail call transcripts. Follow the user's instructions precisely and produce structured analysis.",
-            },
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ]
-
         prompt_text = self._tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, tokenize=False,
         )
@@ -145,30 +137,59 @@ class GemmaEngine:
         text = ""
         for response in stream_generate(
             self._model, self._tokenizer, prompt=prompt_text,
-            max_tokens=self._max_tokens,
-            sampler=self._sampler,
+            max_tokens=self._max_tokens, sampler=self._sampler,
         ):
             text += response.text
 
-        input_tokens = response.prompt_tokens if response else 0
-        output_tokens = response.generation_tokens if response else 0
         if not text.strip():
             raise RuntimeError("Gemma returned an empty response")
-
         final_text = _strip_thinking(text)
         if not final_text:
             raise RuntimeError("Gemma final-channel output was empty after stripping thinking trace")
 
         thinking_portion = text[: len(text) - len(final_text)]
-        thinking_tokens = len(self._tokenizer.encode(thinking_portion)) if thinking_portion else 0
+        usage = TokenUsage(
+            input_tokens=response.prompt_tokens if response else 0,
+            output_tokens=response.generation_tokens if response else 0,
+            thinking_tokens=len(self._tokenizer.encode(thinking_portion)) if thinking_portion else 0,
+        )
         logger.info(
             "Gemma tokens — input: %d, output: %d (thinking: %d)",
-            input_tokens, output_tokens, thinking_tokens,
+            usage.input_tokens, usage.output_tokens, usage.thinking_tokens,
         )
+        return final_text, usage
 
-        return {
-            "text": final_text,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "thinking_tokens": thinking_tokens,
-        }
+    async def _generate(self, user_prompt: str) -> Tuple[str, TokenUsage]:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._generate_sync, user_prompt)
+
+    # ── engine interface ──
+
+    async def summarize_call(
+        self,
+        turns: List[TranscriptTurn],
+        prompt: str,
+        metadata: Optional[dict] = None,
+        *,
+        detect_system_audio: bool = False,
+    ) -> CallSummary:
+        effective_prompt = prompt
+        if detect_system_audio:
+            effective_prompt += "\n\n" + SYSTEM_AUDIO_DETECTION_PROMPT
+        full_prompt = build_full_prompt(
+            effective_prompt,
+            build_transcript_text(turns, metadata_duration(metadata)),
+            metadata,
+        )
+        text, usage = await self._generate(full_prompt)
+        markers: list = []
+        if detect_system_audio:
+            text, markers = parse_system_audio_response(text)
+        return CallSummary(usage=usage, text=text, system_audio_markers=markers)
+
+    async def synthesize_case_report(
+        self,
+        inputs: CaseReportInputs,
+    ) -> Tuple[Optional[CaseReportResponse], TokenUsage]:
+        text, usage = await self._generate(CASE_REPORT_SYNTHESIS_PROMPT.format(**inputs.format_kwargs()))
+        return parse_case_report_text(text), usage

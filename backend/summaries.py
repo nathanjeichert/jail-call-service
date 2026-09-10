@@ -42,6 +42,10 @@ from .transcript_layout import hydrate_review_cues, resolve_line_ref_context
 # Summary sheets allowed per relevance tier (page 1 plus overflow pages).
 SUMMARY_PAGE_LIMITS: Dict[str, int] = {"LOW": 1, "MEDIUM": 1, "HIGH": 3}
 
+#: Summaries written by skip_summary test jobs start with this marker; the
+#: delivery surfaces treat them as "no summary" rather than parsing them.
+DUMMY_SUMMARY_PREFIX = "**DUMMY SUMMARY"
+
 _MAX_IDENTITY_CHARS = 280
 _MAX_BRIEF_CHARS = 320
 _MAX_CONTEXT_SENTENCES = 2

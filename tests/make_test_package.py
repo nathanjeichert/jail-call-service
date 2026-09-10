@@ -41,7 +41,9 @@ from backend.formatting import format_duration
 from backend.models import CallResult, Job, TranscriptTurn, WordTimestamp, call_stem
 from backend.pipeline import _stage_generate_delivery_assets
 from backend.summaries import normalize_structured_summary, parse_summary_sections, render_summary_text
+from backend.summarization.base import SummarizationEngine, TokenUsage
 from backend.summarization.schemas import SummaryNote, SummaryResponse
+from backend.summarization.text_protocol import parse_case_report_text
 from backend.transcript_layout import compute_line_entries
 
 CASE_NAME = "State v. Marcus Reeves"
@@ -158,19 +160,23 @@ IDENTITY_END
 """
 
 
-class StubSynthesisEngine:
+class StubSynthesisEngine(SummarizationEngine):
     """Stands in for Gemini/Gemma during the case-report synthesis call.
 
-    Deliberately has no ``generate_json`` attribute so ``case_report``
-    routes through the legacy block-delimited path, and its real parser
-    runs against the canned response.
+    Feeds canned FINDING/IDENTITY blocks through the real text-protocol
+    parser, so the parsing path runs with no API.
     """
+
+    name = "stub"
 
     def __init__(self, response_text: str):
         self._text = response_text
 
-    async def generate(self, prompt_text: str) -> dict:
-        return {"text": self._text, "input_tokens": 0, "output_tokens": 0, "thinking_tokens": 0}
+    async def summarize_call(self, turns, prompt, metadata=None, *, detect_system_audio=False):
+        raise NotImplementedError("the test package fabricates summaries directly")
+
+    async def synthesize_case_report(self, inputs):
+        return parse_case_report_text(self._text), TokenUsage()
 
 
 def _build_turns(script, duration: float) -> list:

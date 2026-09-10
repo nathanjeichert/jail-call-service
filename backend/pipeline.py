@@ -34,6 +34,8 @@ from .icm_parser import find_icm_report, parse_icm_report
 from . import job_store, config as cfg
 from .formatting import format_duration
 from .job_settings import resolve_runtime_selection, validate_runtime_selection
+from .summaries import DUMMY_SUMMARY_PREFIX
+from .summarization import TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -150,129 +152,79 @@ async def _transcribe_one(job_id, call, defendant_name, speaker_assignment, engi
 
 async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, auto_message_mode=None):
     """Summarize a single call's transcript using the provided engine instance."""
-    from .system_audio import (
-        SYSTEM_AUDIO_DETECTION_PROMPT,
-        SYSTEM_AUDIO_DETECTION_JSON_PROMPT,
-        parse_system_audio_response,
-        remove_system_audio_notes,
-        apply_system_audio_filter,
-    )
-    from .summarization.base import build_full_prompt, build_turn_transcript_text, build_transcript_text
-    from .summarization.schemas import (
-        GEMINI_SUMMARY_JSON_INSTRUCTIONS,
-        SummaryResponse,
-        SystemAudioResponse,
-    )
-    from .summaries import normalize_structured_summary, normalize_summary_text, render_summary_text
-    from .transcript_layout import compute_line_entries
-
     job_store.update_call(job_id, call.index, status=CallStatus.SUMMARIZING)
 
     if skip_summary:
         summary_text = (
-            f"**DUMMY SUMMARY FOR {call.filename}**\n\n"
+            f"{DUMMY_SUMMARY_PREFIX} FOR {call.filename}**\n\n"
             f"- The user requested to skip AI processing for this test job.\n"
             f"- Call duration: {call.duration_seconds} sec."
         )
-        token_kwargs = {}
+        usage = TokenUsage()
         await asyncio.sleep(0.1)
     else:
         if engine is None:
             raise RuntimeError("Summarization engine not initialized")
-        effective_prompt = summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT
-        metadata = {"filename": call.filename, "duration_seconds": call.duration_seconds}
+        summary_text, usage = await _summarize_with_engine(
+            job_id, call, engine, summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT, auto_message_mode,
+        )
 
-        if hasattr(engine, "generate_json"):
-            total_input_tokens = 0
-            total_output_tokens = 0
-            total_thinking_tokens = 0
-
-            if auto_message_mode in ("exclude", "label"):
-                system_prompt = build_full_prompt(
-                    SYSTEM_AUDIO_DETECTION_JSON_PROMPT,
-                    build_turn_transcript_text(call.turns),
-                    metadata,
-                )
-                system_result = await engine.generate_json(
-                    system_prompt,
-                    SystemAudioResponse,
-                    thinking_level=cfg.GEMINI_SYSTEM_AUDIO_THINKING_LEVEL,
-                )
-                total_input_tokens += system_result["input_tokens"]
-                total_output_tokens += system_result["output_tokens"]
-                total_thinking_tokens += system_result["thinking_tokens"]
-                markers = [
-                    {"turn": item.turn, "text": item.text}
-                    for item in system_result["parsed"].system_audio
-                ]
-                if markers:
-                    call.turns = apply_system_audio_filter(call.turns, markers, auto_message_mode)
-                    job_store.update_call(job_id, call.index, turns=call.turns)
-                    logger.info(
-                        "Applied system audio filter (%s) to %s: %d markers",
-                        auto_message_mode, call.filename, len(markers),
-                    )
-
-            structured_prompt = (
-                f"{effective_prompt}\n\n{GEMINI_SUMMARY_JSON_INSTRUCTIONS}"
-            )
-            summary_result = await engine.generate_json(
-                build_full_prompt(
-                    structured_prompt,
-                    build_transcript_text(call.turns, call.duration_seconds or 0.0),
-                    metadata,
-                ),
-                SummaryResponse,
-                thinking_level=cfg.GEMINI_SUMMARY_THINKING_LEVEL,
-            )
-            line_entries = compute_line_entries(call.turns, call.duration_seconds or 0.0)
-            normalized_summary = normalize_structured_summary(summary_result["parsed"], line_entries)
-            summary_text = render_summary_text(normalized_summary, line_entries)
-            total_input_tokens += summary_result["input_tokens"]
-            total_output_tokens += summary_result["output_tokens"]
-            total_thinking_tokens += summary_result["thinking_tokens"]
-            token_kwargs = {
-                "input_tokens": total_input_tokens,
-                "output_tokens": total_output_tokens,
-                "thinking_tokens": total_thinking_tokens,
-            }
-        else:
-            if auto_message_mode in ("exclude", "label"):
-                effective_prompt += "\n\n" + SYSTEM_AUDIO_DETECTION_PROMPT
-
-            result = await engine.summarize(
-                call.turns,
-                prompt=effective_prompt,
-                metadata=metadata,
-            )
-            raw_text = result["text"]
-            token_kwargs = {
-                "input_tokens": result["input_tokens"],
-                "output_tokens": result["output_tokens"],
-                "thinking_tokens": result["thinking_tokens"],
-            }
-
-            # Parse system audio markers and apply filtering
-            if auto_message_mode in ("exclude", "label"):
-                summary_text, markers = parse_system_audio_response(raw_text)
-                if markers:
-                    summary_text = remove_system_audio_notes(summary_text, markers, call.turns)
-                    call.turns = apply_system_audio_filter(call.turns, markers, auto_message_mode)
-                    job_store.update_call(job_id, call.index, turns=call.turns)
-                    logger.info(
-                        "Applied system audio filter (%s) to %s: %d markers",
-                        auto_message_mode, call.filename, len(markers),
-                    )
-            else:
-                summary_text = raw_text
-
-            line_entries = compute_line_entries(call.turns, call.duration_seconds or 0.0)
-            summary_text = normalize_summary_text(summary_text, line_entries)
-
-    job_store.update_call(job_id, call.index, summary=summary_text, status=CallStatus.GENERATING_PDF, **token_kwargs)
+    job_store.update_call(
+        job_id, call.index, summary=summary_text, status=CallStatus.GENERATING_PDF, **usage.as_dict(),
+    )
     call.summary = summary_text
     call.status = CallStatus.GENERATING_PDF
     return call
+
+
+async def _summarize_with_engine(job_id, call, engine, prompt, auto_message_mode):
+    """Run one call through the engine and return ``(canonical_summary_text, usage)``.
+
+    Automated-message filtering happens here because it mutates the
+    transcript: prepass engines filter before the summary sees the turns;
+    inline-detecting engines return markers with the summary and the
+    transcript is filtered afterwards.
+    """
+    from .summaries import normalize_structured_summary, normalize_summary_text, render_summary_text
+    from .system_audio import FILTER_MODES, apply_system_audio_filter, remove_system_audio_notes
+    from .transcript_layout import compute_line_entries
+
+    metadata = {"filename": call.filename, "duration_seconds": call.duration_seconds}
+    duration = call.duration_seconds or 0.0
+    filtering = auto_message_mode in FILTER_MODES
+    usage = TokenUsage()
+
+    def _apply_filter(markers):
+        call.turns = apply_system_audio_filter(call.turns, markers, auto_message_mode)
+        job_store.update_call(job_id, call.index, turns=call.turns)
+        logger.info(
+            "Applied system audio filter (%s) to %s: %d markers",
+            auto_message_mode, call.filename, len(markers),
+        )
+
+    if filtering and engine.system_audio_prepass:
+        markers, detect_usage = await engine.detect_system_audio(call.turns, metadata)
+        usage += detect_usage
+        if markers:
+            _apply_filter(markers)
+
+    result = await engine.summarize_call(
+        call.turns, prompt, metadata,
+        detect_system_audio=filtering and not engine.system_audio_prepass,
+    )
+    usage += result.usage
+
+    if result.structured is not None:
+        line_entries = compute_line_entries(call.turns, duration)
+        normalized = normalize_structured_summary(result.structured, line_entries)
+        return render_summary_text(normalized, line_entries), usage
+
+    summary_text = result.text or ""
+    if result.system_audio_markers:
+        summary_text = remove_system_audio_notes(summary_text, result.system_audio_markers, call.turns)
+        _apply_filter(result.system_audio_markers)
+    line_entries = compute_line_entries(call.turns, duration)
+    return normalize_summary_text(summary_text, line_entries), usage
 
 
 async def _generate_pdf_one(job_id, call, case_name, transcripts_dir, transcripts_no_summary_dir, executor):
@@ -465,12 +417,7 @@ async def _run_pipeline(job: Job) -> None:
     # initialization and keeps local/cloud capability decisions centralized.
     from .transcription import get_engine as get_transcription_engine
     from .summarization import get_engine as get_summarization_engine
-    transcription_engine = get_transcription_engine(
-        runtime_selection.transcription_engine,
-        api_key=cfg.ASSEMBLYAI_API_KEY,
-        speech_model=cfg.ASSEMBLYAI_MODEL,
-        polling_interval=cfg.ASSEMBLYAI_POLLING_INTERVAL,
-    )
+    transcription_engine = get_transcription_engine(runtime_selection.transcription_engine)
     summarization_engine = (
         get_summarization_engine(runtime_selection.summarization_engine)
         if not job.skip_summary
@@ -737,7 +684,7 @@ async def _run_pipeline(job: Job) -> None:
     if _is_paused():
         # If we bail here with the local model still resident, release it so
         # memory isn't held indefinitely while the job sits paused.
-        if summarization_engine and hasattr(summarization_engine, "unload"):
+        if summarization_engine:
             summarization_engine.unload()
         return
 
@@ -748,7 +695,7 @@ async def _run_pipeline(job: Job) -> None:
     try:
         await _stage_generate_delivery_assets(job, output_dir, audio_dir, summarization_engine)
     finally:
-        if summarization_engine and hasattr(summarization_engine, "unload"):
+        if summarization_engine:
             summarization_engine.unload()
 
     if _is_paused():

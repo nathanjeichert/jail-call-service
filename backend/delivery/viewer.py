@@ -11,12 +11,10 @@ import os
 
 from ..formatting import timestamp_to_seconds
 from ..html_json import dump_script_safe_json
-from ..summaries import parse_summary_sections
+from ..summaries import DUMMY_SUMMARY_PREFIX, parse_summary_sections
 from ..transcript_layout import compute_line_entries, hydrate_review_cues
 from .fonts import embedded_font_css
 from .templates import load_static_template
-
-DUMMY_SUMMARY_PREFIX = "**DUMMY SUMMARY"
 
 
 def _build_call_entry(call, line_entries: list) -> dict:

@@ -82,43 +82,41 @@ Both engines return identical `List[TranscriptTurn]` — the rest of the pipelin
 
 ## Summarization Engine Architecture
 
-The summarization system follows the same modular pattern, located in `backend/summarization/`:
+`backend/summarization/` — every engine subclasses `SummarizationEngine` (`base.py`) and the rest of the app only talks to that interface:
 
 ```
 backend/summarization/
-  __init__.py              # get_engine() factory, AVAILABLE_ENGINES list
-  base.py                  # Shared utils (build_transcript_text, build_full_prompt)
-  gemini_engine.py         # Cloud: Gemini Flash API
-  gemma_engine.py          # Local: Gemma 4 E2B via mlx-lm on Apple Silicon
+  __init__.py        # get_engine() factory, AVAILABLE_ENGINES
+  base.py            # SummarizationEngine ABC, TokenUsage, CallSummary, CaseReportInputs, prompt assembly helpers
+  schemas.py         # typed results every engine returns (SummaryResponse, CaseReportResponse, SystemAudioResponse)
+  json_protocol.py   # prompt text for native-JSON engines (Gemini)
+  text_protocol.py   # block-delimited text prompts + parsers for engines without JSON mode (Gemma)
+  gemini_engine.py   # Cloud: Gemini Flash, structured JSON output, thinking levels from config
+  gemma_engine.py    # Local: Gemma 4 E2B via mlx-lm, text protocol, lazy load + unload
 ```
 
-**Gemini (cloud):** Calls the Gemini Flash API. Requires API key. Concurrency controlled by `MAX_SUMMARIZATION_CONCURRENT`.
-For Gemini 3 Flash, the app currently uses `thinkingLevel="low"` for the automated-message detection pass and `thinkingLevel="medium"` for both the per-call summary pass and the case-report synthesis pass.
+Three async operations, all returning `TokenUsage` alongside their result:
+* `detect_system_audio(turns, metadata)` — only for engines with `system_audio_prepass = True` (Gemini). Runs before the summary so the summary sees a filtered transcript.
+* `summarize_call(turns, prompt, metadata, *, detect_system_audio)` — returns a `CallSummary` carrying either `structured` (a `SummaryResponse`) or `text` (raw model output). Inline-detecting engines (Gemma) fold detection into this one call and hand back `system_audio_markers`; one local generation per call.
+* `synthesize_case_report(CaseReportInputs)` — findings + outside-party identities as a `CaseReportResponse`.
 
-**Gemma (local):** Runs Gemma 4 E2B (4-bit quantized) via mlx-lm for Metal-accelerated inference. Lazy-loads the model on first call with a warm-up pass to trigger Metal JIT compilation. Concurrency capped at 1 to stay within 8GB RAM. The engine instance is created once per pipeline run and reused across all calls to avoid repeated model loading.
+`pipeline._summarize_with_engine` is the only place that sequences these (prepass filter → summarize → post-filter for inline engines → normalize through `backend/summaries.py`), and `delivery/case_report._run_synthesis` is the only caller of the synthesis op (3-attempt tenacity retry, 120 s per-attempt timeout). **Adding an engine means subclassing the ABC and registering it in `get_engine`; nothing in the pipeline or delivery code should branch on engine type.** `tests/test_summarize_stage.py` drives the stage with fake engines of both shapes.
 
-**Default Gemini summary shape:** The production prompt in `backend/config.py` asks for:
-- `RELEVANCE: HIGH / MEDIUM / LOW`
-- `NOTES:` timestamped attorney-relevant moments only, or exactly `NOTES: NONE` when there is nothing an attorney would plausibly need to know.
-- `IDENTITY OF OUTSIDE PARTY:` only when the call itself supports an identity or relationship inference.
-- `BRIEF SUMMARY:` one to two sentences.
+**Gemini (cloud):** `gemini-3-flash-preview` by default; `thinkingLevel="low"` for the automated-message detection pass and `"medium"` for the per-call summary and case-report synthesis (`GEMINI_*_THINKING_LEVEL` in config). Per-call summary JSON notes contain only `line_ref` + `reason` + `importance_rank`; the app derives every rendered `[MM:SS]`, speaker, and pull quote from the cited transcript lines at render time (`transcript_layout.hydrate_review_cues`), never from model-authored text.
 
-**Gemini structured-output architecture:** For Gemini jobs, the app no longer trusts model-authored quote text, timestamps, or speaker labels inside `NOTES`. Instead:
-- The model returns JSON for all three Gemini call types: automated-message detection, per-call summary, and case-report synthesis.
-- The per-call summary JSON note items contain only `line_ref` plus `reason`.
-- The app derives the rendered `[MM:SS]`, `SPEAKER`, and pull quote from the cited transcript lines at render time via `compute_line_entries` / `hydrate_review_cues`.
-- Search, transcript PDFs, and case-report call cards all hydrate note quotes from those same transcript line refs so the visible excerpt is always transcript-derived.
-- Before persistence, Gemini summaries are normalized through `backend/summaries.py`: leaked preambles are stripped, note counts are capped by relevance tier, duplicate/weak note entries are trimmed, identity/brief-summary text is shortened to card-friendly lengths, and the kept note set is reduced further if needed so the summary can paginate cleanly.
+**Gemma (local):** Gemma 4 E2B (4-bit MLX). Lazy-loads on first call with a warm-up pass for Metal JIT; `unload()` frees memory after the run (the pipeline keeps it loaded through case-report synthesis). Concurrency 1. Strips the `<|channel>thought…<channel|>` reasoning prelude; raises if max_tokens ran out mid-thinking so the call records a partial failure instead of saving reasoning as the summary.
 
-Do not make Gemini add notes merely to orient the reader to routine personal conversation. Notes should be reserved for content that may matter to case review, charges/evidence, confinement, allegedly criminal conduct, or another substantive attorney-review reason.
+**Default summary shape** (`backend/prompts.py`): `RELEVANCE: HIGH / MEDIUM / LOW`; `NOTES:` timestamped attorney-relevant moments only, or exactly `NOTES: NONE`; `IDENTITY OF OUTSIDE PARTY:` only when the call supports an inference; `BRIEF SUMMARY:` one to two sentences. Do not make the model add notes merely to orient the reader to routine personal conversation.
+
+**Normalization** (`backend/summaries.py`): before persistence every summary, structured or text, is normalized into the canonical text format: leaked preambles stripped, note counts capped by relevance tier (`SUMMARY_NOTE_GUIDANCE` / hard max 21), duplicate or weak notes trimmed by importance rank, identity/brief text shortened to card length, and the kept note set reduced until it fits the summary-sheet page budget (`SUMMARY_PAGE_LIMITS`, via `delivery/summary_layout.paginate_structured_summary`). Search, transcript PDFs, viewer, and case report all read summaries back through `summaries.parse_summary_sections`.
 
 ## System Audio Filtering
 
-Automated telecom messages (IVR prompts, time warnings, provider sign-offs) are detected and filtered via `backend/system_audio.py`.
+Automated telecom messages (IVR prompts, time warnings, provider sign-offs) are detected by the summarization engine and filtered by `backend/system_audio.py`. Both engines produce the same marker shape, `{"turn": int, "text": str}`.
 
-**Current behavior by summarization engine:**
-- **Gemini:** runs a dedicated first-pass structured-output detection call on the raw turn transcript, applies filtering, then runs the citation-bearing summary call on the already-filtered transcript.
-- **Gemma:** keeps the legacy combined summary prompt, with a trailing `SYSTEM_AUDIO: [...]` line parsed out of the summary response.
+**Behavior by engine:**
+- **Gemini** (`system_audio_prepass = True`): a dedicated structured-output detection call on the raw turn transcript, filtering applied, then the citation-bearing summary call runs on the already-filtered transcript.
+- **Gemma** (inline): the detection instructions are appended to the summary prompt and a trailing `SYSTEM_AUDIO: [...]` line is parsed off the response (`text_protocol.parse_system_audio_response`); matching NOTES bullets are removed and the transcript is filtered after the fact.
 
 **Job-level `auto_message_mode` setting (UI toggle):**
 - `None` / "Keep": No filtering, automated messages left as-is.

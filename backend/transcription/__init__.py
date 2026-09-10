@@ -8,8 +8,8 @@ Usage:
 """
 
 import logging
-from typing import Optional
 
+from .. import config as cfg
 from .base import TranscriptionEngine, normalize_speaker_label, mark_continuation_turns
 from .assemblyai_engine import AssemblyAIEngine, ASSEMBLYAI_AVAILABLE
 from .parakeet_engine import ParakeetEngine, _find_fluidaudiocli
@@ -31,41 +31,23 @@ if _find_fluidaudiocli():
     AVAILABLE_ENGINES.append("parakeet")
 
 
-def get_engine(
-    engine_name: str,
-    *,
-    api_key: Optional[str] = None,
-    speech_model: Optional[str] = None,
-    polling_interval: Optional[int] = None,
-) -> TranscriptionEngine:
-    """
-    Return an initialized transcription engine by name.
+def get_engine(engine_name: str) -> TranscriptionEngine:
+    """Return an initialized transcription engine by name ("assemblyai" or "parakeet").
 
-    Args:
-        engine_name: "assemblyai" or "parakeet"
-        api_key: Required for AssemblyAI.
-        speech_model: AssemblyAI model name (default: universal-3-pro).
-        polling_interval: AssemblyAI polling interval in seconds.
-
-    Raises:
-        ValueError: Unknown engine name.
-        RuntimeError: Engine dependencies not installed.
+    Raises ValueError for an unknown name and RuntimeError when the engine's
+    dependencies or credentials are missing.
     """
     name = engine_name.lower().strip()
 
     if name == "assemblyai":
         if not ASSEMBLYAI_AVAILABLE:
-            raise RuntimeError(
-                "AssemblyAI SDK not installed. Run: pip install assemblyai"
-            )
-        if not api_key:
-            raise RuntimeError(
-                "AssemblyAI requires an API key. Set ASSEMBLYAI_API_KEY in your .env file."
-            )
+            raise RuntimeError("AssemblyAI SDK not installed. Run: pip install assemblyai")
+        if not cfg.ASSEMBLYAI_API_KEY:
+            raise RuntimeError("AssemblyAI requires an API key. Set ASSEMBLYAI_API_KEY in your .env file.")
         return AssemblyAIEngine(
-            api_key=api_key,
-            speech_model=speech_model or "universal-3-pro",
-            polling_interval=polling_interval or 15,
+            api_key=cfg.ASSEMBLYAI_API_KEY,
+            speech_model=cfg.ASSEMBLYAI_MODEL,
+            polling_interval=cfg.ASSEMBLYAI_POLLING_INTERVAL,
         )
 
     if name == "parakeet":

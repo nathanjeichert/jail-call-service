@@ -537,7 +537,7 @@ async def _do_repackage(job_id: str):
             await _stage_generate_delivery_assets(job, output_dir, audio_dir, engine)
             zip_path = await _stage_package(job, output_dir)
         finally:
-            if engine and hasattr(engine, "unload"):
+            if engine:
                 engine.unload()
         job.zip_path = zip_path
         job_store.update_job(job)

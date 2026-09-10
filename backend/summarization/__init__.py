@@ -1,27 +1,27 @@
-"""
-Summarization engine factory.
+"""Summarization engines.
 
-Usage:
     from backend.summarization import get_engine
     engine = get_engine("gemini")   # or "gemma"
-    result = await engine.summarize(turns, prompt, metadata)
+    result = await engine.summarize_call(turns, prompt, metadata)
+
+``AVAILABLE_ENGINES`` lists the engines whose dependencies are installed.
+See ``base.py`` for the interface every engine implements.
 """
 
-import logging
 from typing import Optional
 
-from .base import SummarizationEngine, build_transcript_text, build_full_prompt
-from .gemini_engine import GeminiEngine, GEMINI_AVAILABLE
+from .. import config as cfg
+from .base import CallSummary, CaseReportInputs, SummarizationEngine, TokenUsage
+from .gemini_engine import GEMINI_AVAILABLE, GeminiEngine
 from .gemma_engine import GEMMA_AVAILABLE
-
-logger = logging.getLogger(__name__)
 
 __all__ = [
     "AVAILABLE_ENGINES",
-    "build_full_prompt",
-    "build_transcript_text",
-    "get_engine",
+    "CallSummary",
+    "CaseReportInputs",
     "SummarizationEngine",
+    "TokenUsage",
+    "get_engine",
 ]
 
 AVAILABLE_ENGINES = []
@@ -31,48 +31,24 @@ if GEMMA_AVAILABLE:
     AVAILABLE_ENGINES.append("gemma")
 
 
-def get_engine(
-    engine_name: str,
-    *,
-    api_key: Optional[str] = None,
-    model: Optional[str] = None,
-) -> SummarizationEngine:
-    """
-    Return an initialized summarization engine by name.
+def get_engine(engine_name: str, *, model: Optional[str] = None) -> SummarizationEngine:
+    """Return an initialized summarization engine by name.
 
-    Args:
-        engine_name: "gemini" or "gemma"
-        api_key: Required for Gemini.
-        model: Model name override.
-
-    Raises:
-        ValueError: Unknown engine name.
-        RuntimeError: Engine dependencies not installed.
+    Raises ValueError for an unknown name and RuntimeError when the engine's
+    dependencies are not installed.
     """
     name = engine_name.lower().strip()
 
     if name == "gemini":
         if not GEMINI_AVAILABLE:
-            raise RuntimeError(
-                "google-genai not installed. Run: pip install google-genai"
-            )
-        from .. import config as cfg
-        return GeminiEngine(
-            api_key=api_key or cfg.GEMINI_API_KEY,
-            model=model or cfg.GEMINI_MODEL,
-        )
+            raise RuntimeError("google-genai not installed. Run: pip install google-genai")
+        return GeminiEngine(api_key=cfg.GEMINI_API_KEY, model=model or cfg.GEMINI_MODEL)
 
     if name == "gemma":
         if not GEMMA_AVAILABLE:
-            raise RuntimeError(
-                "mlx-lm not installed. Run: pip install mlx-lm"
-            )
+            raise RuntimeError("mlx-lm not installed. Run: pip install mlx-lm")
         from .gemma_engine import GemmaEngine
-        from .. import config as cfg
-        return GemmaEngine(
-            model_name=model or cfg.GEMMA_MODEL,
-            max_tokens=cfg.GEMMA_MAX_TOKENS,
-        )
+        return GemmaEngine(model_name=model or cfg.GEMMA_MODEL, max_tokens=cfg.GEMMA_MAX_TOKENS)
 
     raise ValueError(
         f"Unknown summarization engine: {engine_name!r}. "

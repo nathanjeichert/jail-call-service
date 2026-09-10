@@ -21,11 +21,10 @@ from typing import List
 from ..formatting import format_duration, timestamp_to_seconds
 from ..html_json import dump_script_safe_json
 from ..models import call_stem
-from ..summaries import parse_summary_sections
+from ..summaries import DUMMY_SUMMARY_PREFIX, parse_summary_sections
 from ..transcript_layout import compute_line_entries, hydrate_review_cues, line_cite_for_timestamp
 from .fonts import embedded_font_css
 from .templates import load_static_template
-from .viewer import DUMMY_SUMMARY_PREFIX
 
 
 def _escape(s: str) -> str:
