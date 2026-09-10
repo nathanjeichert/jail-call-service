@@ -12,10 +12,10 @@ STATE V. MARCUS REEVES
 SECTION 01
 10 CALLSContents of This Delivery
 State v. Marcus Reeves/
-search.html Call index. Sortable, filterable table of every call with summaries, review cues,
-and full-text search across every transcript.
-viewer.html Audio viewer. Synced audio and transcript for every call; citations in the PDFs
-open here at the exact moment.
+index.html Call index and viewer. One page with two views: a sortable, filterable table of
+every call with summaries, review cues, and full-text search across every
+transcript, and a viewer with synced audio and transcript for each call. Citations
+in the PDFs open here at the exact moment.
 case-report.pdf Case report. At-a-glance metrics, top findings, high-relevance call cards, and
 caller statistics across the full set.
 transcripts/ Transcript PDFs in deposition format, one per call, each with a cover and an
@@ -26,41 +26,13 @@ audio/ MP3 audio, repaired and converted from the facility's source recordings. 
 by the viewer; also opens in any media player.
 guide.pdf This document.
 KEEP THE FOLDER INTACT
-Extract the delivery fully before use and keep the files together: the links between search.html, viewer.html, and
-the PDFs are relative paths that resolve only when the folder structure is unchanged. To share the delivery, copy the
-entire folder.
+Extract the delivery fully before use and keep the files together: the links between index.html and the PDFs are
+relative paths that resolve only when the folder structure is unchanged. To share the delivery, copy the entire folder.
 USER GUIDE· CONTENTS OF THIS DELIVERY 02
 ## page 3
 STATE V. MARCUS REEVES
 SECTION 02
-VIEWER.HTMLUsing the Call Viewer
-01 Select a call
-The left panel lists every call with its date,
-number, and relevance. Selecting a call loads
-its audio and transcript.
-02 Play and navigate the audio
-SPACE plays and pauses; ← → skip five
-seconds; the −15s / +15s buttons skip further.
-Red ticks on the progress bar mark the call's
-review cues.
-03 Seek and search the transcript
-Printed-format pages follow the audio with the
-current line highlighted. Click any line or word
-to jump to that exact moment; ↑ ↓ turn
-pages. The search box shows every page
-containing a term; “Return to playback” re-
-syncs.
-04 Analysis panel and Present mode
-The right panel shows the call's relevance,
-summary, outside party, and clickable review
-cues; both side panels collapse with their ‹ ›
-buttons. P enters Present mode: audio controls
-and the transcript page only; ESC exits.
-USER GUIDE· USING THE CALL VIEWER 03
-## page 4
-STATE V. MARCUS REEVES
-SECTION 03
-SEARCH.HTMLUsing the Call Index
+INDEX.HTML · INDEX VIEWUsing the Call Index
 01 Search every word spoken
 The search box covers every transcript,
 summary, cue, and phone number in the
@@ -81,13 +53,43 @@ transcript step through search matches, or
 through the flagged passages when no search
 is active.
 04 Open the source
-Excerpts, cues, and transcript lines open
-viewer.html with the audio cued to that exact
+Excerpts, cues, and transcript lines open the
+call view with the audio cued to that exact
 moment. Each cue also cites the transcript PDF
 by page and line (Tr. page:line), and the row
-buttons open the viewer or the transcript PDF
+buttons open the call view or the transcript PDF
 directly.
-USER GUIDE· USING THE SEARCH PAGE 04
+USER GUIDE· USING THE CALL INDEX 03
+## page 4
+STATE V. MARCUS REEVES
+SECTION 03
+INDEX.HTML · CALL VIEWUsing the Call Viewer
+01 Select a call
+The left panel lists every call with its date,
+number, and relevance. Selecting a call loads
+its audio and transcript. The Call Index link in
+the top band, or the browser's back button,
+returns to the index with its search and filters
+intact.
+02 Play and navigate the audio
+SPACE plays and pauses; ← → skip five
+seconds; the −15s / +15s buttons skip further.
+Red ticks on the progress bar mark the call's
+review cues.
+03 Seek and search the transcript
+Printed-format pages follow the audio with the
+current line highlighted. Click any line or word
+to jump to that exact moment; ↑ ↓ turn
+pages. The search box shows every page
+containing a term; “Return to playback” re-
+syncs.
+04 Analysis panel and Present mode
+The right panel shows the call's relevance,
+summary, outside party, and clickable review
+cues; both side panels collapse with their ‹ ›
+buttons. P enters Present mode: audio controls
+and the transcript page only; ESC exits.
+USER GUIDE· USING THE CALL VIEWER 04
 ## page 5
 STATE V. MARCUS REEVES
 SECTION 04
@@ -103,13 +105,13 @@ CALLS Compact rows for MEDIUM calls: date, number, brief summary, and cue count.
 CALLER STATISTICS Outside numbers ranked by volume, with call counts, total duration, active period, and
 the inferred identity with its confidence level.
 LINKED CITATIONS
-Every citation in the report is a clickable link: call references open viewer.html at the cited moment, and PDF
+Every citation in the report is a clickable link: call references open index.html at the cited moment, and PDF
 references open the transcript. Keep case-report.pdf inside the delivery folder so its links can resolve.
 USER GUIDE· USING THE CASE REPORT 05
 ## page 6
 STATE V. MARCUS REEVES
 SECTION 05
-SUMMARY SHEETS · SEARCH · VIEWERReading the Analysis
+SUMMARY SHEETS · INDEX.HTMLReading the Analysis
 RELEVANCE RATINGS ASSIGNED PER CALL
 HIGH Potentially jury-relevant or case-substantive content: charges, witnesses, evidence,
 admissions, or statements bearing on the case.

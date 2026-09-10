@@ -40,10 +40,10 @@ class GuideLayoutTests(unittest.TestCase):
 
         self.assertEqual(len(reader.pages), 6)
         self.assertGreaterEqual(
-            _footer_clearance(reader.pages[2], "USING THE CALL VIEWER", "03"),
+            _footer_clearance(reader.pages[2], "USING THE CALL INDEX", "03"),
             8.0,
         )
         self.assertGreaterEqual(
-            _footer_clearance(reader.pages[3], "USING THE SEARCH PAGE", "04"),
+            _footer_clearance(reader.pages[3], "USING THE CALL VIEWER", "04"),
             8.0,
         )

@@ -4,8 +4,8 @@ Builds the synthetic package (``tests/make_test_package.py``) with a pinned
 "Generated" date and no audio, digests every client-facing artifact, and
 compares each digest to the committed copy under ``tests/golden/``:
 
-* ``search.html`` / ``viewer.html``: the page source verbatim, with the
-  base64 font payloads replaced by a marker so the digest stays readable.
+* ``index.html``: the page source verbatim, with the base64 font payloads
+  replaced by a marker so the digest stays readable.
 * ``case-report.pdf`` / ``guide.pdf`` / every transcript PDF: per-page
   extracted text plus every link annotation (``/Launch`` target, URI, or
   named destination), so pagination, copy, cites, and link portability are
@@ -87,8 +87,7 @@ def package_dir(tmp_path_factory) -> Path:
 
 
 ARTIFACTS = {
-    "search.html": lambda root: _digest_html(root / "search.html"),
-    "viewer.html": lambda root: _digest_html(root / "viewer.html"),
+    "index.html": lambda root: _digest_html(root / "index.html"),
     "case-report.pdf": lambda root: _digest_pdf(root / "case-report.pdf"),
     "guide.pdf": lambda root: _digest_pdf(root / "guide.pdf"),
     "transcripts": lambda root: _digest_pdf_dir(root / "transcripts"),

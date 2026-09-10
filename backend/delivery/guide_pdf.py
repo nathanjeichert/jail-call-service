@@ -7,8 +7,8 @@ fixed-size sheets like the transcript PDF:
 
   Page 1: Cover (case name, date, call count)
   Page 2: Contents of This Delivery (file table + keep-intact note)
-  Page 3: Using the Call Viewer
-  Page 4: Using the Call Index (search.html)
+  Page 3: Using the Call Index (index.html, index view)
+  Page 4: Using the Call Viewer (index.html, call view)
   Page 5: Using the Case Report
   Page 6: Reading the Analysis (relevance tiers + summary sections)
 """

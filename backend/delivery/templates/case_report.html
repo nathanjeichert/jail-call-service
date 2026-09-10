@@ -5,7 +5,7 @@
 <style>
 /* ════════════════════════════════════════════════════════════════
    Case Report — "Record" design language, shared with the transcript
-   PDF, guide, search.html, and viewer.html.
+   PDF, guide, and index.html.
    ════════════════════════════════════════════════════════════════ */
 
 {{ theme_css }}
@@ -853,7 +853,7 @@ section.chapter .band { padding-top: 3pt; }
     {% else %}
     <div class="empty">
         <strong>No high-relevance calls.</strong>
-        The per-call analysis did not flag any calls as HIGH. {{ medium_count }} medium-relevance call{{ "s are" if medium_count != 1 else " is" }} listed in the following section; the full set is searchable in <span class="mono">search.html</span>.
+        The per-call analysis did not flag any calls as HIGH. {{ medium_count }} medium-relevance call{{ "s are" if medium_count != 1 else " is" }} listed in the following section; the full set is searchable in <span class="mono">index.html</span>.
     </div>
     {% endif %}
 </section>

@@ -5,7 +5,7 @@ Aggregates per-call summaries into a standalone case-level report:
   - Top findings synthesized by the active summarization engine from
     high/medium relevance call notes
   - Outside-party identity inference (in the same synthesis call)
-  - High & medium relevance call cards with hotlinks to viewer + transcript PDFs
+  - High & medium relevance call cards with hotlinks to the call view + transcript PDFs
   - Frequent caller statistics (with AI-inferred identities)
   - At-a-glance metrics, daily call timeline, relevance distribution
 
@@ -64,12 +64,13 @@ SYNTHESIS_TIMEOUT_SEC = 120
 
 # Trailing local-target portion of a link annotation URI. Chromium resolves
 # relative hrefs against the temp-file URL the HTML was rendered from, so the
-# annotations arrive as absolute file:///tmp/.../viewer.html?call=... URIs;
+# annotations arrive as absolute file:///tmp/.../index.html#call=... URIs;
 # a bare relative URI (e.g. from older renderer output) is also accepted.
-# Group 1 captures the delivery-relative path: "viewer.html" with an optional
-# ?query, or "transcripts/<file>.pdf" with an optional #fragment.
+# Group 1 captures the delivery-relative path: "index.html" with an optional
+# #call=...&t=... fragment, or "transcripts/<file>.pdf" with an optional
+# #fragment.
 _LOCAL_TARGET_RE = re.compile(
-    r"(?:^|/)((?:viewer\.html(?:\?[^#]*)?)|(?:transcripts/[^/?#]+\.pdf(?:#.*)?))$"
+    r"(?:^|/)((?:index\.html(?:#.*)?)|(?:transcripts/[^/?#]+\.pdf(?:#.*)?))$"
 )
 
 
@@ -133,8 +134,9 @@ def _stem(call: CallResult) -> str:
 
 
 def _viewer_link(call: CallResult, timestamp: Optional[str] = None) -> str:
+    """Deep link into index.html's call view: ``#call=<mp3>&t=MM:SS``."""
     audio_filename = f"{_stem(call)}.mp3"
-    base = f"viewer.html?call={quote(audio_filename)}"
+    base = f"index.html#call={quote(audio_filename)}"
     if timestamp:
         ts = timestamp.strip("[]").strip()
         if ts:
@@ -829,7 +831,7 @@ def generate_case_report_pdf(
     }
 
     html_str = render_template("case_report.html", **ctx)
-    # Chromium resolves the relative <a href> values ("viewer.html?call=...",
+    # Chromium resolves the relative <a href> values ("index.html#call=...",
     # "transcripts/xxx.pdf") against the temp file it renders from, baking
     # absolute file:///tmp/... URIs into the link annotations. The rewriter
     # below strips that machine-specific prefix and converts each local link

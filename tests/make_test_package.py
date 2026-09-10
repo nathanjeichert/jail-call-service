@@ -14,8 +14,8 @@ them through the REAL delivery code:
 
   * per-call transcript PDFs via ``delivery.transcript_pdf.create_pdf``
     (both ``transcripts/`` and ``transcripts-no-summary/`` variants)
-  * ``search.html`` / ``viewer.html`` / ``guide.pdf`` / ``case-report.pdf``
-    via the pipeline's own ``_stage_generate_delivery_assets``
+  * ``index.html`` / ``guide.pdf`` / ``case-report.pdf`` via the
+    pipeline's own ``_stage_generate_delivery_assets``
   * case-report synthesis through a stub engine returning canned
     FINDING/IDENTITY blocks, so the real parsing path runs with no API
 
@@ -392,12 +392,12 @@ def build_package(output_dir: Path, count: int = 10, *, with_audio: bool = True,
         return (items[0].get("timestamp", "[01:00]") if items else "[01:00]").strip("[]")
     synthesis = CANNED_SYNTHESIS.format(ts0=first_cue_ts(calls[0]), ts1=first_cue_ts(calls[1]))
 
-    print("Generating search.html, viewer.html, guide.pdf, case-report.pdf …")
+    print("Generating index.html, guide.pdf, case-report.pdf …")
     asyncio.run(_stage_generate_delivery_assets(
         job, str(output_dir), StubSynthesisEngine(synthesis), gen_date=gen_date,
     ))
 
-    expected = ["search.html", "viewer.html", "guide.pdf", "case-report.pdf"]
+    expected = ["index.html", "guide.pdf", "case-report.pdf"]
     missing = [name for name in expected if not (output_dir / name).is_file()]
     if missing:
         raise RuntimeError(f"missing delivery assets: {', '.join(missing)}")
@@ -409,7 +409,7 @@ def main() -> None:
     parser.add_argument("--out", default="test-output", help="output directory (default: test-output/)")
     parser.add_argument("--calls", type=int, default=10, help="number of fake calls (default: 10)")
     parser.add_argument("--zip", action="store_true", help="also build the delivery zip")
-    parser.add_argument("--no-audio", action="store_true", help="skip MP3 generation (faster; viewer audio won't play)")
+    parser.add_argument("--no-audio", action="store_true", help="skip MP3 generation (faster; audio won't play in the call view)")
     args = parser.parse_args()
 
     if not args.no_audio and shutil.which("ffmpeg") is None:
@@ -431,10 +431,12 @@ Done — {len(calls)} calls, no AI calls made.
   package:    {output_dir}{zip_note}
 
 Review checklist:
-  open "{output_dir / 'search.html'}"
+  open "{output_dir / 'index.html'}"
       search a word (e.g. "Darnell"), expand a row, step matches with the arrows
-  open "{output_dir / 'viewer.html'}"
-      play a call, click transcript words, try Present mode (P), collapse the rails
+      open a call (Viewer button or a cue): play it, click transcript words,
+      try Present mode (P), collapse the rails
+      return with the Call Index link or browser back: the search and filters
+      should still be applied
   open "{output_dir / 'case-report.pdf'}"
       check the cover TOC links, chart, findings, call cards, caller stats
   open a PDF in transcripts/ and its clean copy in transcripts-no-summary/

@@ -6,7 +6,7 @@ worker pools connected by asyncio queues::
   [convert] -> q -> [transcribe] -> q -> [summarize] -> q -> [pdf]
 
 After every call has passed through, the batch stage builds the delivery
-assets (search.html, viewer.html, guide.pdf, case-report.pdf) and zips the
+assets (index.html, guide.pdf, case-report.pdf) and zips the
 output folder. Progress is broadcast through ``backend.events``.
 
 Resumability: every per-call stage transition is checkpointed in the job
@@ -577,9 +577,9 @@ async def _stage_generate_delivery_assets(
     summarization_engine: Optional[SummarizationEngine] = None,
     gen_date: Optional[str] = None,
 ) -> None:
-    """Write search.html, viewer.html, guide.pdf, and case-report.pdf.
+    """Write index.html, guide.pdf, and case-report.pdf.
 
-    The four writers run in parallel: the shared Chromium renderer is safe
+    The three writers run in parallel: the shared Chromium renderer is safe
     to call from concurrent threads and gates real render concurrency with
     its own semaphore, so wall time is close to the slowest single asset.
     A failed asset is reported as a warning and does not fail the job.
@@ -589,8 +589,7 @@ async def _stage_generate_delivery_assets(
     from .delivery.call_view import build_call_views
     from .delivery.case_report import generate_case_report_pdf
     from .delivery.guide_pdf import generate_guide_pdf
-    from .delivery.search_html import generate_search_html
-    from .delivery.viewer import render_viewer
+    from .delivery.index_html import generate_index_html
 
     loop = asyncio.get_event_loop()
     done_calls = [c for c in job.calls if c.status == CallStatus.DONE]
@@ -603,10 +602,9 @@ async def _stage_generate_delivery_assets(
             f.write(data)
 
     writers = {
-        "search.html": lambda: _write(
-            "search.html", generate_search_html(views, case_name=job.case_name, gen_date=gen_date)
+        "index.html": lambda: _write(
+            "index.html", generate_index_html(views, case_name=job.case_name, gen_date=gen_date)
         ),
-        "viewer.html": lambda: _write("viewer.html", render_viewer(views, case_name=job.case_name)),
         "guide.pdf": lambda: _write(
             "guide.pdf", generate_guide_pdf(case_name=job.case_name, call_count=len(views), gen_date=gen_date)
         ),

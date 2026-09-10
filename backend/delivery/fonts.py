@@ -18,7 +18,7 @@ Two delivery mechanisms, because the artifacts have different constraints:
 * PDFs are rendered by local headless Chromium, so ``pdf_font_css`` points
   ``@font-face`` at ``file://`` URIs (same pattern the transcript template
   has always used for Courier Prime).
-* ``search.html`` / ``viewer.html`` must stay single-file and work from
+* ``index.html`` must stay single-file and work from
   ``file://`` on locked-down machines with no network, so
   ``embedded_font_css`` inlines the woff2 binaries as base64 data URIs.
 """

@@ -2,7 +2,7 @@
 
 Local-first batch processing for G.729 jail call recordings. Takes a folder
 of WAV files (plus the provider's ICM metadata XML) and delivers a zip with
-per-call transcripts, audio, an offline viewer and search index, a case
+per-call transcripts, audio, an offline call index and viewer, a case
 report, and a reviewer's guide.
 
 ## Setup
@@ -57,8 +57,7 @@ summarization engine; the rest of the pipeline is engine-agnostic.
 ├── transcripts/              # PDF per call: cover, AI summary sheet(s), ruled transcript
 ├── transcripts-no-summary/   # same PDFs without the summary sheet
 ├── audio/                    # converted MP3s
-├── viewer.html               # offline player with synced transcript and review cues
-├── search.html               # searchable call index (the client's home page)
+├── index.html                # searchable call index + offline player with synced transcript
 ├── case-report.pdf           # case-level findings, caller stats, timeline
 └── guide.pdf                 # how to use the package
 ```
@@ -68,7 +67,7 @@ summarization engine; the rest of the pipeline is engine-agnostic.
 1. **Convert** — repairs zeroed G.729 WAV headers on a working copy, converts to MP3 (parallel)
 2. **Transcribe** — two channels → speaker-attributed turns with word timestamps
 3. **Summarize** — automated-message detection, then a structured per-call summary
-4. **Generate** — transcript PDFs, then search/viewer/guide/case report
+4. **Generate** — transcript PDFs, then index.html, guide, and case report
 5. **Package** — zips the output folder
 
 Every stage transition is checkpointed in SQLite (`jobs/jail_calls.db`), so

@@ -1,7 +1,7 @@
 """Transcript line layout: the single source of truth for page:line geometry.
 
 Every surface that cites a transcript location (the transcript PDF sheets,
-the viewer's printed pages, search.html cites, the case report's call cards,
+index.html's printed pages and cites, the case report's call cards,
 and the ``[Page:Line]`` references the summarization prompt asks the model to
 cite) derives from :func:`compute_line_entries`. Changing the wrapping rules
 here shifts every citation in the product, so the constants below are pinned.

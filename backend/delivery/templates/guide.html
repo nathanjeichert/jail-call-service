@@ -352,8 +352,7 @@ body {
     <div class="body">
         <div class="tree">
             <div class="trow hd"><span class="f">{{ case_name_short }}/</span></div>
-            <div class="trow"><span class="f">search.html</span><span class="d"><b>Call index.</b> Sortable, filterable table of every call with summaries, review cues, and full-text search across every transcript.</span></div>
-            <div class="trow"><span class="f">viewer.html</span><span class="d"><b>Audio viewer.</b> Synced audio and transcript for every call; citations in the PDFs open here at the exact moment.</span></div>
+            <div class="trow"><span class="f">index.html</span><span class="d"><b>Call index and viewer.</b> One page with two views: a sortable, filterable table of every call with summaries, review cues, and full-text search across every transcript, and a viewer with synced audio and transcript for each call. Citations in the PDFs open here at the exact moment.</span></div>
             <div class="trow"><span class="f">case-report.pdf</span><span class="d"><b>Case report.</b> At-a-glance metrics, top findings, high-relevance call cards, and caller statistics across the full set.</span></div>
             <div class="trow"><span class="f">transcripts/</span><span class="d"><b>Transcript PDFs</b> in deposition format, one per call, each with a cover and an analysis summary sheet.</span></div>
             <div class="trow"><span class="f">transcripts-no-summary/</span><span class="d"><b>Clean transcript PDFs</b>: the same transcripts without the analysis pages, for filing or production.</span></div>
@@ -365,7 +364,7 @@ body {
 
         <div class="note-box">
             <h4>Keep the Folder Intact</h4>
-            <p>Extract the delivery fully before use and keep the files together: the links between <span class="mono">search.html</span>, <span class="mono">viewer.html</span>, and the PDFs are relative paths that resolve only when the folder structure is unchanged. To share the delivery, copy the entire folder.</p>
+            <p>Extract the delivery fully before use and keep the files together: the links between <span class="mono">index.html</span> and the PDFs are relative paths that resolve only when the folder structure is unchanged. To share the delivery, copy the entire folder.</p>
         </div>
     </div>
 
@@ -376,7 +375,7 @@ body {
 </div>
 
 
-<!-- ═══════════════════════ 03 · Viewer ═══════════════════════ -->
+<!-- ═══════════════════════ 03 · Index view ═══════════════════════ -->
 <div class="page">
     <div class="spine"></div>
     <div class="band">
@@ -385,69 +384,15 @@ body {
 
     <div class="chap">
         <div class="eyebrow">Section 02</div>
-        <h2>Using the Call Viewer<span class="chapmeta">VIEWER.HTML</span></h2>
-    </div>
-
-    <div class="body">
-        <div class="shot">
-            {% if viewer_shot_url %}
-            <img class="shot-img" src="{{ viewer_shot_url }}" alt="Call viewer screenshot">
-            {% else %}
-            <div class="shot-placeholder">Viewer screenshot</div>
-            {% endif %}
-        </div>
-
-        <div class="gap"></div>
-
-        <div class="steps2">
-        <div class="step">
-            <span class="n">01</span>
-            <div><h4>Select a call</h4>
-            <p>The left panel lists every call with its date, number, and relevance. Selecting a call loads its audio and transcript.</p></div>
-        </div>
-        <div class="step">
-            <span class="n">02</span>
-            <div><h4>Play and navigate the audio</h4>
-            <p><span class="kbd">SPACE</span> plays and pauses; <span class="kbd">←</span> <span class="kbd">→</span> skip five seconds; the −15s / +15s buttons skip further. Red ticks on the progress bar mark the call's review cues.</p></div>
-        </div>
-        <div class="step">
-            <span class="n">03</span>
-            <div><h4>Seek and search the transcript</h4>
-            <p>Printed-format pages follow the audio with the current line highlighted. Click any line or word to jump to that exact moment; <span class="kbd">↑</span> <span class="kbd">↓</span> turn pages. The search box shows every page containing a term; “Return to playback” re-syncs.</p></div>
-        </div>
-        <div class="step">
-            <span class="n">04</span>
-            <div><h4>Analysis panel and Present mode</h4>
-            <p>The right panel shows the call's relevance, summary, outside party, and clickable review cues; both side panels collapse with their <span class="kbd">‹</span> <span class="kbd">›</span> buttons. <span class="kbd">P</span> enters Present mode: audio controls and the transcript page only; <span class="kbd">ESC</span> exits.</p></div>
-        </div>
-        </div>
-        </div>
-
-    <div class="foot">
-        <span class="doc">User Guide</span><span>·</span><span>Using the Call Viewer</span>
-        <span class="pg">03</span>
-    </div>
-</div>
-
-
-<!-- ═══════════════════════ 04 · Search ═══════════════════════ -->
-<div class="page">
-    <div class="spine"></div>
-    <div class="band">
-        <span class="lbl lbl--ink">{{ case_name_short }}</span>
-    </div>
-
-    <div class="chap">
-        <div class="eyebrow">Section 03</div>
-        <h2>Using the Call Index<span class="chapmeta">SEARCH.HTML</span></h2>
+        <h2>Using the Call Index<span class="chapmeta">INDEX.HTML · INDEX VIEW</span></h2>
     </div>
 
     <div class="body">
         <div class="shot">
             {% if search_shot_url %}
-            <img class="shot-img" src="{{ search_shot_url }}" alt="Search page screenshot">
+            <img class="shot-img" src="{{ search_shot_url }}" alt="Call index screenshot">
             {% else %}
-            <div class="shot-placeholder">Search screenshot</div>
+            <div class="shot-placeholder">Call index screenshot</div>
             {% endif %}
         </div>
 
@@ -472,13 +417,67 @@ body {
         <div class="step">
             <span class="n">04</span>
             <div><h4>Open the source</h4>
-            <p>Excerpts, cues, and transcript lines open <span class="mono">viewer.html</span> with the audio cued to that exact moment. Each cue also cites the transcript PDF by page and line (<span class="mono">Tr. page:line</span>), and the row buttons open the viewer or the transcript PDF directly.</p></div>
+            <p>Excerpts, cues, and transcript lines open the call view with the audio cued to that exact moment. Each cue also cites the transcript PDF by page and line (<span class="mono">Tr. page:line</span>), and the row buttons open the call view or the transcript PDF directly.</p></div>
         </div>
         </div>
     </div>
 
     <div class="foot">
-        <span class="doc">User Guide</span><span>·</span><span>Using the Search Page</span>
+        <span class="doc">User Guide</span><span>·</span><span>Using the Call Index</span>
+        <span class="pg">03</span>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════ 04 · Call view ═══════════════════════ -->
+<div class="page">
+    <div class="spine"></div>
+    <div class="band">
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
+    </div>
+
+    <div class="chap">
+        <div class="eyebrow">Section 03</div>
+        <h2>Using the Call Viewer<span class="chapmeta">INDEX.HTML · CALL VIEW</span></h2>
+    </div>
+
+    <div class="body">
+        <div class="shot">
+            {% if viewer_shot_url %}
+            <img class="shot-img" src="{{ viewer_shot_url }}" alt="Call viewer screenshot">
+            {% else %}
+            <div class="shot-placeholder">Call view screenshot</div>
+            {% endif %}
+        </div>
+
+        <div class="gap"></div>
+
+        <div class="steps2">
+        <div class="step">
+            <span class="n">01</span>
+            <div><h4>Select a call</h4>
+            <p>The left panel lists every call with its date, number, and relevance. Selecting a call loads its audio and transcript. The <span class="mono">Call Index</span> link in the top band, or the browser's back button, returns to the index with its search and filters intact.</p></div>
+        </div>
+        <div class="step">
+            <span class="n">02</span>
+            <div><h4>Play and navigate the audio</h4>
+            <p><span class="kbd">SPACE</span> plays and pauses; <span class="kbd">←</span> <span class="kbd">→</span> skip five seconds; the −15s / +15s buttons skip further. Red ticks on the progress bar mark the call's review cues.</p></div>
+        </div>
+        <div class="step">
+            <span class="n">03</span>
+            <div><h4>Seek and search the transcript</h4>
+            <p>Printed-format pages follow the audio with the current line highlighted. Click any line or word to jump to that exact moment; <span class="kbd">↑</span> <span class="kbd">↓</span> turn pages. The search box shows every page containing a term; “Return to playback” re-syncs.</p></div>
+        </div>
+        <div class="step">
+            <span class="n">04</span>
+            <div><h4>Analysis panel and Present mode</h4>
+            <p>The right panel shows the call's relevance, summary, outside party, and clickable review cues; both side panels collapse with their <span class="kbd">‹</span> <span class="kbd">›</span> buttons. <span class="kbd">P</span> enters Present mode: audio controls and the transcript page only; <span class="kbd">ESC</span> exits.</p></div>
+        </div>
+        </div>
+        </div>
+
+    <div class="foot">
+        <span class="doc">User Guide</span><span>·</span><span>Using the Call Viewer</span>
         <span class="pg">04</span>
     </div>
 </div>
@@ -524,7 +523,7 @@ body {
 
         <div class="note-box">
             <h4>Linked Citations</h4>
-            <p>Every citation in the report is a clickable link: call references open <span class="mono">viewer.html</span> at the cited moment, and PDF references open the transcript. Keep <span class="mono">case-report.pdf</span> inside the delivery folder so its links can resolve.</p>
+            <p>Every citation in the report is a clickable link: call references open <span class="mono">index.html</span> at the cited moment, and PDF references open the transcript. Keep <span class="mono">case-report.pdf</span> inside the delivery folder so its links can resolve.</p>
         </div>
     </div>
 
@@ -544,7 +543,7 @@ body {
 
     <div class="chap">
         <div class="eyebrow">Section 05</div>
-        <h2>Reading the Analysis<span class="chapmeta">SUMMARY SHEETS · SEARCH · VIEWER</span></h2>
+        <h2>Reading the Analysis<span class="chapmeta">SUMMARY SHEETS · INDEX.HTML</span></h2>
     </div>
 
     <div class="body">

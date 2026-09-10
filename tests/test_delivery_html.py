@@ -2,9 +2,8 @@ import json
 import unittest
 
 from backend.delivery.call_view import build_call_views
-from backend.delivery.search_html import generate_search_html
+from backend.delivery.index_html import generate_index_html
 from backend.delivery.theme import theme_css
-from backend.delivery.viewer import render_viewer
 from backend.html_json import dump_script_safe_json
 from backend.models import CallResult, CallStatus, TranscriptTurn
 
@@ -39,23 +38,34 @@ class DeliveryHtmlTests(unittest.TestCase):
         self.assertIn("\\u2029", escaped)
         self.assertEqual(json.loads(escaped.replace("<\\/", "</")), payload)
 
-    def test_search_html_uses_script_safe_json_embedding(self):
-        html = generate_search_html(build_call_views([_fixture_call()]), case_name="Case </script>")
-
-        self.assertIn("<\\/script>", html)
-        self.assertIn("\\u2028", html)
-        self.assertIn("\\u2029", html)
-
-    def test_viewer_html_uses_script_safe_json_and_has_no_remote_script(self):
-        html = render_viewer(build_call_views([_fixture_call()]), case_name="Case </script>")
+    def test_index_html_uses_script_safe_json_and_has_no_remote_script(self):
+        html = generate_index_html(build_call_views([_fixture_call()]), case_name="Case </script>")
 
         self.assertIn("<\\/script>", html)
         self.assertIn("\\u2028", html)
         self.assertIn("\\u2029", html)
         self.assertNotIn("https://unpkg.com", html)
         self.assertNotIn("WaveSurfer", html)
+        self.assertNotIn("<script src=", html)
+        # Native <audio> behind the small shim; Web Audio cannot decode local files over file://.
         self.assertIn("progressInput.addEventListener('input', scrubToInputValue);", html)
         self.assertIn("const ws = {", html)
+
+    def test_index_html_embeds_the_transcript_once_and_inlines_courier(self):
+        html = generate_index_html(build_call_views([_fixture_call()]), case_name="Case")
+
+        # The page:line entries are the only transcript copy: no compact turns array.
+        self.assertIn('"lines": [', html)
+        self.assertNotIn('"turns": [', html)
+        self.assertEqual(html.count("Danger <\\/script> line with separators"), 2)  # text + rendered_text of one entry
+        # The printed pages need Courier Prime; fonts are inlined once.
+        self.assertIn('font-family: "Courier Prime";', html)
+        self.assertEqual(html.count("data:font/ttf;base64,"), 2)  # regular + bold
+        self.assertEqual(html.count("<style>"), 1)
+        # Both views and the hash router live in the one page.
+        self.assertIn('id="index"', html)
+        self.assertIn('id="call"', html)
+        self.assertIn("rewriteLegacyQuery", html)
 
     def test_theme_layers_compose_per_medium(self):
         screen = theme_css("screen")
@@ -77,11 +87,10 @@ class DeliveryHtmlTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             theme_css("braille")
 
-    def test_search_and_viewer_lowercase_relevance_marker(self):
-        views = build_call_views([_fixture_call()])
-        for html in (generate_search_html(views), render_viewer(views)):
-            self.assertIn("rel.toLowerCase()", html)
-            self.assertNotIn("rv--HIGH", html)
+    def test_index_html_lowercases_relevance_marker(self):
+        html = generate_index_html(build_call_views([_fixture_call()]))
+        self.assertIn("rel.toLowerCase()", html)
+        self.assertNotIn("rv--HIGH", html)
 
 
 if __name__ == "__main__":

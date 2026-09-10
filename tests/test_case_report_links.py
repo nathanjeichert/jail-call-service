@@ -13,15 +13,19 @@ from backend.delivery.case_report import (
 
 
 class ExtractLocalTargetTests(unittest.TestCase):
-    def test_absolute_chromium_temp_uri_viewer_with_query(self):
+    def test_absolute_chromium_temp_uri_index_with_call_hash(self):
         uri = (
             "file:///var/folders/ab/T/tmp123xyz.html/../"
-            "viewer.html?call=001-webb_call_01.mp3&t=00%3A31"
+            "index.html#call=001-webb_call_01.mp3&t=00%3A31"
         )
         self.assertEqual(
             _extract_local_target(uri),
-            "viewer.html?call=001-webb_call_01.mp3&t=00%3A31",
+            "index.html#call=001-webb_call_01.mp3&t=00%3A31",
         )
+
+    def test_index_hash_keeps_ampersand_and_unencoded_colon(self):
+        uri = "file:///tmp/t/index.html#call=002-call.mp3&t=01:14"
+        self.assertEqual(_extract_local_target(uri), "index.html#call=002-call.mp3&t=01:14")
 
     def test_absolute_uri_transcript_pdf(self):
         uri = "file:///private/tmp/tmpabc/transcripts/042-some_call.pdf"
@@ -37,24 +41,27 @@ class ExtractLocalTargetTests(unittest.TestCase):
 
     def test_relative_uris_pass_through_unchanged(self):
         self.assertEqual(
-            _extract_local_target("viewer.html?call=a.mp3&t=01%3A02"),
-            "viewer.html?call=a.mp3&t=01%3A02",
+            _extract_local_target("index.html#call=a.mp3&t=01%3A02"),
+            "index.html#call=a.mp3&t=01%3A02",
         )
-        self.assertEqual(_extract_local_target("viewer.html"), "viewer.html")
+        self.assertEqual(_extract_local_target("index.html"), "index.html")
+        self.assertEqual(_extract_local_target("index.html#index"), "index.html#index")
         self.assertEqual(
             _extract_local_target("transcripts/001-a.pdf"), "transcripts/001-a.pdf"
         )
 
     def test_percent_encoding_preserved_verbatim(self):
-        uri = "file:///tmp/t/viewer.html?call=001-We%20bb.mp3&t=12%3A05"
+        uri = "file:///tmp/t/index.html#call=001-We%20bb.mp3&t=12%3A05"
         self.assertEqual(
             _extract_local_target(uri),
-            "viewer.html?call=001-We%20bb.mp3&t=12%3A05",
+            "index.html#call=001-We%20bb.mp3&t=12%3A05",
         )
 
     def test_non_local_uris_return_none(self):
         self.assertIsNone(_extract_local_target("https://example.com/page"))
         self.assertIsNone(_extract_local_target("file:///tmp/t/other.html"))
+        # The retired two-page form is not produced any more and is not a local target.
+        self.assertIsNone(_extract_local_target("file:///tmp/t/viewer.html?call=a.mp3"))
         self.assertIsNone(_extract_local_target("file:///tmp/t/audio/001.mp3"))
         self.assertIsNone(_extract_local_target(""))
         self.assertIsNone(_extract_local_target("transcripts/nested/001.pdf"))
@@ -76,7 +83,7 @@ class RewriteLaunchActionTests(unittest.TestCase):
     def test_local_links_become_relative_launch_actions(self):
         local = (
             "file:///var/folders/zz/tmpq1w2.html/../"
-            "viewer.html?call=001-call.mp3&t=00%3A31"
+            "index.html#call=001-call.mp3&t=00%3A31"
         )
         external = "https://example.com/docs"
         pdf = self._pdf_with_links([local, external])
@@ -92,7 +99,7 @@ class RewriteLaunchActionTests(unittest.TestCase):
         launch = [a for a in actions if a[0] == "/Launch"]
         uri = [a for a in actions if a[0] == "/URI"]
         self.assertEqual(len(launch), 1)
-        self.assertEqual(launch[0][1], "viewer.html?call=001-call.mp3&t=00%3A31")
+        self.assertEqual(launch[0][1], "index.html#call=001-call.mp3&t=00%3A31")
         self.assertIsNone(launch[0][2])
         # The external link must remain an untouched URI action.
         self.assertEqual(len(uri), 1)
