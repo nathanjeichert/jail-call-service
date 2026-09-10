@@ -150,6 +150,7 @@ Run with the pyenv Python (system `python3` is stale). `python -m ruff check bac
    * `test_transcript_summary_layout.py` — summary pagination, page budget, note curation
    * `test_quote_line_refs.py` — line-ref → quote hydration
    * `test_case_report_links.py` — `/Launch` link rewriting (the `index.html#call=…` hash form)
+   * `test_delivery_browser.py` — index.html in headless Chromium from `file://` (synthetic package, no audio): rows and stats, search highlighting, relevance chips, expanded cues with `Tr. page:line` cites, cue click opens the call view at the time, back keeps the query, deep link and legacy query redirect, present mode, rail collapse; every test asserts no console errors
    * `test_delivery_html.py` — script-safe JSON embedding; no remote scripts in index.html; one transcript copy and inlined Courier; theme layers per medium; lowercase marker classes
    * `test_guide_layout.py` — guide page count + footer clearance
    * `test_pdf_render.py` — the Chromium facade
