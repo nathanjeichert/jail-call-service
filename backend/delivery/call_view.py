@@ -18,9 +18,11 @@ What a :class:`CallView` carries:
 * ``summary`` - the stored summary text ("" when none). ``is_dummy`` marks
   the skip-summary placeholder, which the HTML surfaces treat as "no
   summary" while the transcript PDF still prints it as a raw sheet.
-* ``sections`` - :func:`~backend.summaries.parse_summary_sections` output,
-  or ``{}`` when there is nothing usable. ``structured`` / ``relevance`` /
-  ``brief`` / ``identity`` read from it.
+* ``sections`` - the stored ``summary_json`` rebuilt into the
+  :func:`~backend.summaries.parse_summary_sections` shape when present
+  (:func:`~backend.summaries.sections_from_summary_json`), else that parser's
+  output for the text (older jobs), or ``{}`` when there is nothing usable.
+  ``structured`` / ``relevance`` / ``brief`` / ``identity`` read from it.
 * ``cues`` - the hydrated review cues (dicts, because the summary paginator
   and the PDF template read them as such), each with ``timestamp``,
   ``speaker``, ``quote``, ``note``, ``line_cite`` plus two derived keys:
@@ -35,7 +37,7 @@ from typing import Iterable, List, Optional
 
 from ..formatting import format_duration, timestamp_to_seconds
 from ..models import CallResult, TranscriptTurn, call_stem
-from ..summaries import DUMMY_SUMMARY_PREFIX, parse_summary_sections
+from ..summaries import DUMMY_SUMMARY_PREFIX, parse_summary_sections, sections_from_summary_json
 from ..transcript_layout import compute_line_entries, hydrate_review_cues
 
 
@@ -106,7 +108,13 @@ def build_call_view(call: CallResult) -> CallView:
 
     summary = call.summary or ""
     is_dummy = summary.startswith(DUMMY_SUMMARY_PREFIX)
-    sections = parse_summary_sections(summary) if (summary and not is_dummy) else {}
+    sections: dict = {}
+    if not is_dummy:
+        # Prefer the structured twin written at summarize time; older jobs
+        # (and the synthetic package) only have the text.
+        sections = sections_from_summary_json(call.summary_json)
+        if not sections and summary:
+            sections = parse_summary_sections(summary)
 
     cues: List[dict] = []
     for cue in hydrate_review_cues(sections.get("review_cue_items") or [], line_entries):

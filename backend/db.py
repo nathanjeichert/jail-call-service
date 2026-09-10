@@ -86,6 +86,7 @@ class DBCall(Base):
 
     turns = Column(JSON, nullable=True)  # List[TranscriptTurn] as dicts
     summary = Column(Text, nullable=True)
+    summary_json = Column(JSON, nullable=True)  # structured twin of `summary`, see summaries.build_summary_json
     pdf_path = Column(String, nullable=True)
     status = Column(String, default="pending")
     error = Column(String, nullable=True)

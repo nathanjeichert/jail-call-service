@@ -214,6 +214,7 @@ export const api = {
     clearCompleted: () => request<{ deleted: number }>('/jobs', { method: 'DELETE' }),
     transcript: (id: string, index: number) => request<CallTranscript>(`/jobs/${id}/calls/${index}/transcript`),
     summary: (id: string, index: number) => request<{ summary: string }>(`/jobs/${id}/calls/${index}/summary`),
+    // The server stores the edit in canonical form and returns what it stored.
     updateSummary: (id: string, index: number, summary: string) =>
       request<{ summary: string }>(`/jobs/${id}/calls/${index}/summary`, { method: 'PUT', json: { summary } }),
     downloadUrl: (id: string) => `${API}/jobs/${id}/download`,

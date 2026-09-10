@@ -67,8 +67,9 @@ export default function ReviewPage() {
     setSaveMsg('');
     setFetchError('');
     try {
-      await api.jobs.updateSummary(jobId, selectedIndex, editedSummary);
-      setSummary(editedSummary);
+      const saved = await api.jobs.updateSummary(jobId, selectedIndex, editedSummary);
+      setSummary(saved.summary);
+      setEditedSummary(saved.summary);
       setSaveMsg('Saved!');
       setTimeout(() => setSaveMsg(''), 2000);
     } catch (e) {

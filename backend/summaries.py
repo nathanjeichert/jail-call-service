@@ -14,12 +14,18 @@ Every persisted call summary is plain text in one shape::
     BRIEF SUMMARY:
     <one or two sentences>
 
-The transcript PDF, viewer, search page, and case report all read summaries
-back through :func:`parse_summary_sections`, so the pipeline normalizes every
+The transcript PDF, index page, and case report all read summaries back
+through :func:`parse_summary_sections`, so the pipeline normalizes every
 engine's output into this format before persisting it: leaked preambles are
 stripped, note counts are capped by relevance tier, duplicates are dropped,
 identity/brief text is shortened to card length, and the kept note set is
 reduced until it fits the summary-sheet page budget.
+
+Beside the text, every structured summary is also stored as JSON
+(:func:`build_summary_json`): the normalized :class:`SummaryResponse` fields
+plus the parsed ``review_cue_items``. The call view prefers the JSON and
+falls back to parsing the text for older jobs; the two are built from the
+same canonical text, so they always agree (``tests/test_summary_json.py``).
 """
 
 from __future__ import annotations
@@ -435,6 +441,100 @@ def render_summary_text(summary: SummaryResponse, line_entries: List[dict]) -> s
     blocks.append(f"BRIEF SUMMARY:\n{brief}" if brief else "BRIEF SUMMARY:\n")
 
     return "\n\n".join(blocks).strip()
+
+
+# ────────────────────────── Structured twin ──────────────────────────
+
+#: Bumped when the shape of the stored ``summary_json`` changes.
+SUMMARY_JSON_VERSION = 1
+
+
+def build_summary_json(
+    summary_text: Optional[str],
+    line_entries: Optional[List[dict]] = None,
+    *,
+    structured: Optional[SummaryResponse] = None,
+) -> Optional[dict]:
+    """The structured twin of canonical summary text, or ``None``.
+
+    Returns ``None`` for empty, dummy (skip-summary), and unstructured text,
+    so ``summary_json`` is only ever present when the text parses. The
+    result carries the :class:`SummaryResponse` fields (``relevance``,
+    ``notes``, ``identity_of_outside_party``, ``brief_summary``) and the
+    ``review_cue_items`` that :func:`parse_summary_sections` derives, which
+    is what every delivery surface reads. ``notes`` follow the text's cue
+    order; when the engine's normalized ``structured`` response is given,
+    its importance ranks are carried over by line cite, otherwise the rank
+    is the position.
+    """
+    text = str(summary_text or "").strip()
+    if not text or text.startswith(DUMMY_SUMMARY_PREFIX):
+        return None
+    sections = parse_summary_sections(text)
+    if not sections.get("structured"):
+        return None
+
+    items = [dict(item) for item in (sections.get("review_cue_items") or [])]
+    ranks: Dict[str, int] = {}
+    if structured is not None:
+        for note in structured.notes or []:
+            ranks.setdefault(re.sub(r"\s+", "", note.line_ref), note.importance_rank)
+    notes: List[dict] = []
+    for position, item in enumerate(items, start=1):
+        line_ref = str(item.get("line_ref") or "")
+        note = collapse_whitespace(item.get("note"))
+        if not line_ref or not note:
+            continue
+        notes.append({
+            "line_ref": line_ref,
+            "reason": note,
+            "importance_rank": ranks.get(line_ref, position),
+        })
+
+    return {
+        "version": SUMMARY_JSON_VERSION,
+        "structured": True,
+        "relevance": str(sections.get("relevance") or "").upper(),
+        "notes": notes,
+        "identity_of_outside_party": collapse_whitespace(sections.get("speakers")) or None,
+        "brief_summary": collapse_whitespace(sections.get("call_summary")),
+        "review_cue_items": items,
+    }
+
+
+def _cue_item_line(item: dict) -> str:
+    """One canonical NOTES bullet for a parsed cue item (the inverse of the parser)."""
+    parts = [str(item.get("timestamp") or "[00:00]")]
+    if item.get("speaker"):
+        parts.append(str(item["speaker"]))
+    if item.get("line_ref"):
+        parts.append(f"[{item['line_ref']}]")
+    return f"- {' '.join(parts)} — {collapse_whitespace(item.get('note'))}"
+
+
+def sections_from_summary_json(summary_json: Optional[dict]) -> dict:
+    """Rebuild the :func:`parse_summary_sections` shape from stored JSON.
+
+    Returns ``{}`` when the JSON is missing or not structured, so callers
+    fall back to parsing the text exactly as they do for older jobs. The raw
+    ``review_cues`` body the case report feeds to synthesis is rebuilt from
+    the cue items in canonical bullet form.
+    """
+    if not summary_json or not summary_json.get("structured"):
+        return {}
+    items = [dict(item) for item in (summary_json.get("review_cue_items") or [])]
+    sections: Dict[str, object] = {
+        "relevance": str(summary_json.get("relevance") or "").upper(),
+        "review_cue_items": items,
+        "review_cues": "\n".join(_cue_item_line(item) for item in items),
+        "speakers": str(summary_json.get("identity_of_outside_party") or ""),
+        "call_summary": str(summary_json.get("brief_summary") or ""),
+    }
+    sections["structured"] = bool(
+        sections["relevance"]
+        and (sections["review_cue_items"] or sections["call_summary"] or sections["speakers"])
+    )
+    return sections if sections["structured"] else {}
 
 
 # ────────────────────────── Entry points ──────────────────────────

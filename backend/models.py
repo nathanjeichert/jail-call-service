@@ -76,6 +76,7 @@ class CallResult(BaseModel):
     duration_seconds: Optional[float] = None
     turns: Optional[List[TranscriptTurn]] = None
     summary: Optional[str] = None
+    summary_json: Optional[dict] = None  # structured twin of `summary` (summaries.build_summary_json); None for older jobs
     pdf_path: Optional[str] = None
     status: CallStatus = CallStatus.PENDING
     error: Optional[str] = None

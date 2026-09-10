@@ -446,15 +446,34 @@ def get_summary(job_id: str, call_index: int):
     call = job_store.get_call(job_id, call_index)
     if not call:
         raise HTTPException(status_code=404, detail="Call not found")
-    return {"index": call.index, "filename": call.filename, "summary": call.summary or ""}
+    return {
+        "index": call.index,
+        "filename": call.filename,
+        "summary": call.summary or "",
+        "summary_json": call.summary_json,
+    }
 
 
 @app.put("/api/jobs/{job_id}/calls/{call_index}/summary")
 def update_summary(job_id: str, call_index: int, req: UpdateSummaryRequest):
-    if not job_store.get_call(job_id, call_index):
+    """Store an operator's edit as canonical text plus its structured twin.
+
+    The edited text goes through the same normalization the pipeline applies
+    (``summaries.normalize_summary_text``) and the JSON is rebuilt from the
+    stored text, so an edit never leaves stale structure behind. Free text
+    without a RELEVANCE line is kept as written and clears the JSON.
+    """
+    from .summaries import build_summary_json, normalize_summary_text
+    from .transcript_layout import compute_line_entries
+
+    call = job_store.get_call(job_id, call_index)
+    if not call:
         raise HTTPException(status_code=404, detail="Call not found")
-    job_store.update_call(job_id, call_index, summary=req.summary)
-    return {"index": call_index, "summary": req.summary}
+    line_entries = compute_line_entries(call.turns, call.duration_seconds or 0.0) if call.turns else []
+    summary_text = normalize_summary_text(req.summary, line_entries)
+    summary_json = build_summary_json(summary_text, line_entries)
+    job_store.update_call(job_id, call_index, summary=summary_text, summary_json=summary_json)
+    return {"index": call_index, "summary": summary_text, "summary_json": summary_json}
 
 
 # ────────────────────────── Delivery ──────────────────────────

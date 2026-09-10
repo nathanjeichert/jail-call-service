@@ -95,7 +95,8 @@ class SummarizeStageTests(unittest.TestCase):
     def _run(self, engine, mode="label"):
         call = _call()
         with patch("backend.pipeline.job_store.update_call") as update_call:
-            text, usage = asyncio.run(_summarize_with_engine("job", call, engine, "PROMPT", mode))
+            text, summary_json, usage = asyncio.run(_summarize_with_engine("job", call, engine, "PROMPT", mode))
+        self.last_json = summary_json
         return call, text, usage, update_call
 
     def test_prepass_engine_filters_before_summary_and_sums_usage(self):
@@ -110,6 +111,12 @@ class SummarizeStageTests(unittest.TestCase):
         self.assertEqual(cues[0]["note"], "Witness instruction.")
         self.assertTrue(cues[0]["line_ref"])
         update_call.assert_called()  # filtered turns were persisted
+        # The structured twin agrees with the text and keeps the engine's rank.
+        self.assertEqual(self.last_json["relevance"], "HIGH")
+        self.assertEqual(self.last_json["review_cue_items"], cues)
+        self.assertEqual(self.last_json["notes"], [{"line_ref": cues[0]["line_ref"], "reason": "Witness instruction.", "importance_rank": 1}])
+        self.assertEqual(self.last_json["identity_of_outside_party"], "Sister.")
+        self.assertEqual(self.last_json["brief_summary"], sections["call_summary"])
 
     def test_inline_engine_strips_system_notes_and_filters_after(self):
         call, text, usage, _ = self._run(TextEngine())
@@ -120,12 +127,17 @@ class SummarizeStageTests(unittest.TestCase):
         notes = [c["note"] for c in sections["review_cue_items"]]
         self.assertEqual(notes, ["Witness instruction."], "the note restating the recorded-call notice is removed")
         self.assertEqual(sections["speakers"], "Sister.")
+        # Gemma's path: text -> parsed -> structured, stored as JSON too.
+        self.assertEqual(self.last_json["review_cue_items"], sections["review_cue_items"])
+        self.assertEqual([n["reason"] for n in self.last_json["notes"]], ["Witness instruction."])
 
     def test_no_filtering_when_mode_is_off(self):
         call, text, _, update_call = self._run(NoDetectTextEngine(), mode=None)
         self.assertEqual(len(call.turns), 4)
         update_call.assert_not_called()
         self.assertIn("RELEVANCE: HIGH", text)
+        self.assertEqual(self.last_json["notes"], [])
+        self.assertEqual(self.last_json["brief_summary"], "Quiet call.")
 
 
 class NoDetectTextEngine(TextEngine):

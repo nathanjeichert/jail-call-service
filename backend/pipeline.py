@@ -119,32 +119,43 @@ async def _summarize_one(job_id, call, summary_prompt, skip_summary, engine, aut
             f"- The user requested to skip AI processing for this test job.\n"
             f"- Call duration: {call.duration_seconds} sec."
         )
+        summary_json = None
         usage = TokenUsage()
         await asyncio.sleep(0.1)
     else:
         if engine is None:
             raise RuntimeError("Summarization engine not initialized")
-        summary_text, usage = await _summarize_with_engine(
+        summary_text, summary_json, usage = await _summarize_with_engine(
             job_id, call, engine, summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT, auto_message_mode,
         )
 
     call.summary = summary_text
+    call.summary_json = summary_json
     call.status = CallStatus.GENERATING_PDF
     job_store.update_call(
-        job_id, call.index, summary=summary_text, status=call.status, **usage.as_dict(),
+        job_id, call.index, summary=summary_text, summary_json=summary_json, status=call.status, **usage.as_dict(),
     )
     return call
 
 
 async def _summarize_with_engine(job_id, call, engine: SummarizationEngine, prompt, auto_message_mode):
-    """Run one call through the engine and return ``(canonical_summary_text, usage)``.
+    """Run one call through the engine; return ``(canonical_text, summary_json, usage)``.
+
+    ``summary_json`` is the structured twin of the text
+    (:func:`summaries.build_summary_json`): the normalized response plus the
+    parsed cue items, or ``None`` when the text is unstructured.
 
     Automated-message filtering happens here because it mutates the
     transcript: prepass engines filter before the summary sees the turns;
     inline-detecting engines return markers with the summary and the
     transcript is filtered afterwards.
     """
-    from .summaries import normalize_structured_summary, normalize_summary_text, render_summary_text
+    from .summaries import (
+        build_summary_json,
+        normalize_structured_summary,
+        normalize_summary_text,
+        render_summary_text,
+    )
     from .system_audio import FILTER_MODES, apply_system_audio_filter, remove_system_audio_notes
     from .transcript_layout import compute_line_entries
 
@@ -176,14 +187,17 @@ async def _summarize_with_engine(job_id, call, engine: SummarizationEngine, prom
     if result.structured is not None:
         line_entries = compute_line_entries(call.turns, duration)
         normalized = normalize_structured_summary(result.structured, line_entries)
-        return render_summary_text(normalized, line_entries), usage
+        summary_text = render_summary_text(normalized, line_entries)
+        return summary_text, build_summary_json(summary_text, line_entries, structured=normalized), usage
 
     summary_text = result.text or ""
     if result.system_audio_markers:
         summary_text = remove_system_audio_notes(summary_text, result.system_audio_markers, call.turns)
         _apply_filter(result.system_audio_markers)
     line_entries = compute_line_entries(call.turns, duration)
-    return normalize_summary_text(summary_text, line_entries), usage
+    # Text-protocol engines (Gemma): text -> parsed -> structured, stored as JSON too.
+    summary_text = normalize_summary_text(summary_text, line_entries)
+    return summary_text, build_summary_json(summary_text, line_entries), usage
 
 
 def _transcript_title_data(call: CallResult, job: Job) -> dict:
@@ -406,9 +420,12 @@ async def _run_pipeline(job: Job) -> None:
         # A failed summary must not block the transcript PDF: record the
         # error, stamp a placeholder summary, and keep the call moving.
         call.summary = "Summary unavailable for this call."
+        call.summary_json = None
         call.status = CallStatus.GENERATING_PDF
         call.error = f"Summarization failed: {exc}"
-        job_store.update_call(job_id, call.index, summary=call.summary, status=call.status, error=call.error)
+        job_store.update_call(
+            job_id, call.index, summary=call.summary, summary_json=None, status=call.status, error=call.error,
+        )
         return call
 
     def _pdf_fail(call: CallResult, exc: Exception) -> None:
