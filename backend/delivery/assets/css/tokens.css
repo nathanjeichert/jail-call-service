@@ -22,6 +22,14 @@
   --unrated-bar: #DAD7CC;
   --mark:        #F4E9C8;   /* search-hit highlight */
 
+  /* Charts: one neutral volume ramp (more is darker) and the tint for every
+     call that is not HIGH, so crimson keeps meaning "signal" on any chart. */
+  --tint-1:      rgba(22, 20, 15, 0.14);
+  --tint-2:      rgba(22, 20, 15, 0.28);
+  --tint-3:      rgba(22, 20, 15, 0.42);
+  --tint-4:      rgba(22, 20, 15, 0.60);
+  --chart-mute:  rgba(22, 20, 15, 0.32);
+
   --serif: "Fraunces", Georgia, serif;
   --sans:  "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --mono:  "IBM Plex Mono", Menlo, Consolas, monospace;

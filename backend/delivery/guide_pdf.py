@@ -1,16 +1,17 @@
 """
 PDF user guide generation via headless Chromium (pdf_render).
 
-Renders a 6-page guide in the shared "Record" design language (Fraunces /
+Renders a 7-page guide in the shared "Record" design language (Fraunces /
 Public Sans / IBM Plex Mono, ink spine, one signal color), as explicit
 fixed-size sheets like the transcript PDF:
 
   Page 1: Cover (case name, date, call count)
   Page 2: Contents of This Delivery (file table + keep-intact note)
   Page 3: Using the Call Index (index.html, index view)
-  Page 4: Using the Call Viewer (index.html, call view)
-  Page 5: Using the Case Report
-  Page 6: Reading the Analysis (relevance tiers + summary sections)
+  Page 4: Calendar and Timeline (index.html, the index's chart modes)
+  Page 5: Using the Call Viewer (index.html, call view)
+  Page 6: Using the Case Report
+  Page 7: Reading the Analysis (relevance tiers + summary sections)
 """
 
 import logging
@@ -29,6 +30,8 @@ SCREENSHOTS_DIR = ASSETS_DIR / "guide"
 # change to index.html (synthetic case, safe to ship).
 SCREENSHOT_FILES = {
     "index_view": "index_view_screenshot.png",
+    "calendar_view": "calendar_view_screenshot.png",
+    "timeline_view": "timeline_view_screenshot.png",
     "call_view": "call_view_screenshot.png",
 }
 
@@ -58,6 +61,8 @@ def generate_guide_pdf(case_name: str,
         "call_count": call_count,
         "call_count_display": call_count_display,
         "index_view_shot_url": _shot_url("index_view"),
+        "calendar_view_shot_url": _shot_url("calendar_view"),
+        "timeline_view_shot_url": _shot_url("timeline_view"),
         "call_view_shot_url": _shot_url("call_view"),
     }
 

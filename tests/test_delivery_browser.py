@@ -26,10 +26,15 @@ DEEP_LINK_CALL = "002-20260313_123302_9095550226.mp3"
 
 
 @pytest.fixture(scope="module")
-def index_url(tmp_path_factory) -> str:
+def package(tmp_path_factory) -> dict:
     out = tmp_path_factory.mktemp("browser") / "REEVES_TEST_PACKAGE"
-    build_package(out, 10, with_audio=False, gen_date="January 15, 2026")
-    return (out / "index.html").as_uri()
+    calls = build_package(out, 10, with_audio=False, gen_date="January 15, 2026")
+    return {"url": (out / "index.html").as_uri(), "calls": calls}
+
+
+@pytest.fixture(scope="module")
+def index_url(package) -> str:
+    return package["url"]
 
 
 @pytest.fixture(scope="module")
@@ -222,3 +227,93 @@ class TestCallView:
         assert page.evaluate("[localStorage.getItem('jcs_calls_collapsed'), localStorage.getItem('jcs_summary_collapsed')]") == ["1", "1"]
         words = page.locator("#call .trans-page.active span.word-ts[data-ws][data-we]")
         assert words.count() > 50
+
+
+class TestChartModes:
+    """The index's calendar and timeline modes (index_charts.js)."""
+
+    def test_mode_switch_is_offered_and_starts_on_the_list(self, page):
+        expect(page.locator("#modeGroup")).to_be_visible()
+        expect(page.locator("#modeGroup [data-mode]")).to_have_count(3)
+        expect(page.locator("#modeGroup .chip.active")).to_have_text("List")
+        expect(page.locator("#modeCalendar")).to_be_hidden()
+        expect(page.locator("#modeTimeline")).to_be_hidden()
+
+    def test_calendar_draws_the_span_and_a_day_click_narrows_the_list(self, page):
+        page.click('#modeGroup [data-mode="calendar"]')
+        expect(page).to_have_url(re.compile(r"#calendar$"))
+        expect(page.locator("#modeList")).to_be_hidden()
+        expect(page.locator("#modeCalendar .month")).to_have_count(3)      # Mar, Apr, May 2026
+        expect(page.locator("#modeCalendar .day.has")).to_have_count(10)   # one call per day
+        expect(page.locator("#modeCalendar .day.has .mk--high")).to_have_count(3)
+        expect(page.locator("#modeCalendar .day.has .mk--medium")).to_have_count(3)
+        expect(page.locator("#modeGroup .chip.active")).to_have_text("Calendar")
+
+        day = page.locator('#modeCalendar .day[data-date="2026-03-13"]')
+        day.hover()
+        expect(page.locator(".chart-tip")).to_be_visible()
+        expect(page.locator(".chart-tip .ct-head")).to_have_text("Friday, March 13, 2026")
+        expect(page.locator(".chart-tip .ct-call")).to_have_count(1)
+
+        day.click()
+        expect(page).to_have_url(re.compile(r"#index$"))
+        expect(page.locator("#modeList")).to_be_visible()
+        expect(page.locator("#dateFrom")).to_have_value("2026-03-13")
+        expect(page.locator("#dateTo")).to_have_value("2026-03-13")
+        expect(_rows(page)).to_have_count(1)
+        expect(_rows(page).first.locator(".date b")).to_have_text("Mar 13, 2026")
+
+        # Back returns to the calendar, still narrowed to that day.
+        page.go_back()
+        expect(page).to_have_url(re.compile(r"#calendar$"))
+        expect(page.locator("#modeCalendar")).to_be_visible()
+        expect(page.locator("#modeCalendar .day.has")).to_have_count(1)
+
+    def test_search_scopes_the_calendar(self, page):
+        _search(page, "impound")
+        expect(_rows(page)).not_to_have_count(10)  # the search input is debounced
+        matched = _rows(page).count()
+        assert 0 < matched < 10
+        page.click('#modeGroup [data-mode="calendar"]')
+        expect(page.locator("#modeCalendar .day.has")).to_have_count(matched)
+        page.click("#clearFilters")
+        expect(page.locator("#modeCalendar .day.has")).to_have_count(10)
+
+    def test_timeline_buckets_agree_with_the_case_report(self, page, package):
+        from backend.delivery.case_report import _build_timeline
+
+        expected = _build_timeline(package["calls"])
+        page.click('#modeGroup [data-mode="timeline"]')
+        expect(page).to_have_url(re.compile(r"#timeline$"))
+        expect(page.locator("#modeTimeline .tl-svg")).to_be_visible()
+        built = page.evaluate("(() => { const b = JCS.Charts.buildBuckets(JCS.Data.dateExtent); return [b.unit, b.buckets.length]; })()")
+        assert built == [expected["granularity"], expected["tick_count"]]
+        expect(page.locator("#modeTimeline .legend")).to_contain_text("by " + expected["granularity"])
+        expect(page.locator("#modeTimeline .tl-svg g.col")).to_have_count(sum(1 for b in expected["buckets"] if b["count"]))
+        expect(page.locator("#modeTimeline .tl-svg g.m")).to_have_count(6)  # 3 High marks + 3 Medium marks
+
+        # A High-lane mark narrows the list to that bucket and tier.
+        page.locator("#modeTimeline .tl-svg g.m .hit").first.click()
+        expect(page).to_have_url(re.compile(r"#index$"))
+        expect(page.locator('.chip[data-rel="HIGH"]')).to_have_class(re.compile(r"\bactive\b"))
+        first = expected["buckets"][0]
+        expect(page.locator("#dateFrom")).to_have_value(first["start"].isoformat())
+        expect(page.locator("#dateTo")).to_have_value(first["end"].isoformat())
+        expect(_rows(page)).to_have_count(1)
+        expect(_rows(page).first.locator(".rv")).to_have_text("High")
+
+    def test_bucket_rules_and_undated_calls(self, page):
+        units = page.evaluate("[60, 61, 392, 393, 1860, 1861].map(d => JCS.Charts.granularity(d))")
+        assert units == ["day", "week", "week", "month", "month", "year"]
+        assert page.evaluate("JCS.Charts.extent([{call_date: ''}, {call_date: '2026-01-05'}, {call_date: '2025-12-30 09:00'}])") == {
+            "start": "2025-12-30", "end": "2026-01-05",
+        }
+        assert page.evaluate("JCS.Charts.extent([{call_date: ''}, {}])") is None
+        note = page.evaluate(
+            "(() => { const d = document.createElement('div');"
+            " JCS.Charts.calendar(d, {calls: [{call_date: '', relevance: 'LOW'},"
+            "   {call_date: '2026-03-03', datetime: '2026-03-03 09:33', relevance: 'HIGH'}],"
+            "   extent: {start: '2026-03-03', end: '2026-03-03'}, maxPerDay: 1});"
+            " return [d.querySelector('.chart-note').textContent, d.querySelectorAll('.day.has').length]; })()"
+        )
+        assert note == ["1 call without a date appears only in the list.", 1]

@@ -194,6 +194,13 @@ body {
     border-bottom: 1px solid var(--rule-faint);
 }
 
+/* Two screenshots side by side (calendar and timeline page). */
+.shots2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 12pt;
+}
+
 /* Two-column step layout for the screenshot pages. */
 .steps2 {
     display: grid;
@@ -352,7 +359,7 @@ body {
     <div class="body">
         <div class="tree">
             <div class="trow hd"><span class="f">{{ case_name_short }}/</span></div>
-            <div class="trow"><span class="f">index.html</span><span class="d"><b>Call index and viewer.</b> One page with two views: a sortable, filterable table of every call with summaries, review cues, and full-text search across every transcript, and a viewer with synced audio and transcript for each call. Citations in the PDFs open here at the exact moment.</span></div>
+            <div class="trow"><span class="f">index.html</span><span class="d"><b>Call index and viewer.</b> One page with two views: a sortable, filterable table of every call with summaries, review cues, and full-text search across every transcript, also shown as a calendar and a timeline, and a viewer with synced audio and transcript for each call. Citations in the PDFs open here at the exact moment.</span></div>
             <div class="trow"><span class="f">case-report.pdf</span><span class="d"><b>Case report.</b> At-a-glance metrics, top findings, high-relevance call cards, and caller statistics across the full set.</span></div>
             <div class="trow"><span class="f">transcripts/</span><span class="d"><b>Transcript PDFs</b> in deposition format, one per call, each with a cover and an analysis summary sheet.</span></div>
             <div class="trow"><span class="f">transcripts-no-summary/</span><span class="d"><b>Clean transcript PDFs</b>: the same transcripts without the analysis pages, for filing or production.</span></div>
@@ -429,7 +436,7 @@ body {
 </div>
 
 
-<!-- ═══════════════════════ 04 · Call view ═══════════════════════ -->
+<!-- ═══════════════════════ 04 · Calendar and timeline ═══════════════════════ -->
 <div class="page">
     <div class="spine"></div>
     <div class="band">
@@ -438,6 +445,69 @@ body {
 
     <div class="chap">
         <div class="eyebrow">Section 03</div>
+        <h2>Calendar and Timeline<span class="chapmeta">INDEX.HTML · CALENDAR AND TIMELINE</span></h2>
+    </div>
+
+    <div class="body">
+        <div class="shots2">
+            <div class="shot">
+                {% if calendar_view_shot_url %}
+                <img class="shot-img" src="{{ calendar_view_shot_url }}" alt="Calendar screenshot">
+                {% else %}
+                <div class="shot-placeholder">Calendar screenshot</div>
+                {% endif %}
+            </div>
+            <div class="shot">
+                {% if timeline_view_shot_url %}
+                <img class="shot-img" src="{{ timeline_view_shot_url }}" alt="Timeline screenshot">
+                {% else %}
+                <div class="shot-placeholder">Timeline screenshot</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="gap"></div>
+
+        <div class="steps2">
+        <div class="step">
+            <span class="n">01</span>
+            <div><h4>Switch views</h4>
+            <p>The <b>List</b>, <b>Calendar</b>, and <b>Timeline</b> buttons under the case name show the same calls three ways. The search box and filters apply to all three, so a search shows when a subject came up.</p></div>
+        </div>
+        <div class="step">
+            <span class="n">02</span>
+            <div><h4>Read the calendar</h4>
+            <p>Each day is shaded by how many calls it holds. A crimson square marks a day with a High call, a hollow square a Medium one. Point at a day for its calls; click it to list them. A case longer than a year shows one year at a time.</p></div>
+        </div>
+        <div class="step">
+            <span class="n">03</span>
+            <div><h4>Read the timeline</h4>
+            <p>Columns count calls per day, week, month, or year, whichever fits the span of the case; the crimson part of a column is its High calls. The rows beneath mark where High and Medium calls fall. Click a column or a mark to list those calls.</p></div>
+        </div>
+        <div class="step">
+            <span class="n">04</span>
+            <div><h4>Where the dates come from</h4>
+            <p>Call dates come from the facility's call records, or from the recording file names when no records were provided. A call without a date stays in the list and is counted above the charts.</p></div>
+        </div>
+        </div>
+    </div>
+
+    <div class="foot">
+        <span class="doc">User Guide</span><span>·</span><span>Calendar and Timeline</span>
+        <span class="pg">04</span>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════ 05 · Call view ═══════════════════════ -->
+<div class="page">
+    <div class="spine"></div>
+    <div class="band">
+        <span class="lbl lbl--ink">{{ case_name_short }}</span>
+    </div>
+
+    <div class="chap">
+        <div class="eyebrow">Section 04</div>
         <h2>Using the Call Viewer<span class="chapmeta">INDEX.HTML · CALL VIEW</span></h2>
     </div>
 
@@ -478,12 +548,12 @@ body {
 
     <div class="foot">
         <span class="doc">User Guide</span><span>·</span><span>Using the Call Viewer</span>
-        <span class="pg">04</span>
+        <span class="pg">05</span>
     </div>
 </div>
 
 
-<!-- ═══════════════════════ 05 · Case report ═══════════════════════ -->
+<!-- ═══════════════════════ 06 · Case report ═══════════════════════ -->
 <div class="page">
     <div class="spine"></div>
     <div class="band">
@@ -491,7 +561,7 @@ body {
     </div>
 
     <div class="chap">
-        <div class="eyebrow">Section 04</div>
+        <div class="eyebrow">Section 05</div>
         <h2>Using the Case Report<span class="chapmeta">CASE-REPORT.PDF</span></h2>
     </div>
 
@@ -529,12 +599,12 @@ body {
 
     <div class="foot">
         <span class="doc">User Guide</span><span>·</span><span>Using the Case Report</span>
-        <span class="pg">05</span>
+        <span class="pg">06</span>
     </div>
 </div>
 
 
-<!-- ═══════════════════════ 06 · AI analysis ═══════════════════════ -->
+<!-- ═══════════════════════ 07 · AI analysis ═══════════════════════ -->
 <div class="page">
     <div class="spine"></div>
     <div class="band">
@@ -542,7 +612,7 @@ body {
     </div>
 
     <div class="chap">
-        <div class="eyebrow">Section 05</div>
+        <div class="eyebrow">Section 06</div>
         <h2>Reading the Analysis<span class="chapmeta">SUMMARY SHEETS · INDEX.HTML</span></h2>
     </div>
 
@@ -585,7 +655,7 @@ body {
 
     <div class="foot">
         <span class="doc">User Guide</span><span>·</span><span>Understanding AI Analysis</span>
-        <span class="pg">06</span>
+        <span class="pg">07</span>
     </div>
 </div>
 

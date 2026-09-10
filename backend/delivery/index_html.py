@@ -6,7 +6,10 @@ hash:
 * ``#index`` (or no hash): the call index, the client's home page. Masthead
   stats, a sticky filter bar (full text, date range, number, relevance), and
   one row per call that expands into the summary, review cues, and the full
-  transcript with match stepping.
+  transcript with match stepping. ``#calendar`` and ``#timeline`` show the
+  same filtered set as month grids or as a bucketed chart
+  (``templates/index_charts.js``); the modes are offered only when calls
+  carry dates, and a click on a day or bucket narrows the list to it.
 * ``#call=<audio filename>&t=MM:SS``: the call view. Call rail, audio
   transport, printed transcript pages that follow playback, analysis rail
   with clickable cues, present mode. A ``t`` seeks and reveals the line while

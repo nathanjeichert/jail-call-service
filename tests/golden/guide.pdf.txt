@@ -1,4 +1,4 @@
-# guide.pdf: 6 page(s)
+# guide.pdf: 7 page(s)
 ## page 1
 USER GUIDE
 DELIVERY REFERENCE
@@ -6,7 +6,7 @@ User Guide
 CASE State v. Marcus Reeves
 CALLS 10 calls
 GENERATED January 15, 2026
-USER GUIDE· COVER 01
+USER GUIDE·COVER 01
 ## page 2
 STATE V. MARCUS REEVES
 SECTION 01
@@ -14,8 +14,9 @@ SECTION 01
 State v. Marcus Reeves/
 index.html Call index and viewer. One page with two views: a sortable, filterable table of
 every call with summaries, review cues, and full-text search across every
-transcript, and a viewer with synced audio and transcript for each call. Citations
-in the PDFs open here at the exact moment.
+transcript, also shown as a calendar and a timeline, and a viewer with synced
+audio and transcript for each call. Citations in the PDFs open here at the exact
+moment.
 case-report.pdf Case report. At-a-glance metrics, top findings, high-relevance call cards, and
 caller statistics across the full set.
 transcripts/ Transcript PDFs in deposition format, one per call, each with a cover and an
@@ -28,7 +29,7 @@ guide.pdf This document.
 KEEP THE FOLDER INTACT
 Extract the delivery fully before use and keep the files together: the links between index.html and the PDFs are
 relative paths that resolve only when the folder structure is unchanged. To share the delivery, copy the entire folder.
-USER GUIDE· CONTENTS OF THIS DELIVERY 02
+USER GUIDE·CONTENTS OF THIS DELIVERY 02
 ## page 3
 STATE V. MARCUS REEVES
 SECTION 02
@@ -59,10 +60,38 @@ moment. Each cue also cites the transcript PDF
 by page and line (Tr. page:line), and the row
 buttons open the call view or the transcript PDF
 directly.
-USER GUIDE· USING THE CALL INDEX 03
+USER GUIDE·USING THE CALL INDEX 03
 ## page 4
 STATE V. MARCUS REEVES
 SECTION 03
+INDEX.HTML · CALENDAR AND TIMELINECalendar and Timeline
+01 Switch views
+The List, Calendar, and Timeline buttons under
+the case name show the same calls three ways.
+The search box and filters apply to all three, so
+a search shows when a subject came up.
+02 Read the calendar
+Each day is shaded by how many calls it holds.
+A crimson square marks a day with a High call,
+a hollow square a Medium one. Point at a day
+for its calls; click it to list them. A case longer
+than a year shows one year at a time.
+03 Read the timeline
+Columns count calls per day, week, month, or
+year, whichever fits the span of the case; the
+crimson part of a column is its High calls. The
+rows beneath mark where High and Medium
+calls fall. Click a column or a mark to list those
+calls.
+04 Where the dates come from
+Call dates come from the facility's call records,
+or from the recording file names when no
+records were provided. A call without a date
+stays in the list and is counted above the charts.
+USER GUIDE·CALENDAR AND TIMELINE 04
+## page 5
+STATE V. MARCUS REEVES
+SECTION 04
 INDEX.HTML · CALL VIEWUsing the Call Viewer
 01 Select a call
 The left panel lists every call with its date,
@@ -89,10 +118,10 @@ summary, outside party, and clickable review
 cues; both side panels collapse with their ‹ ›
 buttons. P enters Present mode: audio controls
 and the transcript page only; ESC exits.
-USER GUIDE· USING THE CALL VIEWER 04
-## page 5
+USER GUIDE·USING THE CALL VIEWER 05
+## page 6
 STATE V. MARCUS REEVES
-SECTION 04
+SECTION 05
 CASE-REPORT.PDFUsing the Case Report
 AT A GLANCE Delivery-level metrics: call volume over time, relevance distribution, and highlights such
 as the most active day and most frequent caller.
@@ -107,10 +136,10 @@ the inferred identity with its confidence level.
 LINKED CITATIONS
 Every citation in the report is a clickable link: call references open index.html at the cited moment, and PDF
 references open the transcript. Keep case-report.pdf inside the delivery folder so its links can resolve.
-USER GUIDE· USING THE CASE REPORT 05
-## page 6
+USER GUIDE·USING THE CASE REPORT 06
+## page 7
 STATE V. MARCUS REEVES
-SECTION 05
+SECTION 06
 SUMMARY SHEETS · INDEX.HTMLReading the Analysis
 RELEVANCE RATINGS ASSIGNED PER CALL
 HIGH Potentially jury-relevant or case-substantive content: charges, witnesses, evidence,
@@ -126,4 +155,4 @@ OUTSIDE PARTY Who the defendant appears to be speaking with, populated only when
 supports the inference. Case-level identity inferences in the report carry a confidence
 level.
 BRIEF SUMMARY A one- or two-sentence overview of the call.
-USER GUIDE· UNDERSTANDING AI ANALYSIS 06
+USER GUIDE·UNDERSTANDING AI ANALYSIS 07

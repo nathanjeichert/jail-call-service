@@ -316,6 +316,68 @@
     text-overflow: ellipsis;
   }
 
+  /* ── Calendar and timeline modes ────────────────────────────────────── */
+  /* The tally row's mode switch, and the two chart modes that replace the
+     table under the shared filter bar. Marks (.mk) and tint steps (.tint-N)
+     come from the design layer; only layout lives here. Drawn by
+     index_charts.js. */
+  .mode-group { margin-left: auto; }
+  .mode-group .chip { height: 30px; padding: 0 13px; font-size: 10.5px; }
+  .mode-group:not(.hidden) + .tally-range { margin-left: 22px; }
+  .chart-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+    padding-top: 16px; margin-bottom: 18px;
+  }
+  .chart-head .lbl { font-size: 10px; }
+  .legend { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: .02em; }
+  .legend .li { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .ramp { display: inline-flex; gap: 2px; }
+  .legend .ramp i { display: block; width: 14px; height: 10px; }
+  .legend .swatch { display: inline-block; width: 6px; height: 12px; border-radius: 1px; }
+  .chart-note { font-size: 13px; color: var(--ink-3); margin: -8px 0 16px; }
+
+  .year-group { margin-bottom: 22px; }
+  .year-group .chip small { font-size: 10px; font-weight: 500; letter-spacing: .02em; text-transform: none; opacity: .75; }
+  .months { display: flex; flex-wrap: wrap; gap: 28px 44px; }
+  .month h3 { margin: 0 0 10px; font-family: var(--serif); font-weight: 600; font-size: 21px; letter-spacing: -.005em; font-variation-settings: "opsz" 40; }
+  .month-grid { display: grid; grid-template-columns: repeat(7, 46px); gap: 3px; }
+  .month-grid .dow { text-align: center; font-size: 9px; padding-bottom: 3px; }
+  .day { position: relative; height: 44px; border: 1px solid var(--rule-faint); font-variant-numeric: tabular-nums; }
+  .day .n { position: absolute; top: 5px; left: 6px; font-family: var(--mono); font-size: 10.5px; line-height: 1; color: var(--ink-2); }
+  .day .mks { position: absolute; right: 5px; bottom: 5px; display: flex; gap: 2px; }
+  .day.pad { visibility: hidden; }
+  .day.out { border-color: transparent; }
+  .day.out .n { color: var(--rule); }
+  .day.has { cursor: pointer; border-color: transparent; }
+  .day.has:hover, .day.has:focus-visible { outline: 1.5px solid var(--ink); outline-offset: -1px; }
+  .day.tint-3 .n, .day.tint-4 .n { color: var(--paper); }
+
+  .tl { overflow-x: auto; }
+  .tl-svg { display: block; }
+  .tl-svg text { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-3); }
+  .tl-svg text.lane-lbl { font-family: var(--sans); font-size: 9.5px; font-weight: 700; letter-spacing: .12em; fill: var(--ink-3); }
+  .tl-svg text.boundary { font-weight: 600; letter-spacing: .1em; fill: var(--ink); font-size: 10px; }
+  .tl-svg text.peak, .tl-svg text.count { fill: var(--ink); font-size: 10.5px; }
+  .tl-svg .hit { fill: transparent; cursor: pointer; outline: none; }
+  .tl-svg .hit:focus-visible { stroke: var(--ink); stroke-width: 1.5; }
+  .tl-svg g.col:hover .bar { opacity: .78; }
+  .tl-svg g.m:hover .core { stroke: var(--ink); stroke-width: 1.5; }
+
+  /* Chart tooltip: one element index_charts.js appends to the body. */
+  .chart-tip {
+    position: fixed; z-index: 100; pointer-events: none;
+    background: var(--ink); color: var(--paper); padding: 9px 12px 10px; max-width: 340px;
+    font-size: 12.5px; line-height: 1.4; box-shadow: 0 6px 20px rgba(22,20,15,.25);
+  }
+  .chart-tip .ct-head { font-weight: 700; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }
+  .chart-tip .ct-sub { font-family: var(--mono); font-size: 11px; color: rgba(245,242,234,.7); margin: 2px 0 6px; }
+  .chart-tip .ct-call { margin-top: 6px; }
+  .chart-tip .ct-top { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11.5px; }
+  .chart-tip .ct-who { color: rgba(245,242,234,.7); }
+  .chart-tip .ct-brief { color: rgba(245,242,234,.85); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .chart-tip .ct-more { font-family: var(--mono); font-size: 11px; color: rgba(245,242,234,.7); margin-top: 6px; }
+  .chart-tip .mk--medium { box-shadow: inset 0 0 0 var(--rv-ring) var(--med-bar); }
+
   /* ── Detail panel ───────────────────────────────────────────────────── */
   .detail {
     border-top: 1px solid var(--rule);
@@ -550,7 +612,7 @@
 
   @media print {
     body { background: #fff; }
-    .ctl, .pagination, .acts, .detail { display: none !important; }
+    .ctl, .pagination, .acts, .detail, .mode-group, .chart-tip { display: none !important; }
     .cols { position: static; }
   }
 
@@ -1342,6 +1404,11 @@
       <span class="rv rv--high" data-tally="HIGH"><b id="tallyHigh">0</b> High</span>
       <span class="rv rv--medium" data-tally="MEDIUM"><b id="tallyMed">0</b> Medium</span>
       <span class="rv rv--low" data-tally="LOW"><b id="tallyLow">0</b> Low</span>
+      <div class="chip-group mode-group hidden" id="modeGroup">
+        <button class="chip" type="button" data-mode="list">List</button>
+        <button class="chip" type="button" data-mode="calendar">Calendar</button>
+        <button class="chip" type="button" data-mode="timeline">Timeline</button>
+      </div>
       <span class="tally-range" id="tallyRange"></span>
     </div>
   </header>
@@ -1374,6 +1441,7 @@
   </div>
 
   <main class="main">
+    <div id="modeList">
     <div class="cols" id="cols">
       <span class="lbl c-rel" data-sort="rel_rank">Relevance<span class="arr"></span></span>
       <span class="lbl" data-sort="call_sort">Date<span class="arr"></span></span>
@@ -1392,6 +1460,10 @@
       <span class="page-info" id="pageInfo"></span>
       <button id="nextPage">Next &rarr;</button>
     </div>
+    </div>
+    <!-- The calendar and timeline modes (index_charts.js) draw into these. -->
+    <section class="mode-chart hidden" id="modeCalendar" aria-label="Calendar"></section>
+    <section class="mode-chart hidden" id="modeTimeline" aria-label="Timeline"></section>
   </main>
 </div>
 
@@ -1564,6 +1636,11 @@
           (c.cues || []).map(n => (n.quote || '') + ' ' + (n.note || '')).join(' '),
         ].join(' ').toLowerCase() + ' ' + c.turns_blob;
       });
+      // The frame the calendar and timeline draw in: the span of every dated
+      // call (null when no call has a date, which hides those modes) and the
+      // busiest day, which fixes the calendar's tint legend.
+      Data.dateExtent = Charts.extent(CALLS);
+      Data.maxPerDay = Charts.maxPerDay(CALLS);
     },
   };
 
@@ -1667,19 +1744,23 @@
     showToast._timer = setTimeout(() => { toastEl.className = 'toast'; }, 3500);
   }
 
+{% include "index_charts.js" %}
+
   // ═══════════════════════════════════════════════════════════════════════
   // Router: the URL hash is the only navigation state.
-  //   #index                          the call index (also: no hash)
+  //   #index                          the call index as a list (also: no hash)
+  //   #calendar / #timeline           the call index in its chart modes
   //   #call=<audio filename>&t=MM:SS  one call, optionally cued to a time
   // Setting location.hash pushes history, so back/forward replay views.
   // ═══════════════════════════════════════════════════════════════════════
   const Router = {
     parse(hash) {
       const h = String(hash || '').replace(/^#/, '');
-      if (!h || h === 'index') return { view: 'index' };
+      if (!h || h === 'index') return { view: 'index', mode: 'list' };
+      if (h === 'calendar' || h === 'timeline') return { view: 'index', mode: h };
       const params = new URLSearchParams(h);
       if (params.has('call')) return { view: 'call', call: params.get('call') || '', t: params.get('t') };
-      return { view: 'index' };
+      return { view: 'index', mode: 'list' };
     },
     callHash(call, seconds) {
       let h = '#call=' + encodeURIComponent(call.audio_filename || call.filename);
@@ -1698,10 +1779,10 @@
           idx = 0;
           setTimeout(() => showToast('Requested call not found, showing first call'), 500);
         }
-        if (!CALLS.length) { IndexView.show(); return; }
+        if (!CALLS.length) { IndexView.show('list'); return; }
         CallView.show(idx, parseTime(r.t));
       } else {
-        IndexView.show();
+        IndexView.show(r.mode);
       }
     },
     // Already-shipped case reports link to the legacy ?call=...&t=... form.
@@ -1736,6 +1817,8 @@
       query: '', dateFrom: '', dateTo: '', phone: '', relevance: '',
       sortKey: 'call_sort', sortDir: 'asc',
       page: 1, pageSize: 50, openIdx: null,
+      mode: 'list',    // 'list' | 'calendar' | 'timeline' (the URL hash names it)
+      calYear: null,   // the calendar's selected year when the span exceeds twelve months
     };
     // Per-open-panel transcript navigation (one panel open at a time)
     const nav = { targets: [], pos: -1 };
@@ -1848,12 +1931,65 @@
       return out;
     }
 
+    // Render the active mode against the current filters. The list is the
+    // table below; the calendar and timeline (index_charts.js) draw the same
+    // filtered set inside a frame fixed to the delivery's date extent.
     function renderTable() {
+      const filtered = getFiltered();
+      updateSearchCount(filtered);
+      const calEl = document.getElementById('modeCalendar');
+      const tlEl = document.getElementById('modeTimeline');
+      document.getElementById('modeList').classList.toggle('hidden', state.mode !== 'list');
+      calEl.classList.toggle('hidden', state.mode !== 'calendar');
+      tlEl.classList.toggle('hidden', state.mode !== 'timeline');
+      document.querySelectorAll('#modeGroup [data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === state.mode));
+      if (state.mode === 'calendar') {
+        Charts.calendar(calEl, {
+          calls: filtered, extent: Data.dateExtent, maxPerDay: Data.maxPerDay, year: state.calYear,
+          onYear: y => { state.calYear = y; renderTable(); },
+          onDay: key => showRange(key, key, ''),
+        });
+        return;
+      }
+      if (state.mode === 'timeline') {
+        Charts.timeline(tlEl, { calls: filtered, extent: Data.dateExtent, onRange: showRange });
+        return;
+      }
+      renderList(filtered);
+    }
+
+    // The filter bar's count: "N calls · M mentions" while a query is active.
+    function updateSearchCount(filtered) {
+      const countEl = document.getElementById('searchCount');
+      const q = state.query.trim();
+      if (!q) { countEl.textContent = ''; return; }
+      const qLower = q.toLowerCase();
+      const mentions = filtered.reduce((a, c) => a + countOccurrences(c.turns_blob, qLower), 0);
+      countEl.innerHTML = '<b>' + filtered.length + '</b> call' + (filtered.length === 1 ? '' : 's')
+        + (mentions ? ' · <b>' + mentions + '</b> mention' + (mentions === 1 ? '' : 's') : '');
+    }
+
+    // A chart click: narrow the list to a date range (and a tier, when a
+    // tier lane was clicked) and show it. The other filters stay as they are.
+    function showRange(fromKey, toKey, relevance) {
+      state.dateFrom = fromKey; state.dateTo = toKey;
+      document.getElementById('dateFrom').value = fromKey;
+      document.getElementById('dateTo').value = toKey;
+      if (relevance) {
+        state.relevance = relevance;
+        document.querySelectorAll('.chip[data-rel]').forEach(b => b.classList.toggle('active', b.dataset.rel === relevance));
+      }
+      state.page = 1;
+      state.mode = 'list';
+      if (location.hash && location.hash !== '#index') location.hash = '#index';  // route() finds the mode already set
+      renderTable();
+      window.scrollTo(0, document.getElementById('ctl').offsetTop);
+    }
+
+    function renderList(filtered) {
       const rowsEl = document.getElementById('rows');
       const noRes = document.getElementById('noResults');
       const colsEl = document.getElementById('cols');
-      const countEl = document.getElementById('searchCount');
-      const filtered = getFiltered();
       const sorted = getSorted(filtered);
       const q = state.query.trim();
 
@@ -1873,15 +2009,6 @@
       }
       const start = (state.page - 1) * state.pageSize;
       const pageRows = sorted.slice(start, start + state.pageSize);
-
-      if (q) {
-        const qLower = q.toLowerCase();
-        const mentions = sorted.reduce((a, c) => a + countOccurrences(c.turns_blob, qLower), 0);
-        countEl.innerHTML = '<b>' + sorted.length + '</b> call' + (sorted.length === 1 ? '' : 's')
-          + (mentions ? ' · <b>' + mentions + '</b> mention' + (mentions === 1 ? '' : 's') : '');
-      } else {
-        countEl.textContent = '';
-      }
 
       if (sorted.length === 0) {
         rowsEl.innerHTML = '';
@@ -2176,6 +2303,10 @@
         document.querySelectorAll('.chip[data-rel]').forEach(b => b.classList.toggle('active', b.dataset.rel === rel));
         onFilterChange();
       }
+      // The mode switch is navigation: the hash names the mode, route() shows it.
+      document.querySelectorAll('#modeGroup [data-mode]').forEach(btn => {
+        btn.addEventListener('click', () => Router.go(btn.dataset.mode === 'list' ? '#index' : '#' + btn.dataset.mode));
+      });
       document.querySelectorAll('.chip[data-rel]').forEach(btn => {
         btn.addEventListener('click', () => setRelevance(btn.dataset.rel));
       });
@@ -2225,17 +2356,25 @@
       buildMasthead();
       populatePhones();
       bindEvents();
+      // The chart modes need dated calls; without any, the switch is not offered.
+      document.getElementById('modeGroup').classList.toggle('hidden', !Data.dateExtent);
       renderTable();
     }
 
-    // Filters, query, sort, and the open row all live in `state`, which the
-    // call view never touches, so leaving and returning finds them intact.
-    function show() {
-      if (visible) return;
+    // Filters, query, sort, the open row, and the mode all live in `state`,
+    // which the call view never touches, so leaving and returning finds
+    // them intact. `mode` comes from the hash; a chart mode falls back to
+    // the list when no call has a date.
+    function show(mode) {
+      const next = (mode === 'calendar' || mode === 'timeline') && Data.dateExtent ? mode : 'list';
+      const changed = next !== state.mode;
+      state.mode = next;
+      if (visible) { if (changed) renderTable(); return; }
       CallView.hide();
       document.title = CASE_NAME + ' — Call Index';
       root.classList.add('active-view');
       visible = true;
+      if (changed) renderTable();
       measureCtl();
       window.scrollTo(0, savedScroll);
     }
@@ -2975,7 +3114,7 @@
   // Exposed for the browser tests and console debugging; nothing in the
   // page calls through this object.
   window.JCS = {
-    Data, IndexView, CallView, Router,
+    Data, IndexView, CallView, Router, Charts,
     helpers: { esc, escRe, highlight, relMark, formatTime, formatDur, secondsToLabel, hashTime, parseTime, fmtDate, fmtDateParts },
   };
 })();

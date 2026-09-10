@@ -28,3 +28,20 @@
 .rv--low::before { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) rgba(118, 121, 110, 0.7); }
 .rv--none { color: var(--ink-3); }
 .rv--none::before { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) var(--rule); }
+
+/* Bare tier mark for charts, legends, and tooltips (the labeled form is
+   .rv): filled crimson square for HIGH, hollow ochre square for MEDIUM, a
+   small gray dot for LOW, hollow rule-colored square when unrated. Shape
+   carries the tier so it survives color-blindness and print; the color
+   repeats it. Sizes come from the .rv tokens. */
+.mk { display: inline-block; width: var(--rv-dot); height: var(--rv-dot); border-radius: var(--rv-radius); flex: none; vertical-align: middle; }
+.mk--high { background: var(--signal); }
+.mk--medium { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) var(--med); }
+.mk--low { width: calc(var(--rv-dot) - 2px); height: calc(var(--rv-dot) - 2px); border-radius: 50%; background: var(--low-bar); }
+.mk--none { background: transparent; box-shadow: inset 0 0 0 var(--rv-ring) var(--rule); }
+
+/* Volume tint steps (calendar cells, heat cells): the --tint ramp. */
+.tint-1 { background: var(--tint-1); }
+.tint-2 { background: var(--tint-2); }
+.tint-3 { background: var(--tint-3); }
+.tint-4 { background: var(--tint-4); }
