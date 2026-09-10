@@ -94,8 +94,8 @@ class GemmaEngine(SummarizationEngine):
         """Lazy-load the model and run a warm-up pass to trigger Metal JIT compilation."""
         if self._model is not None:
             return
-        from mlx_lm import load, stream_generate
         import mlx.core as mx
+        from mlx_lm import load, stream_generate
 
         logger.info("Loading Gemma model: %s", self._model_name)
         self._model, self._tokenizer = load(self._model_name)

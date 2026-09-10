@@ -9,8 +9,16 @@ module that should touch these tables directly.
 import os
 
 from sqlalchemy import (
-    JSON, Boolean, Column, Float, ForeignKey, Integer, String, Text,
-    create_engine, event,
+    JSON,
+    Boolean,
+    Column,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    event,
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 

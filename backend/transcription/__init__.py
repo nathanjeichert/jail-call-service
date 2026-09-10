@@ -10,8 +10,8 @@ Usage:
 import logging
 
 from .. import config as cfg
+from .assemblyai_engine import ASSEMBLYAI_AVAILABLE, AssemblyAIEngine
 from .base import TranscriptionEngine
-from .assemblyai_engine import AssemblyAIEngine, ASSEMBLYAI_AVAILABLE
 from .parakeet_engine import ParakeetEngine, _find_fluidaudiocli
 
 logger = logging.getLogger(__name__)

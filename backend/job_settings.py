@@ -108,8 +108,8 @@ def resolve_runtime_selection(
 
 
 def validate_runtime_selection(selection: RuntimeSelection) -> None:
-    from .transcription import AVAILABLE_ENGINES as AVAILABLE_TRANSCRIPTION_ENGINES
     from .summarization import AVAILABLE_ENGINES as AVAILABLE_SUMMARIZATION_ENGINES
+    from .transcription import AVAILABLE_ENGINES as AVAILABLE_TRANSCRIPTION_ENGINES
 
     if selection.transcription_engine not in AVAILABLE_TRANSCRIPTION_ENGINES:
         available = ", ".join(AVAILABLE_TRANSCRIPTION_ENGINES) or "none"

@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jail-call-service"
+version = "0.1.0"
+description = "Local-first batch processing for G.729 jail call recordings: transcripts, summaries, and an offline delivery package."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    "fastapi==0.136.3",
+    "uvicorn[standard]==0.49.0",
+    "python-multipart==0.0.32",
+    "sse-starlette==3.4.4",
+    "pydantic==2.13.4",
+    "sqlalchemy==2.0.50",
+    "python-dotenv==1.2.2",
+    "tenacity==9.1.4",
+    "jinja2==3.1.6",
+    "playwright==1.60.0",
+    "pypdf==6.13.1",
+    "assemblyai==0.64.4",
+    "google-genai==2.8.0",
+]
+
+[project.optional-dependencies]
+# Local summarization (Gemma via mlx-lm). Apple Silicon only; cloud-only
+# installs and CI skip it. Parakeet needs no Python package (bin/fluidaudiocli).
+local = ["mlx-lm==0.31.3"]
+dev = ["pytest==9.0.3", "ruff==0.16.7"]
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
+
+[tool.setuptools.package-data]
+"backend.delivery" = ["templates/*.html", "assets/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["frontend", "design-mockups", "test-output", "jobs", "uploads"]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle, isort. Long lines are tolerated: templates and
+# prompt strings make E501 noise rather than signal.
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend", "tests"]

@@ -8,7 +8,7 @@ import logging
 import time
 from typing import Dict, List, Optional
 
-from tenacity import retry, retry_if_exception_type, wait_random_exponential, stop_after_attempt
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_random_exponential
 
 from .. import config as cfg
 from ..models import TranscriptTurn, WordTimestamp

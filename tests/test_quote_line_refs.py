@@ -1,8 +1,8 @@
 import unittest
 
-from backend.summarization.schemas import SummaryNote, SummaryResponse
 from backend.models import TranscriptTurn
 from backend.summaries import parse_summary_sections, render_summary_text
+from backend.summarization.schemas import SummaryNote, SummaryResponse
 from backend.transcript_layout import compute_line_entries, hydrate_review_cues
 
 

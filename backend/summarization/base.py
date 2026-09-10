@@ -33,7 +33,6 @@ from ..models import TranscriptTurn
 from ..transcript_layout import compute_line_entries
 from .schemas import CaseReportResponse, SummaryResponse
 
-
 # ────────────────────────── Result types ──────────────────────────
 
 @dataclass

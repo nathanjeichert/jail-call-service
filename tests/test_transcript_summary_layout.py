@@ -3,10 +3,9 @@ import unittest
 
 from pypdf import PdfReader
 
-from backend.summarization.schemas import SummaryNote, SummaryResponse
-from backend.models import TranscriptTurn
 from backend.delivery.summary_layout import paginate_structured_summary
 from backend.delivery.transcript_pdf import create_pdf
+from backend.models import TranscriptTurn
 from backend.summaries import (
     SUMMARY_NOTE_HARD_MAX,
     normalize_structured_summary,
@@ -14,6 +13,7 @@ from backend.summaries import (
     parse_summary_sections,
     render_summary_text,
 )
+from backend.summarization.schemas import SummaryNote, SummaryResponse
 from backend.transcript_layout import compute_line_entries, hydrate_review_cues
 
 

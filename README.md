@@ -9,7 +9,7 @@ report, and a reviewer's guide.
 
 ```bash
 # 1. Python dependencies (use the pyenv interpreter, 3.12)
-pip install -r requirements.txt
+pip install -e ".[dev]"                       # add ",local" for Gemma via mlx-lm
 python -m playwright install chromium        # headless Chromium for PDF rendering
 
 # 2. Keys and settings
@@ -77,8 +77,12 @@ a paused or interrupted job resumes without re-spending API credits.
 ## Development
 
 ```bash
-python -m pytest tests/                       # unit + regression suite
+python -m pytest tests/                       # unit + regression suite (includes the golden package diff)
+python -m ruff check backend tests            # lint
 python tests/make_test_package.py             # synthetic delivery package for manual review
 ```
+
+CI (`.github/workflows/ci.yml`) runs the lint, the test suite, `tsc`, and
+`next build` on every push and pull request.
 
 `AGENTS.md` is the architecture reference for the codebase.

@@ -1,8 +1,9 @@
 import os
 import re
-from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a"})
 SPEAKER_ASSIGNMENTS = frozenset({"left_inmate", "right_inmate"})

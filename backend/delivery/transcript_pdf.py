@@ -32,7 +32,7 @@ from ..summaries import parse_summary_sections
 from ..transcript_layout import LINES_PER_PAGE, MAX_LINE_CHARS, compute_line_entries, hydrate_review_cues
 from .fonts import pdf_font_css
 from .pdf_render import render_pdf
-from .summary_layout import PAGE_HEIGHT, PAGE_WIDTH, inch, paginate_structured_summary
+from .summary_layout import PAGE_HEIGHT, inch, paginate_structured_summary
 from .templates import render_template
 
 RELEVANCE_DESC: Dict[str, str] = {
@@ -94,7 +94,7 @@ def _raw_summary_blocks(body: str) -> list:
             continue
         bullets: list = []
         texts: list = []
-        for line in (l.strip() for l in para.split("\n") if l.strip()):
+        for line in (raw.strip() for raw in para.split("\n") if raw.strip()):
             if re.match(r'^[-•*]\s', line):
                 if texts:
                     raw_blocks.append({"type": "text", "text": " ".join(texts)})

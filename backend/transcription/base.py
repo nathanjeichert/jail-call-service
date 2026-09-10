@@ -6,7 +6,6 @@ from typing import Dict, List, Optional, Protocol
 
 from ..models import TranscriptTurn
 
-
 # ── Shared utilities ──
 
 def default_channel_speaker(channel: int) -> str:

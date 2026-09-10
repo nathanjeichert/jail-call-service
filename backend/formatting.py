@@ -4,7 +4,6 @@ import re
 from datetime import date, datetime
 from typing import Optional
 
-
 # ────────────────────────── Text helpers ──────────────────────────
 
 def safe_text(value: Optional[str]) -> str:

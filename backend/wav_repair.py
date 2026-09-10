@@ -8,8 +8,8 @@ condition and grafts a valid G.729 WAV header onto the data.
 Ported from attemptWavHeaderRepair() in ffmpegWorker.ts.
 """
 
-import struct
 import logging
+import struct
 
 logger = logging.getLogger(__name__)
 
