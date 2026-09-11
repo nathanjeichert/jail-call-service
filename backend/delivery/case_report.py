@@ -21,7 +21,7 @@ import re
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs, quote, unquote, urlsplit
+from urllib.parse import quote, urlsplit
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
@@ -90,14 +90,21 @@ def _extract_local_target(uri: str) -> Optional[str]:
 
 
 def _rewrite_local_links(pdf_bytes: bytes) -> bytes:
-    """Preserve the document catalog and make local links delivery-relative.
+    """Make every local link a ``./``-relative ``/URI`` action, keeping the
+    document catalog (and with it the contents page's named destinations).
 
-    GoToR addresses a page in another PDF; URI retains the HTML fragment.
-    Launch treats a fragment as part of a filename in some native readers.
+    Chromium's viewer (Edge, Chrome) resolves a relative URI against the
+    PDF's own location and honors ``#page=N`` on a PDF target and ``#call=``
+    on the HTML one, so this is the form that works on the client machines.
+    The ``./`` matters: ``index.html#call=...`` on its own is fixed up as a
+    hostname. The alternatives were verified worse there: ``/GoToR`` jumps
+    to that page number inside the report itself, and ``/Launch`` hands the
+    fragment to the reader as part of a filename. macOS Preview follows only
+    the contents links; it cannot resolve a relative URI at all.
     """
     try:
         from pypdf import PdfReader, PdfWriter
-        from pypdf.generic import ArrayObject, BooleanObject, DictionaryObject, NameObject, NumberObject, TextStringObject
+        from pypdf.generic import NameObject, TextStringObject
 
         reader = PdfReader(io.BytesIO(pdf_bytes))
         writer = PdfWriter(clone_from=reader)
@@ -114,18 +121,7 @@ def _rewrite_local_links(pdf_bytes: bytes) -> bytes:
                 target = _extract_local_target(uri) if isinstance(uri, str) else None
                 if not target:
                     continue
-                if target.startswith("transcripts/"):
-                    path, _, fragment = target.partition("#")
-                    page_number = parse_qs(fragment).get("page", ["1"])[0]
-                    page_index = max(int(page_number) - 1, 0) if page_number.isdecimal() else 0
-                    annotation_obj[NameObject("/A")] = DictionaryObject({
-                        NameObject("/S"): NameObject("/GoToR"),
-                        NameObject("/F"): TextStringObject(unquote(path)),
-                        NameObject("/D"): ArrayObject([NumberObject(page_index), NameObject("/Fit")]),
-                        NameObject("/NewWindow"): BooleanObject(True),
-                    })
-                else:
-                    action_obj[NameObject("/URI")] = TextStringObject(target)
+                action_obj[NameObject("/URI")] = TextStringObject("./" + target)
 
         output = io.BytesIO()
         writer.write(output)
@@ -883,8 +879,7 @@ def generate_case_report_pdf(
     # Chromium resolves the relative <a href> values ("index.html#call=...",
     # "transcripts/xxx.pdf") against the temp file it renders from, baking
     # absolute file:///tmp/... URIs into the link annotations. The rewriter
-    # below strips that machine-specific prefix while retaining destinations
-    # and the action type appropriate to each target. Reader policies may
-    # still require permission to open another local document.
+    # below strips that machine-specific prefix and leaves ./-relative URI
+    # actions, which Chromium-based readers resolve against the PDF itself.
     raw_pdf = render_pdf(html_str, paged=True)
     return _rewrite_local_links(raw_pdf)

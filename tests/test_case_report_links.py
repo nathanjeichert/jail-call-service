@@ -105,7 +105,7 @@ def _actions(pdf_bytes):
 
 
 class RewriteLocalLinksTests(unittest.TestCase):
-    def test_viewer_links_stay_uri_actions_with_relative_targets(self):
+    def test_viewer_links_become_dot_relative_uri_actions(self):
         local = (
             "file:///var/folders/zz/tmpq1w2.html/../"
             "index.html#call=001-call.mp3&t=00%3A31"
@@ -114,27 +114,22 @@ class RewriteLocalLinksTests(unittest.TestCase):
         _, actions = _actions(_rewrite_local_links(_pdf_with_links([local, external])))
 
         self.assertEqual([str(a["/S"]) for a in actions], ["/URI", "/URI"])
-        # The fragment stays in a URI, where readers hand it to the browser;
-        # a /Launch would make some readers treat it as part of the filename.
-        self.assertEqual(actions[0]["/URI"], "index.html#call=001-call.mp3&t=00%3A31")
+        # A bare "index.html#..." is fixed up as a hostname by Chromium's
+        # viewer; "./" forces resolution against the PDF's own location.
+        self.assertEqual(actions[0]["/URI"], "./index.html#call=001-call.mp3&t=00%3A31")
         self.assertIsNone(actions[0]["/F"])
         self.assertEqual(actions[1]["/URI"], "https://example.com/docs")
 
-    def test_transcript_links_become_remote_gotos_to_the_physical_page(self):
+    def test_transcript_links_keep_their_page_fragment(self):
         pdf = _pdf_with_links([
             "file:///tmp/x/transcripts/002-call.pdf#page=5",
             "file:///tmp/x/transcripts/003-a%20call.pdf",
         ])
         _, actions = _actions(_rewrite_local_links(pdf))
 
-        self.assertEqual([str(a["/S"]) for a in actions], ["/GoToR", "/GoToR"])
-        self.assertEqual(actions[0]["/F"], "transcripts/002-call.pdf")
-        self.assertEqual(list(actions[0]["/D"]), [4, "/Fit"])  # page 5, zero-based
-        self.assertTrue(actions[0]["/NewWindow"])
-        self.assertIsNone(actions[0]["/URI"])
-        # No fragment: page 1. The file name is unquoted for the reader.
-        self.assertEqual(actions[1]["/F"], "transcripts/003-a call.pdf")
-        self.assertEqual(list(actions[1]["/D"]), [0, "/Fit"])
+        self.assertEqual([str(a["/S"]) for a in actions], ["/URI", "/URI"])
+        self.assertEqual(actions[0]["/URI"], "./transcripts/002-call.pdf#page=5")
+        self.assertEqual(actions[1]["/URI"], "./transcripts/003-a%20call.pdf")
 
     def test_named_destinations_survive_the_rewrite(self):
         pdf = _pdf_with_links(["file:///tmp/x/index.html"], named_dest="sec-findings")

@@ -71,12 +71,12 @@ The defendant stated his employer could confirm he was closing the shop until at
 question and expected investigators to contact the employer.
 Call 003 Mar 23, 2026 · 3:33 PM VIEWER → PDF
 3 FINDINGSTop Findings
-  link /URI index.html#call=001-20260303_093302_9095550144.mp3&t=00%3A21
-  link /GoToR transcripts/001-20260303_093302_9095550144.pdf page 3
-  link /URI index.html#call=002-20260313_123302_9095550226.mp3&t=01%3A14
-  link /GoToR transcripts/002-20260313_123302_9095550226.pdf page 3
-  link /URI index.html#call=003-20260323_153302_7605550317.mp3
-  link /GoToR transcripts/003-20260323_153302_7605550317.pdf page 1
+  link /URI ./index.html#call=001-20260303_093302_9095550144.mp3&t=00%3A21
+  link /URI ./transcripts/001-20260303_093302_9095550144.pdf#page=3
+  link /URI ./index.html#call=002-20260313_123302_9095550226.mp3&t=01%3A14
+  link /URI ./transcripts/002-20260313_123302_9095550226.pdf#page=3
+  link /URI ./index.html#call=003-20260323_153302_7605550317.mp3
+  link /URI ./transcripts/003-20260323_153302_7605550317.pdf
 ## page 4
 HIGH-RELEVANCE CALLS PRIVILEGED & CONFIDENTIAL 04 / 07
 STATE V. MARCUS REEVES
@@ -108,14 +108,14 @@ inventory was provided.“Three hundred eighty to release it. I'm not paying tha
 until your hearing — it just sits there racking up fees either way.”
 TR. 1:6-1:8
 3 CALLS FLAGGED HIGHHigh-Relevance Calls
-  link /URI index.html#call=001-20260303_093302_9095550144.mp3
-  link /GoToR transcripts/001-20260303_093302_9095550144.pdf page 1
-  link /URI index.html#call=001-20260303_093302_9095550144.mp3&t=00%3A21
-  link /URI index.html#call=001-20260303_093302_9095550144.mp3&t=01%3A05
-  link /URI index.html#call=001-20260303_093302_9095550144.mp3&t=01%3A49
-  link /URI index.html#call=002-20260313_123302_9095550226.mp3
-  link /GoToR transcripts/002-20260313_123302_9095550226.pdf page 1
-  link /URI index.html#call=002-20260313_123302_9095550226.mp3&t=01%3A14
+  link /URI ./index.html#call=001-20260303_093302_9095550144.mp3
+  link /URI ./transcripts/001-20260303_093302_9095550144.pdf
+  link /URI ./index.html#call=001-20260303_093302_9095550144.mp3&t=00%3A21
+  link /URI ./index.html#call=001-20260303_093302_9095550144.mp3&t=01%3A05
+  link /URI ./index.html#call=001-20260303_093302_9095550144.mp3&t=01%3A49
+  link /URI ./index.html#call=002-20260313_123302_9095550226.mp3
+  link /URI ./transcripts/002-20260313_123302_9095550226.pdf
+  link /URI ./index.html#call=002-20260313_123302_9095550226.mp3&t=01%3A14
 ## page 5
 HIGH-RELEVANCE CALLS PRIVILEGED & CONFIDENTIAL 05 / 07
 CALL 002 — CONTINUED
@@ -143,13 +143,13 @@ TR. 1:12-1:13
 investigators before counsel makes contact.“I heard you. The money came through
 Tuesday, by the way. I'm set for a couple weeks.”
 TR. 1:16-1:17
-  link /URI index.html#call=002-20260313_123302_9095550226.mp3&t=02%3A29
-  link /URI index.html#call=002-20260313_123302_9095550226.mp3&t=03%3A44
-  link /URI index.html#call=003-20260323_153302_7605550317.mp3
-  link /GoToR transcripts/003-20260323_153302_7605550317.pdf page 1
-  link /URI index.html#call=003-20260323_153302_7605550317.mp3&t=02%3A24
-  link /URI index.html#call=003-20260323_153302_7605550317.mp3&t=04%3A01
-  link /URI index.html#call=003-20260323_153302_7605550317.mp3&t=05%3A37
+  link /URI ./index.html#call=002-20260313_123302_9095550226.mp3&t=02%3A29
+  link /URI ./index.html#call=002-20260313_123302_9095550226.mp3&t=03%3A44
+  link /URI ./index.html#call=003-20260323_153302_7605550317.mp3
+  link /URI ./transcripts/003-20260323_153302_7605550317.pdf
+  link /URI ./index.html#call=003-20260323_153302_7605550317.mp3&t=02%3A24
+  link /URI ./index.html#call=003-20260323_153302_7605550317.mp3&t=04%3A01
+  link /URI ./index.html#call=003-20260323_153302_7605550317.mp3&t=05%3A37
 ## page 6
 MEDIUM-RELEVANCE CALLS PRIVILEGED & CONFIDENTIAL 06 / 07
 STATE V. MARCUS REEVES
@@ -177,12 +177,12 @@ defendant's daughter, church, and
 commissary money. · 2 CUES
 PDF →
 3 CALLS FLAGGED MEDIUMMedium-Relevance Calls
-  link /URI index.html#call=004-20260401_183302_9515550419.mp3
-  link /GoToR transcripts/004-20260401_183302_9515550419.pdf page 1
-  link /URI index.html#call=005-20260411_103302_9095550144.mp3
-  link /GoToR transcripts/005-20260411_103302_9095550144.pdf page 1
-  link /URI index.html#call=006-20260421_133302_9095550226.mp3
-  link /GoToR transcripts/006-20260421_133302_9095550226.pdf page 1
+  link /URI ./index.html#call=004-20260401_183302_9515550419.mp3
+  link /URI ./transcripts/004-20260401_183302_9515550419.pdf
+  link /URI ./index.html#call=005-20260411_103302_9095550144.mp3
+  link /URI ./transcripts/005-20260411_103302_9095550144.pdf
+  link /URI ./index.html#call=006-20260421_133302_9095550226.mp3
+  link /URI ./transcripts/006-20260421_133302_9095550226.pdf
 ## page 7
 CALLER STATISTICS PRIVILEGED & CONFIDENTIAL 07 / 07
 STATE V. MARCUS REEVES
