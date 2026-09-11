@@ -723,16 +723,24 @@ def _build_call_card(view: CallView) -> Dict[str, Any]:
     }
 
 
+_FINDING_TS_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
+
+
 def _finding_sources(item, views_by_id: Dict[int, CallView]) -> List[dict]:
-    """Link known calls; timed links must resolve to a note in that call."""
+    """One cite row per (call, moment) a finding names: the finding's own
+    call first, then its ``sources``. A well-formed timestamp always deep
+    links the viewer; the transcript PDF opens at the cited page only when
+    the timestamp is one of that call's notes (the prompt asks for exactly
+    those, but a model that drifts by a second still gets a viewer link)."""
     sources, seen = [], set()
     for source in [item, *item.sources]:
         view = views_by_id.get(source.call_id)
         if not view:
             continue
-        ts = (source.timestamp or "").strip().strip("[]")
+        ts = (source.timestamp or "").strip().strip("[]").strip()
+        if not _FINDING_TS_RE.match(ts):
+            ts = ""
         cue = next((c for c in view.cues if (c.get("timestamp") or "").strip("[]") == ts), None) if ts else None
-        ts = cue["timestamp"].strip("[]") if cue else ""
         key = (view.index, ts)
         if key in seen:
             continue
