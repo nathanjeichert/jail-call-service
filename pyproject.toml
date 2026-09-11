@@ -23,6 +23,8 @@ dependencies = [
     "pypdf==6.13.1",
     "assemblyai==0.64.4",
     "google-genai==2.8.0",
+    "numpy>=2.0",
+    "onnxruntime==1.30.0",
 ]
 
 [project.optional-dependencies]

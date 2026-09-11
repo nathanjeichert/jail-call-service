@@ -356,11 +356,14 @@ def make_zip(output_dir: Path, case_name: str) -> Path:
 
 
 def build_package(output_dir: Path, count: int = 10, *, with_audio: bool = True,
-                  gen_date: str | None = None) -> list:
+                  gen_date: str | None = None, semantic: bool = False) -> list:
     """Build the full synthetic package at *output_dir* (replaced if present).
 
     Returns the fabricated calls. ``gen_date`` pins the "Generated" stamp so
     the golden regression test gets byte-identical output run to run.
+    ``semantic`` adds the meaning-search layer, which needs the runtime
+    assets (``python -m backend.search.assets``); the golden package ships
+    keyword search only so it stays deterministic and asset-free.
     """
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -394,10 +397,10 @@ def build_package(output_dir: Path, count: int = 10, *, with_audio: bool = True,
 
     print("Generating index.html, guide.pdf, case-report.pdf …")
     asyncio.run(_stage_generate_delivery_assets(
-        job, str(output_dir), StubSynthesisEngine(synthesis), gen_date=gen_date,
+        job, str(output_dir), StubSynthesisEngine(synthesis), gen_date=gen_date, search_semantic=semantic,
     ))
 
-    expected = ["index.html", "guide.pdf", "case-report.pdf"]
+    expected = ["index.html", "guide.pdf", "case-report.pdf", "search/index.js"]
     missing = [name for name in expected if not (output_dir / name).is_file()]
     if missing:
         raise RuntimeError(f"missing delivery assets: {', '.join(missing)}")
@@ -410,6 +413,8 @@ def main() -> None:
     parser.add_argument("--calls", type=int, default=10, help="number of fake calls (default: 10)")
     parser.add_argument("--zip", action="store_true", help="also build the delivery zip")
     parser.add_argument("--no-audio", action="store_true", help="skip MP3 generation (faster; audio won't play in the call view)")
+    parser.add_argument("--semantic", action="store_true",
+                        help="add the meaning-search layer (downloads the model and ONNX Runtime on first use)")
     args = parser.parse_args()
 
     if not args.no_audio and shutil.which("ffmpeg") is None:
@@ -417,7 +422,7 @@ def main() -> None:
 
     output_dir = Path(args.out).resolve() / "REEVES_TEST_PACKAGE"
     try:
-        calls = build_package(output_dir, args.calls, with_audio=not args.no_audio)
+        calls = build_package(output_dir, args.calls, with_audio=not args.no_audio, semantic=args.semantic)
     except RuntimeError as e:
         sys.exit(f"FAILED — {e}")
 

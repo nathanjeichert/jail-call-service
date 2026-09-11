@@ -13,11 +13,10 @@ from copy import deepcopy
 from typing import List, Optional
 
 from .formatting import format_timestamp
-from .models import TranscriptTurn, WordTimestamp
+from .models import AUTOMATED_SPEAKER, TranscriptTurn, WordTimestamp
 
 logger = logging.getLogger(__name__)
 
-AUTOMATED_SPEAKER = "AUTOMATED MESSAGE"
 FILTER_MODES = ("exclude", "label")
 
 _STOP_WORDS = {

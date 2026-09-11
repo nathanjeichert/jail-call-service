@@ -6,6 +6,10 @@ compares each digest to the committed copy under ``tests/golden/``:
 
 * ``index.html``: the page source verbatim, with the base64 font payloads
   replaced by a marker so the digest stays readable.
+* ``search/index.js`` (golden ``search-index.js``): the keyword search
+  sidecar verbatim; passages, vocabulary, and postings are deterministic.
+  The package is built without the meaning layer, so no runtime assets are
+  needed.
 * ``case-report.pdf`` / ``guide.pdf`` / every transcript PDF: per-page
   extracted text plus every link annotation (``/Launch`` target, URI, or
   named destination), so pagination, copy, cites, and link portability are
@@ -25,18 +29,13 @@ from __future__ import annotations
 import difflib
 import os
 import re
-import sys
 from pathlib import Path
 
 import pytest
 from pypdf import PdfReader
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from make_test_package import build_package  # noqa: E402
-
 GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
 ACTUAL_DIR = Path(__file__).resolve().parent.parent / "test-output" / "golden-actual"
-GEN_DATE = "January 15, 2026"
 UPDATE = os.environ.get("UPDATE_GOLDEN") == "1"
 
 _FONT_DATA_RE = re.compile(r"data:font/[a-z0-9]+;base64,[A-Za-z0-9+/=]+")
@@ -79,15 +78,9 @@ def _digest_pdf_dir(directory: Path) -> str:
     return "\n".join(_digest_pdf(p) for p in sorted(directory.glob("*.pdf")))
 
 
-@pytest.fixture(scope="module")
-def package_dir(tmp_path_factory) -> Path:
-    out = tmp_path_factory.mktemp("golden") / "REEVES_TEST_PACKAGE"
-    build_package(out, 10, with_audio=False, gen_date=GEN_DATE)
-    return out
-
-
 ARTIFACTS = {
     "index.html": lambda root: _digest_html(root / "index.html"),
+    "search-index.js": lambda root: (root / "search" / "index.js").read_text(encoding="utf-8"),
     "case-report.pdf": lambda root: _digest_pdf(root / "case-report.pdf"),
     "guide.pdf": lambda root: _digest_pdf(root / "guide.pdf"),
     "transcripts": lambda root: _digest_pdf_dir(root / "transcripts"),

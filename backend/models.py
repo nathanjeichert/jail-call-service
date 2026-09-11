@@ -9,6 +9,13 @@ AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a"})
 SPEAKER_ASSIGNMENTS = frozenset({"left_inmate", "right_inmate"})
 DEFAULT_SPEAKER_ASSIGNMENT = "left_inmate"
 
+# The two fixed transcript speaker labels. The inmate's channel carries the
+# inmate's name (or the job's defendant name, or INMATE), so anything else
+# is the defendant: pipeline._build_channel_labels, system_audio, and the
+# search index's speaker bits all read these.
+OUTSIDE_PARTY_LABEL = "OUTSIDE PARTY"
+AUTOMATED_SPEAKER = "AUTOMATED MESSAGE"
+
 
 def strip_audio_extension(filename: str) -> str:
     """Strip one supported audio extension from a filename, if present."""

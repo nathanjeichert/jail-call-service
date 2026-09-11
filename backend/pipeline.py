@@ -35,6 +35,7 @@ from .icm_parser import find_icm_report, parse_icm_report
 from .job_settings import RuntimeSelection, resolve_runtime_selection, validate_runtime_selection
 from .models import (
     DEFAULT_SPEAKER_ASSIGNMENT,
+    OUTSIDE_PARTY_LABEL,
     CallResult,
     CallStatus,
     Job,
@@ -67,8 +68,8 @@ def _build_channel_labels(
     inmate_label = call.inmate_name or defendant_name or "INMATE"
     assignment = normalize_speaker_assignment(speaker_assignment or DEFAULT_SPEAKER_ASSIGNMENT)
     if assignment == "right_inmate":
-        return {1: "OUTSIDE PARTY", 2: inmate_label}
-    return {1: inmate_label, 2: "OUTSIDE PARTY"}
+        return {1: OUTSIDE_PARTY_LABEL, 2: inmate_label}
+    return {1: inmate_label, 2: OUTSIDE_PARTY_LABEL}
 
 
 async def _convert_one(job_id, call, audio_dir, executor) -> Optional[CallResult]:
@@ -599,20 +600,24 @@ async def _stage_generate_delivery_assets(
     output_dir: str,
     summarization_engine: Optional[SummarizationEngine] = None,
     gen_date: Optional[str] = None,
+    search_semantic: bool = True,
 ) -> None:
-    """Write index.html, guide.pdf, and case-report.pdf.
+    """Write index.html, guide.pdf, case-report.pdf, and the search/ indexes.
 
-    The three writers run in parallel: the shared Chromium renderer is safe
-    to call from concurrent threads and gates real render concurrency with
-    its own semaphore, so wall time is close to the slowest single asset.
-    A failed asset is reported as a warning and does not fail the job.
+    The writers run in parallel: the shared Chromium renderer is safe to
+    call from concurrent threads and gates real render concurrency with its
+    own semaphore, so wall time is close to the slowest single asset. A
+    failed asset is reported as a warning and does not fail the job.
     ``gen_date`` overrides the "Generated" stamp (tests pin it for the
-    golden package); production leaves it as today.
+    golden package); production leaves it as today. ``search_semantic``
+    adds the meaning-search layer (embedding model + passage vectors) to
+    ``search/``; the keyword index always ships.
     """
     from .delivery.call_view import build_call_views
     from .delivery.case_report import generate_case_report_pdf
     from .delivery.guide_pdf import generate_guide_pdf
     from .delivery.index_html import generate_index_html
+    from .delivery.search_index import generate_search_index
 
     loop = asyncio.get_event_loop()
     done_calls = [c for c in job.calls if c.status == CallStatus.DONE]
@@ -635,6 +640,7 @@ async def _stage_generate_delivery_assets(
             "case-report.pdf",
             generate_case_report_pdf(job=job, views=views, engine=summarization_engine, gen_date=gen_date),
         ),
+        "search/": lambda: generate_search_index(views, output_dir, semantic=search_semantic),
     }
 
     failures: List[str] = []
