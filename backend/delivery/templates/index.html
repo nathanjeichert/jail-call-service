@@ -635,8 +635,16 @@
   .view-call {
     font-size: 1rem;
     --rail-calls-w: 264px;
+    --rail-calls-compact-w: 208px;
     --rail-side-w: 304px;
+    --rail-side-min-w: 240px;
     --rail-collapsed-w: 38px;
+    /* Narrowest transcript column (rail to rail) that keeps the 62-column
+       sheet unwrapped: 62 x 9.6px of Courier Prime at 12pt plus ~20px of
+       per-word padding on a dense line, the line number and gap, the sheet's
+       and the pane's padding, and a classic scrollbar. Measured; pinned by
+       tests/test_delivery_browser.py. */
+    --main-min-w: 796px;
     /* the call view runs its labels and markers one notch smaller than the index */
     --lbl-size: 10px;
     --rv-gap: 6px;
@@ -692,6 +700,20 @@
     overflow: hidden;
   }
   .rail-calls.collapsed { width: var(--rail-collapsed-w); }
+  /* Narrow viewports: the sheet must not wrap, so make room by shrinking the
+     call rail first (its compact width still fits "NOV 20 · 10:05 AM", the
+     duration, and the number cleanly), then the analysis rail down to its
+     floor; past that the reviewer collapses a rail. The breakpoints are the
+     rails' widths plus --main-min-w: 264 + 304 + 796 = 1364 with both rails
+     open, 264 + 38 + 796 = 1098 with the analysis rail collapsed. */
+  @media (max-width: 1363.98px) {
+    .view-call:not(:has(.rail-side.collapsed)) { --rail-calls-w: var(--rail-calls-compact-w); }
+  }
+  @media (max-width: 1097.98px) {
+    .view-call { --rail-calls-w: var(--rail-calls-compact-w); }
+  }
+  .view-call { --rail-calls-actual-w: var(--rail-calls-w); }
+  .view-call:has(.rail-calls.collapsed) { --rail-calls-actual-w: var(--rail-collapsed-w); }
   .rail-calls.collapsed .rail-calls-head .lbl--ink,
   .rail-calls.collapsed .rail-calls-head .sub,
   .rail-calls.collapsed .calls-list { display: none; }
@@ -762,13 +784,15 @@
     justify-content: space-between;
     align-items: baseline;
     gap: 8px;
+    white-space: nowrap;
+    overflow: hidden;
     font-family: var(--mono);
     font-size: 10.5px;
     color: var(--ink-3);
     letter-spacing: .02em;
     text-transform: uppercase;
   }
-  .call-item .l1 .d { color: var(--ink-2); font-weight: 500; }
+  .call-item .l1 .d { color: var(--ink-2); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .call-item .l2 {
     margin-top: 3px;
     font-size: 13px;
@@ -1230,7 +1254,7 @@
 
   /* ── Analysis rail ── */
   .rail-side {
-    width: var(--rail-side-w);
+    width: clamp(var(--rail-side-min-w), calc(100vw - var(--rail-calls-actual-w) - var(--main-min-w)), var(--rail-side-w));
     background: var(--cream);
     border-left: 1px solid var(--rule);
     display: flex;

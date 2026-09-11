@@ -173,6 +173,38 @@ class TestCallView:
         words = page.locator("#call .trans-page.active span.word-ts[data-ws][data-we]")
         assert words.count() > 50
 
+    def test_narrow_viewports_shrink_the_call_rail_before_the_analysis_rail(self, page, index_url):
+        """The 62-column sheet never wraps: below 1364 px the call rail goes
+        compact (date, duration, and number still fit), below 1308 the
+        analysis rail narrows toward its floor, and a collapsed call rail
+        gives the analysis rail its width back."""
+        page.goto(f"{index_url}#call={DEEP_LINK_CALL}&t=00:21")
+        expect(page.locator("#call")).to_be_visible()
+        measure = """() => {
+          const w = sel => Math.round(document.querySelector(sel).getBoundingClientRect().width);
+          const lines = Array.from(document.querySelectorAll('.trans-page.active .trans-line'));
+          const items = Array.from(document.querySelectorAll('.call-item .l1, .call-item .l1 .d, .call-item .l2'));
+          return {calls: w('#railCalls'), side: w('#summaryPane'),
+                  wrapped: lines.filter(l => l.getBoundingClientRect().height > 40).length,
+                  clipped: items.filter(e => e.scrollWidth > e.clientWidth).length};
+        }"""
+
+        def at(width):
+            page.set_viewport_size({"width": width, "height": 800})
+            page.wait_for_timeout(350)  # the analysis rail animates its width
+            return page.evaluate(measure)
+
+        assert at(1440) == {"calls": 264, "side": 304, "wrapped": 0, "clipped": 0}
+        assert at(1320) == {"calls": 208, "side": 304, "wrapped": 0, "clipped": 0}
+        narrow = at(1280)
+        assert narrow["calls"] == 208 and 240 <= narrow["side"] < 304, narrow
+        assert narrow["wrapped"] == 0 and narrow["clipped"] == 0, narrow
+        page.click("#callsToggle")
+        page.wait_for_timeout(350)
+        assert page.evaluate(measure)["side"] == 304
+        page.click("#callsToggle")
+        assert at(1440) == {"calls": 264, "side": 304, "wrapped": 0, "clipped": 0}
+
 
 class TestChartModes:
     """The index's calendar and timeline modes (index_charts.js)."""
