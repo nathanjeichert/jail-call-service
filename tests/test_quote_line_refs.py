@@ -38,9 +38,9 @@ class QuoteLineRefTests(unittest.TestCase):
         cues = hydrate_review_cues(sections.get("review_cue_items"), line_entries)
 
         self.assertEqual(cues[0]["line_cite"], line_ref)
-        expected_quote = f"{line_entries[0]['text']} {line_entries[1]['text']}".strip()
-        if len(line_entries) > 2:
-            expected_quote += "..."
+        # The cite stops mid-sentence, so the quote runs on to the end of the
+        # sentence (two more lines here) instead of ending in an ellipsis.
+        expected_quote = " ".join(entry["text"] for entry in line_entries).strip()
         self.assertEqual(cues[0]["quote"], expected_quote)
 
     def test_timestamp_only_cue_still_gets_line_cite(self):
@@ -124,7 +124,7 @@ class QuoteLineRefTests(unittest.TestCase):
         expected_quote = " ".join(line_entries[i]["text"] for i in range(3)).strip() + "..."
         self.assertEqual(cues[0]["quote"], expected_quote)
 
-    def test_mid_sentence_line_ref_gets_ellipses_on_both_sides(self):
+    def test_mid_sentence_line_ref_gets_prefix_ellipsis_and_runs_to_sentence_end(self):
         turns = [
             TranscriptTurn(
                 speaker="INMATE",
@@ -152,7 +152,70 @@ class QuoteLineRefTests(unittest.TestCase):
         sections = parse_summary_sections(summary)
         cues = hydrate_review_cues(sections.get("review_cue_items"), line_entries)
 
-        self.assertEqual(cues[0]["quote"], f"...{middle_entry['text']}...")
+        rest_of_sentence = " ".join(entry["text"] for entry in line_entries[1:])
+        self.assertEqual(cues[0]["quote"], f"...{rest_of_sentence}")
+
+    def test_quote_stops_at_first_sentence_end_on_the_next_line(self):
+        turns = [
+            TranscriptTurn(
+                speaker="INMATE",
+                timestamp="[01:42]",
+                text=(
+                    "Sarah. I'm telling you that thing in the closet, in the shoebox, "
+                    "cannot be in that apartment. Not tonight, not tomorrow. Do you "
+                    "understand me?"
+                ),
+            )
+        ]
+        line_entries = compute_line_entries(turns, 0.0)
+        self.assertGreaterEqual(len(line_entries), 3)
+        self.assertFalse(line_entries[0]["text"].endswith("."))
+
+        line_ref = f"{line_entries[0]['page']}:{line_entries[0]['line']}"
+        summary = (
+            "RELEVANCE: HIGH\n\n"
+            "NOTES:\n"
+            f"- [01:42] INMATE [{line_ref}] — Example note.\n\n"
+            "BRIEF SUMMARY:\n"
+            "Example."
+        )
+
+        cues = hydrate_review_cues(parse_summary_sections(summary).get("review_cue_items"), line_entries)
+
+        self.assertEqual(
+            cues[0]["quote"],
+            "Sarah. I'm telling you that thing in the closet, in the shoebox, cannot be in that apartment.",
+        )
+
+    def test_quote_keeps_suffix_ellipsis_when_the_sentence_outruns_the_budget(self):
+        turns = [
+            TranscriptTurn(
+                speaker="INMATE",
+                timestamp="[00:00]",
+                text=(
+                    "This one sentence keeps going without any punctuation at all across "
+                    "so many transcript lines that the extension budget of two extra lines "
+                    "runs out well before the sentence finally reaches its end and so the "
+                    "quote must still close with an ellipsis rather than pretend it is complete."
+                ),
+            )
+        ]
+        line_entries = compute_line_entries(turns, 0.0)
+        self.assertGreaterEqual(len(line_entries), 5)
+
+        line_ref = f"{line_entries[0]['page']}:{line_entries[0]['line']}"
+        summary = (
+            "RELEVANCE: MEDIUM\n\n"
+            "NOTES:\n"
+            f"- [00:00] INMATE [{line_ref}] — Example note.\n\n"
+            "BRIEF SUMMARY:\n"
+            "Example."
+        )
+
+        cues = hydrate_review_cues(parse_summary_sections(summary).get("review_cue_items"), line_entries)
+
+        expected_quote = " ".join(entry["text"] for entry in line_entries[:3]).strip() + "..."
+        self.assertEqual(cues[0]["quote"], expected_quote)
 
     def test_structured_summary_renders_derived_timestamp_and_speaker(self):
         turns = [

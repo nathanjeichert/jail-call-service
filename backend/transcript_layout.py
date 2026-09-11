@@ -318,6 +318,48 @@ def _has_sentence_boundary_after(entry: dict, lookup: dict) -> bool:
     return bool(_SENTENCE_END_RE.search(text))
 
 
+_SENTENCE_END_IN_TEXT_RE = re.compile(r"[.!?](?:['\")\]]+)?(?=\s|$)")
+
+
+def _sentence_head(text: str) -> Optional[str]:
+    """``text`` up to and including its first sentence end, or None."""
+    match = _SENTENCE_END_IN_TEXT_RE.search(text)
+    if not match:
+        return None
+    return text[: match.end()].strip()
+
+
+def _extend_to_sentence_end(
+    quote: str,
+    last_entry: dict,
+    lookup: dict,
+    *,
+    max_chars: int,
+    max_extra_lines: int,
+) -> tuple:
+    """Carry a mid-sentence quote to its sentence end on the turn's next lines.
+
+    Returns ``(quote, ends_sentence)``; the quote is left as it was when the
+    budget runs out before the sentence ends.
+    """
+    entry = last_entry
+    for _ in range(max_extra_lines):
+        entry = _same_turn_neighbor(entry, lookup, direction=1)
+        if not entry:
+            return quote, True
+        text = re.sub(r"\s+", " ", str(entry.get("text", "") or "")).strip()
+        if not text:
+            return quote, True
+        head = _sentence_head(text)
+        candidate = f"{quote} {text if head is None else head}"
+        if len(candidate) > max_chars:
+            return quote, False
+        quote = candidate
+        if head is not None:
+            return quote, True
+    return quote, False
+
+
 def _apply_quote_ellipses(text: str, *, prefix: bool, suffix: bool) -> str:
     quote = str(text or "").strip()
     if not quote:
@@ -335,8 +377,15 @@ def quote_for_line_cite(
     *,
     max_lines: int = 3,
     max_chars: int = 220,
+    max_extra_lines: int = 2,
 ) -> str:
-    """Bounded pull-quote text for a cited line range, with edge ellipses."""
+    """Bounded pull-quote text for a cited line range, with edge ellipses.
+
+    A quote that would stop mid-sentence at the end of the cited range is
+    carried to the end of that sentence on the following lines of the same
+    turn (at most ``max_extra_lines`` lines, within ``max_chars``), so notes
+    read as sentences rather than wrapped-line fragments.
+    """
     selected = _entries_for_line_cite(line_cite, line_entries)
     if not selected:
         return ""
@@ -364,8 +413,13 @@ def quote_for_line_cite(
 
     lookup = _line_entry_lookup(line_entries)
     prefix_ellipsis = not _has_sentence_boundary_before(excerpt[0], lookup)
-    suffix_ellipsis = excerpt[-1].get("id") != selected[-1].get("id") or not _has_sentence_boundary_after(excerpt[-1], lookup)
-    return _apply_quote_ellipses(quote, prefix=prefix_ellipsis, suffix=suffix_ellipsis)
+    covers_cite = excerpt[-1].get("id") == selected[-1].get("id")
+    ends_sentence = _has_sentence_boundary_after(excerpt[-1], lookup)
+    if covers_cite and not ends_sentence:
+        quote, ends_sentence = _extend_to_sentence_end(
+            quote, excerpt[-1], lookup, max_chars=max_chars, max_extra_lines=max_extra_lines
+        )
+    return _apply_quote_ellipses(quote, prefix=prefix_ellipsis, suffix=not (covers_cite and ends_sentence))
 
 
 def resolve_line_ref_context(line_cite: str, line_entries: Optional[List[dict]]) -> Optional[dict]:

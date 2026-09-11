@@ -282,7 +282,7 @@ def create_pdf(view: CallView, title_data: dict, *, include_summary: bool = True
         "lbl": "Transcript Page" if sheet_count == 1 else "Transcript Pages",
     })
     if ctx["has_summary"] and ctx.get("is_structured"):
-        cover_stats.append({"n": str(ctx.get("cue_count", 0)), "lbl": "Review Cues"})
+        cover_stats.append({"n": str(ctx.get("cue_count", 0)), "lbl": "Note" if ctx.get("cue_count", 0) == 1 else "Notes"})
     ctx["cover_stats"] = cover_stats
 
     # Transcript text geometry (pt): Python stays the layout source of truth.

@@ -608,14 +608,18 @@ section.chapter .band { padding-top: 3pt; }
     padding-right: 12pt;
 }
 .ks .inf .conf {
+    /* inline-block after a space: the chip moves to the next line as a
+       unit instead of dragging the identity's last word down with it */
+    display: inline-block;
     font-family: var(--mono);
     font-size: 6.75pt;
     letter-spacing: 0.06em;
     color: var(--ink-3);
     border: 1px solid var(--rule);
     padding: 0.75pt 3.75pt;
-    margin-left: 4.5pt;
+    margin-left: 1.5pt;
     white-space: nowrap;
+    vertical-align: 0.5pt;
 }
 .ks .rv { font-size: 7.1pt; }
 
@@ -658,7 +662,7 @@ section.chapter .band { padding-top: 3pt; }
         <div class="row"><span class="k">Defendant</span><span class="w">{{ defendant_name }}</span></div>
         {% endif %}
         <div class="row"><span class="k">Coverage</span><span class="w">{{ glance.date_range }}</span></div>
-        <div class="row"><span class="k">Review Cues</span><span class="w">{{ glance.total_notes }} across {{ glance.calls_with_notes }} call{{ "s" if glance.calls_with_notes != 1 else "" }}</span></div>
+        <div class="row"><span class="k">Notes</span><span class="w">{{ glance.total_notes }} across {{ glance.calls_with_notes }} call{{ "s" if glance.calls_with_notes != 1 else "" }}</span></div>
         <div class="row"><span class="k">Generated</span><span class="w">{{ gen_date }}</span></div>
     </div>
 
@@ -699,7 +703,7 @@ section.chapter .band { padding-top: 3pt; }
             </td>
             <td>
                 <div class="n">{{ glance.total_notes }}</div>
-                <div class="lbl">Review Cues</div>
+                <div class="lbl">Notes</div>
             </td>
         </tr>
     </table>
@@ -756,7 +760,7 @@ section.chapter .band { padding-top: 3pt; }
             {% if top_callers %}
             <div class="row"><span class="k">Most frequent caller</span><span class="dots"></span><span class="w">{{ top_callers[0].display }} <em>· {{ top_callers[0].count }} call{{ "s" if top_callers[0].count != 1 else "" }}</em></span></div>
             {% endif %}
-            <div class="row"><span class="k">Calls with review cues</span><span class="dots"></span><span class="w">{{ glance.calls_with_notes }} of {{ glance.total_calls }}</span></div>
+            <div class="row"><span class="k">Calls with notes</span><span class="dots"></span><span class="w">{{ glance.calls_with_notes }} of {{ glance.total_calls }}</span></div>
         </div>
     </div>
 </section>
@@ -927,7 +931,7 @@ section.chapter .band { padding-top: 3pt; }
             {% for caller in top_callers %}
             <tr>
                 <td class="who">{{ caller.display }}</td>
-                <td class="inf">{% if caller.inferred %}{{ caller.inferred }}{% if caller.confidence %}<span class="conf">{{ caller.confidence }} CONF</span>{% endif %}{% else %}—{% endif %}</td>
+                <td class="inf">{% if caller.inferred %}{{ caller.inferred }}{% if caller.confidence %} <span class="conf">{{ caller.confidence }} CONF</span>{% endif %}{% else %}—{% endif %}</td>
                 <td class="num">{{ caller.count }}</td>
                 <td class="num">{{ caller.total_duration_display }}</td>
                 <td class="num range">{{ caller.date_range }}</td>

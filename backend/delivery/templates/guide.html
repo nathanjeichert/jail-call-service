@@ -359,7 +359,7 @@ body {
     <div class="body">
         <div class="tree">
             <div class="trow hd"><span class="f">{{ case_name_short }}/</span></div>
-            <div class="trow"><span class="f">index.html</span><span class="d"><b>Call index and viewer.</b> One page with two views: a sortable, filterable table of every call with summaries, review cues, and full-text search across every transcript, also shown as a calendar and a timeline, and a viewer with synced audio and transcript for each call. Citations in the PDFs open here at the exact moment.</span></div>
+            <div class="trow"><span class="f">index.html</span><span class="d"><b>Call index and viewer.</b> One page with two views: a sortable, filterable table of every call with summaries, notes, and full-text search across every transcript, also shown as a calendar and a timeline, and a viewer with synced audio and transcript for each call. Citations in the PDFs open here at the exact moment.</span></div>
             <div class="trow"><span class="f">case-report.pdf</span><span class="d"><b>Case report.</b> At-a-glance metrics, top findings, high-relevance call cards, and caller statistics across the full set.</span></div>
             <div class="trow"><span class="f">transcripts/</span><span class="d"><b>Transcript PDFs</b> in deposition format, one per call, each with a cover and an analysis summary sheet.</span></div>
             <div class="trow"><span class="f">transcripts-no-summary/</span><span class="d"><b>Clean transcript PDFs</b>: the same transcripts without the analysis pages, for filing or production.</span></div>
@@ -419,7 +419,7 @@ body {
         <div class="step">
             <span class="n">03</span>
             <div><h4>Expand a row</h4>
-            <p>Selecting a row opens the call's summary, outside-party identity, review cues, and the full transcript. The <span class="kbd">‹</span> <span class="kbd">›</span> arrows above the transcript step through search matches, or through the flagged passages when no search is active.</p></div>
+            <p>Selecting a row opens the call's summary, outside-party identity, notes, and the full transcript. The <span class="kbd">‹</span> <span class="kbd">›</span> arrows above the transcript step through search matches, or through the flagged passages when no search is active.</p></div>
         </div>
         <div class="step">
             <span class="n">04</span>
@@ -531,7 +531,7 @@ body {
         <div class="step">
             <span class="n">02</span>
             <div><h4>Play and navigate the audio</h4>
-            <p><span class="kbd">SPACE</span> plays and pauses; <span class="kbd">←</span> <span class="kbd">→</span> skip five seconds; the −15s / +15s buttons skip further. Red ticks on the progress bar mark the call's review cues.</p></div>
+            <p><span class="kbd">SPACE</span> plays and pauses; <span class="kbd">←</span> <span class="kbd">→</span> skip five seconds; the −15s / +15s buttons skip further. Red ticks on the progress bar mark the call's notes.</p></div>
         </div>
         <div class="step">
             <span class="n">03</span>
@@ -541,7 +541,7 @@ body {
         <div class="step">
             <span class="n">04</span>
             <div><h4>Analysis panel and Present mode</h4>
-            <p>The right panel shows the call's relevance, summary, outside party, and clickable review cues; both side panels collapse with their <span class="kbd">‹</span> <span class="kbd">›</span> buttons. <span class="kbd">P</span> enters Present mode: audio controls and the transcript page only; <span class="kbd">ESC</span> exits.</p></div>
+            <p>The right panel shows the call's relevance, summary, outside party, and clickable notes; both side panels collapse with their <span class="kbd">‹</span> <span class="kbd">›</span> buttons. <span class="kbd">P</span> enters Present mode: audio controls and the transcript page only; <span class="kbd">ESC</span> exits.</p></div>
         </div>
         </div>
         </div>
@@ -577,7 +577,7 @@ body {
             </div>
             <div class="row">
                 <span class="k">High-Relevance Calls</span>
-                <span class="d">One card per HIGH call with its summary, outside-party identity, and timestamped review cues quoting the transcript.</span>
+                <span class="d">One card per HIGH call with its summary, outside-party identity, and timestamped notes quoting the transcript.</span>
             </div>
             <div class="row">
                 <span class="k">Medium-Relevance Calls</span>
@@ -639,7 +639,7 @@ body {
         <div class="kv">
             <div class="row">
                 <span class="k">Notes</span>
-                <span class="d">Timestamped review cues: only moments flagged as needing attorney attention. Each carries the audio timestamp <span class="mono">[MM:SS]</span> and a <span class="mono">TR. page:line</span> cite that matches the printed transcript exactly. &ldquo;No relevant information found&rdquo; means nothing was flagged.</span>
+                <span class="d">Timestamped notes: only moments flagged as needing attorney attention. Each carries the audio timestamp <span class="mono">[MM:SS]</span> and a <span class="mono">TR. page:line</span> cite that matches the printed transcript exactly. &ldquo;None flagged&rdquo; means nothing on the call needed attention.</span>
             </div>
             <div class="row">
                 <span class="k">Outside Party</span>
@@ -654,7 +654,7 @@ body {
     </div>
 
     <div class="foot">
-        <span class="doc">User Guide</span><span>·</span><span>Understanding AI Analysis</span>
+        <span class="doc">User Guide</span><span>·</span><span>Reading the Analysis</span>
         <span class="pg">07</span>
     </div>
 </div>

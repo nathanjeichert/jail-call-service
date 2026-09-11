@@ -13,10 +13,9 @@ SECTION 01
 10 CALLSContents of This Delivery
 State v. Marcus Reeves/
 index.html Call index and viewer. One page with two views: a sortable, filterable table of
-every call with summaries, review cues, and full-text search across every
-transcript, also shown as a calendar and a timeline, and a viewer with synced
-audio and transcript for each call. Citations in the PDFs open here at the exact
-moment.
+every call with summaries, notes, and full-text search across every transcript,
+also shown as a calendar and a timeline, and a viewer with synced audio and
+transcript for each call. Citations in the PDFs open here at the exact moment.
 case-report.pdf Case report. At-a-glance metrics, top findings, high-relevance call cards, and
 caller statistics across the full set.
 transcripts/ Transcript PDFs in deposition format, one per call, each with a cover and an
@@ -51,7 +50,7 @@ search lists the best match first; click a heading
 to sort another way.
 03 Expand a row
 Selecting a row opens the call's summary,
-outside-party identity, review cues, and the full
+outside-party identity, notes, and the full
 transcript. The ‹ › arrows above the
 transcript step through search matches, or
 through the flagged passages when no search
@@ -107,7 +106,7 @@ intact.
 SPACE plays and pauses; ← → skip five
 seconds; the −15s / +15s buttons skip further.
 Red ticks on the progress bar mark the call's
-review cues.
+notes.
 03 Seek and search the transcript
 Printed-format pages follow the audio with the
 current line highlighted. Click any line or word
@@ -117,8 +116,8 @@ containing a term; “Return to playback” re-
 syncs.
 04 Analysis panel and Present mode
 The right panel shows the call's relevance,
-summary, outside party, and clickable review
-cues; both side panels collapse with their ‹ ›
+summary, outside party, and clickable notes;
+both side panels collapse with their ‹ ›
 buttons. P enters Present mode: audio controls
 and the transcript page only; ESC exits.
 USER GUIDE·USING THE CALL VIEWER 05
@@ -130,8 +129,8 @@ AT A GLANCE Delivery-level metrics: call volume over time, relevance distributio
 as the most active day and most frequent caller.
 TOP FINDINGS Cross-call findings synthesized from the highest-relevance calls, each citing its source
 call and timestamp.
-HIGH-RELEVANCE CALLS One card per HIGH call with its summary, outside-party identity, and timestamped
-review cues quoting the transcript.
+HIGH-RELEVANCE CALLS One card per HIGH call with its summary, outside-party identity, and timestamped notes
+quoting the transcript.
 MEDIUM-RELEVANCE
 CALLS Compact rows for MEDIUM calls: date, number, brief summary, and cue count.
 CALLER STATISTICS Outside numbers ranked by volume, with call counts, total duration, active period, and
@@ -151,11 +150,11 @@ MEDIUM Substantive legal or case context, not clearly central: court dates, coun
 or indirect references to the case.
 LOW Little to no apparent case relevance: routine personal conversation.
 SUMMARY SECTIONS ON EACH TRANSCRIPT'S SUMMARY SHEET
-NOTES Timestamped review cues: only moments flagged as needing attorney attention. Each
-carries the audio timestamp [MM:SS] and a TR. page:line cite that matches the printed
-transcript exactly. “No relevant information found” means nothing was flagged.
+NOTES Timestamped notes: only moments flagged as needing attorney attention. Each carries
+the audio timestamp [MM:SS] and a TR. page:line cite that matches the printed
+transcript exactly. “None flagged” means nothing on the call needed attention.
 OUTSIDE PARTY Who the defendant appears to be speaking with, populated only when the call itself
 supports the inference. Case-level identity inferences in the report carry a confidence
 level.
 BRIEF SUMMARY A one- or two-sentence overview of the call.
-USER GUIDE·UNDERSTANDING AI ANALYSIS 07
+USER GUIDE·READING THE ANALYSIS 07

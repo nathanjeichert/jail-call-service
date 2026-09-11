@@ -8,7 +8,7 @@ DURATION
 2
 TRANSCRIPT PAGES
 3
-REVIEW CUES
+NOTES
 CASE State v. Marcus Reeves
 DEFENDANT Marcus Reeves
 OUTSIDE NUMBER (909) 555-0144
@@ -91,7 +91,7 @@ DURATION
 1
 TRANSCRIPT PAGE
 3
-REVIEW CUES
+NOTES
 CASE State v. Marcus Reeves
 DEFENDANT Marcus Reeves
 OUTSIDE NUMBER (909) 555-0226
@@ -162,7 +162,7 @@ DURATION
 1
 TRANSCRIPT PAGE
 3
-REVIEW CUES
+NOTES
 CASE State v. Marcus Reeves
 DEFENDANT Marcus Reeves
 OUTSIDE NUMBER (760) 555-0317
@@ -227,7 +227,7 @@ DURATION
 2
 TRANSCRIPT PAGES
 2
-REVIEW CUES
+NOTES
 CASE State v. Marcus Reeves
 DEFENDANT Marcus Reeves
 OUTSIDE NUMBER (951) 555-0419
@@ -305,7 +305,7 @@ DURATION
 1
 TRANSCRIPT PAGE
 2
-REVIEW CUES
+NOTES
 CASE State v. Marcus Reeves
 DEFENDANT Marcus Reeves
 OUTSIDE NUMBER (909) 555-0144
@@ -371,7 +371,7 @@ DURATION
 1
 TRANSCRIPT PAGE
 2
-REVIEW CUES
+NOTES
 CASE State v. Marcus Reeves
 DEFENDANT Marcus Reeves
 OUTSIDE NUMBER (909) 555-0226
@@ -429,7 +429,7 @@ DURATION
 2
 TRANSCRIPT PAGES
 0
-REVIEW CUES
+NOTES
 CASE State v. Marcus Reeves
 DEFENDANT Marcus Reeves
 OUTSIDE NUMBER (760) 555-0317
@@ -448,7 +448,7 @@ instructs the outside party to keep a witness from
 speaking to investigators before counsel calls; the
 hearing was rescheduled to the twenty-second.
 NOTES NONE FLAGGED
-No relevant information found.
+Nothing on this call was flagged for attorney attention.
 CALL OF MAY 1, 2026 · SUMMARY Machine-generated · verify against the source recording PRIVILEGED & CONFIDENTIAL
 ## page 3
 1           AUTOMATED MESSAGE:   This call is from an inmate at
@@ -498,7 +498,7 @@ DURATION
 1
 TRANSCRIPT PAGE
 0
-REVIEW CUES
+NOTES
 CASE State v. Marcus Reeves
 DEFENDANT Marcus Reeves
 OUTSIDE NUMBER (951) 555-0419
@@ -516,7 +516,7 @@ Discussion of retrieving the defendant's car from
 impound; the outside party reports police removed
 items from the trunk before towing.
 NOTES NONE FLAGGED
-No relevant information found.
+Nothing on this call was flagged for attorney attention.
 CALL OF MAY 10, 2026 · SUMMARY Machine-generated · verify against the source recording PRIVILEGED & CONFIDENTIAL
 ## page 3
 1           AUTOMATED MESSAGE:   This call is from an inmate at

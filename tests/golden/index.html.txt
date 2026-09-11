@@ -1564,7 +1564,7 @@
         <div class="cell"><div class="n" id="statCalls">0</div><div class="lbl">Calls</div></div>
         <div class="cell"><div class="n" id="statAudio">0</div><div class="lbl">Audio</div></div>
         <div class="cell"><div class="n" id="statNumbers">0</div><div class="lbl">Numbers</div></div>
-        <div class="cell"><div class="n" id="statCues">0</div><div class="lbl">Review Cues</div></div>
+        <div class="cell"><div class="n" id="statCues">0</div><div class="lbl">Notes</div></div>
       </div>
     </div>
     <div class="tally">
@@ -3511,9 +3511,9 @@
             + '<td class="cite">' + citeParts.join(' · ') + '</td>'
             + '</tr>';
         }).join('');
-        cuesHtml = '<div class="cues"><h4>Review Cues: ' + cues.length + '</h4><table>' + rows + '</table></div>';
+        cuesHtml = '<div class="cues"><h4>Notes: ' + cues.length + '</h4><table>' + rows + '</table></div>';
       } else {
-        cuesHtml = '<div class="cues"><h4>Review Cues</h4><p style="margin:0;font-size:13px;color:var(--ink-3)">None flagged for this call.</p></div>';
+        cuesHtml = '<div class="cues"><h4>Notes</h4><p style="margin:0;font-size:13px;color:var(--ink-3)">None flagged for this call.</p></div>';
       }
 
       // Map cues to their nearest transcript turn for flag markers + jumping.
@@ -3959,7 +3959,7 @@
         item.title = call.filename;
         const dp = fmtDateParts(call.datetime);
         const when = dp ? dp.short + (dp.time ? ' · ' + dp.time : '') : '—';
-        const cueBit = (call.cues && call.cues.length) ? ' · ' + call.cues.length + ' cue' + (call.cues.length === 1 ? '' : 's') : '';
+        const cueBit = (call.cues && call.cues.length) ? ' · ' + call.cues.length + ' note' + (call.cues.length === 1 ? '' : 's') : '';
         item.innerHTML =
           '<div class="l1"><span class="d">' + esc(when) + '</span><span>' + formatDur(call.duration) + '</span></div>' +
           '<div class="l2">' + esc(call.outside || call.filename) + '</div>' +
@@ -4045,9 +4045,9 @@
             + '<span class="n">' + esc(cue.note || cue.quote || '') + '</span>'
             + '</div>'
           ).join('');
-          parts.push('<div class="side-sec"><h4>Review Cues: ' + cues.length + '</h4>' + rows + '</div>');
+          parts.push('<div class="side-sec"><h4>Notes: ' + cues.length + '</h4>' + rows + '</div>');
         } else {
-          parts.push('<div class="side-sec"><h4>Review Cues</h4><span class="side-empty">None flagged.</span></div>');
+          parts.push('<div class="side-sec"><h4>Notes</h4><span class="side-empty">None flagged.</span></div>');
         }
       } else if (call.summary) {
         parts.push('<div class="side-sec"><h4>Summary</h4><p class="raw">' + esc(call.summary) + '</p></div>');
