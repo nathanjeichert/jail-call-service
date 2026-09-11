@@ -46,6 +46,11 @@ ASSEMBLYAI_MODEL = os.getenv("ASSEMBLYAI_MODEL", "universal-3-pro")
 DEFAULT_TRANSCRIPTION_ENGINE = os.getenv("DEFAULT_TRANSCRIPTION_ENGINE", "assemblyai")
 MAX_PARAKEET_CONCURRENT = int(os.getenv("MAX_PARAKEET_CONCURRENT", "2"))
 
+# Case documents (PDF / Word / text files attached to a job) are pasted into the
+# per-call summary prompt and the case-report synthesis prompt as context; this
+# caps the total document text those prompts carry (see backend/case_documents.py).
+MAX_CASE_DOCUMENT_CHARS = int(os.getenv("MAX_CASE_DOCUMENT_CHARS", "120000"))
+
 # Summarization engine: "gemini" (cloud) or "gemma" (local)
 DEFAULT_SUMMARIZATION_ENGINE = os.getenv("DEFAULT_SUMMARIZATION_ENGINE", "gemini")
 MAX_GEMMA_CONCURRENT = 1

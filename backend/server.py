@@ -4,6 +4,8 @@
   POST   /api/upload/audio                    Upload audio files
   POST   /api/upload/xml                      Upload an ICM report (returns a parsed preview)
   POST   /api/xml/preview                     Preview an ICM report already on disk
+  POST   /api/upload/documents                Upload case documents (PDF/.docx/.txt/.md), returns extracted previews
+  POST   /api/documents/preview               Extract case documents already on disk (pasted paths)
   GET    /api/config                          Engine availability, defaults, readiness checks
   POST   /api/jobs                            Create job
   GET    /api/jobs                            List jobs
@@ -40,6 +42,7 @@ from sse_starlette.sse import EventSourceResponse
 from . import config as cfg
 from . import events, job_store, pipeline
 from .audio_converter import FFMPEG_PATH, discover_audio_files
+from .case_documents import DOCUMENT_EXTENSIONS, extract_document_text
 from .icm_parser import parse_icm_report
 from .job_settings import (
     compose_summary_prompt,
@@ -48,7 +51,14 @@ from .job_settings import (
     normalize_optional_name,
     resolve_default_engine,
 )
-from .models import AUDIO_EXTENSIONS, DEFAULT_SPEAKER_ASSIGNMENT, CallStatus, Job, normalize_speaker_assignment
+from .models import (
+    AUDIO_EXTENSIONS,
+    DEFAULT_SPEAKER_ASSIGNMENT,
+    CallStatus,
+    CaseDocument,
+    Job,
+    normalize_speaker_assignment,
+)
 from .summarization import REGISTRY as SUMMARIZATION
 from .transcription import REGISTRY as TRANSCRIPTION
 
@@ -98,6 +108,7 @@ class CreateJobRequest(BaseModel):
     summarization_engine: Optional[str] = None
     auto_message_mode: Optional[str] = None  # "exclude", "label", or None (keep)
     speaker_assignment: Optional[str] = None
+    case_document_paths: Optional[list[str]] = None  # extracted at creation into Job.case_documents
 
 
 class UpdateSummaryRequest(BaseModel):
@@ -106,6 +117,10 @@ class UpdateSummaryRequest(BaseModel):
 
 class PathRequest(BaseModel):
     path: str
+
+
+class PathsRequest(BaseModel):
+    paths: list[str]
 
 
 # ────────────────────────── Helpers ──────────────────────────
@@ -134,6 +149,7 @@ def _job_summary(job: Job) -> dict:
         "defendant_name": job.defendant_name,
         "summary_prompt": job.summary_prompt,
         "speaker_assignment": normalize_speaker_assignment(job.speaker_assignment),
+        "case_documents": [_document_info(d, preview=False) for d in (job.case_documents or [])],
     }
 
 
@@ -184,6 +200,32 @@ def _icm_preview(xml_path: str) -> dict:
         "date_range": {"start": dates[0], "end": dates[-1]} if dates else None,
         "unique_numbers": len({m.outside_number for m in metas if m.outside_number}),
     }
+
+
+DOCUMENT_PREVIEW_CHARS = 200
+
+
+def _document_info(doc: CaseDocument, *, preview: bool = True) -> dict:
+    """What the UI shows for an attached document; the text itself never leaves the server."""
+    info = {"name": doc.name, "pages": doc.pages, "chars": doc.chars}
+    if preview:
+        info["path"] = doc.path
+        info["preview"] = " ".join(doc.text.split())[:DOCUMENT_PREVIEW_CHARS]
+    return info
+
+
+def _extract_documents(paths: list[str]) -> list[CaseDocument]:
+    """Extract each path in order; an unreadable document is a 400 with the extractor's message."""
+    documents: list[CaseDocument] = []
+    for raw in paths:
+        path = (raw or "").strip()
+        if not path:
+            continue
+        try:
+            documents.append(extract_document_text(path))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return documents
 
 
 async def _save_upload(upload: UploadFile, dest_dir: str, fallback_name: str) -> str:
@@ -246,6 +288,29 @@ def preview_xml(req: PathRequest):
     return {"path": os.path.abspath(path), "preview": _icm_preview(path)}
 
 
+@app.post("/api/upload/documents")
+async def upload_documents(files: list[UploadFile] = File(...)):
+    """Accept case documents (PDF / .docx / .txt / .md), save them, and return their extracted previews."""
+    for f in files:
+        if os.path.splitext(f.filename or "")[1].lower() not in DOCUMENT_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported document type: {f.filename}. Save it as PDF or .docx and try again.",
+            )
+    dest_dir = os.path.join(cfg.UPLOADS_DIR, str(uuid.uuid4()))
+    saved_paths: list[str] = []
+    for f in files:
+        ext = os.path.splitext(f.filename or "")[1].lower()
+        saved_paths.append(await _save_upload(f, dest_dir, f"document_{len(saved_paths)}{ext}"))
+    return {"documents": [_document_info(d) for d in _extract_documents(saved_paths)]}
+
+
+@app.post("/api/documents/preview")
+def preview_documents(req: PathsRequest):
+    """Extract case documents already on disk (pasted paths); same shape as the upload."""
+    return {"documents": [_document_info(d) for d in _extract_documents(req.paths)]}
+
+
 def _warn_unready_engines() -> None:
     """Startup log line for each installed engine that still needs a key or binary."""
     for registry in (TRANSCRIPTION, SUMMARIZATION):
@@ -280,6 +345,7 @@ def create_job(req: CreateJobRequest):
     if not req.file_paths and not os.path.isdir(req.input_folder or ""):
         raise HTTPException(status_code=400, detail=f"Input folder not found: {req.input_folder}")
     file_paths = [p.strip() for p in (req.file_paths or []) if p and p.strip()]
+    case_documents = _extract_documents(req.case_document_paths or [])
 
     job = job_store.create_job(
         case_name=(req.case_name or "").strip(),
@@ -295,6 +361,7 @@ def create_job(req: CreateJobRequest):
             normalize_auto_message_mode(req.auto_message_mode) if req.auto_message_mode is not None else "label"
         ),
         speaker_assignment=normalize_speaker_assignment(req.speaker_assignment),
+        case_documents=case_documents or None,
     )
     return _job_summary(job)
 
@@ -344,6 +411,7 @@ def get_job_settings(job_id: str):
         "summarization_engine": job.summarization_engine or "",
         "auto_message_mode": job.auto_message_mode or "",
         "speaker_assignment": normalize_speaker_assignment(job.speaker_assignment or DEFAULT_SPEAKER_ASSIGNMENT),
+        "case_document_paths": [d.path for d in (job.case_documents or [])],
     }
 
 

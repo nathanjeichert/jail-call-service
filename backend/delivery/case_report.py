@@ -25,7 +25,7 @@ from urllib.parse import quote
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from .. import config as cfg
+from ..case_documents import build_case_documents_block
 from ..formatting import (
     format_call_datetime_short,
     format_date_short,
@@ -35,7 +35,8 @@ from ..formatting import (
     shorten,
     shorten_middle,
 )
-from ..models import CallResult, Job, call_stem
+from ..job_settings import extract_case_context
+from ..models import CallResult, CaseDocument, Job, call_stem
 from ..summarization.base import CaseReportInputs, SummarizationEngine
 from ..summarization.schemas import CaseReportResponse
 from .call_view import CallView
@@ -273,19 +274,25 @@ def _format_numbers_for_synthesis(identity_inputs: Dict[str, List[str]]) -> str:
 
 def _build_case_context(case_name: str,
                         defendant_name: Optional[str],
-                        summary_prompt: Optional[str]) -> str:
+                        case_context: Optional[str],
+                        documents: Optional[List[CaseDocument]]) -> str:
+    """The case block of the synthesis prompt.
+
+    ``case_context`` is the operator's typed text only (``extract_case_context``),
+    never the per-call summary prompt; the attached documents follow it as the
+    same block the per-call prompt carries.
+    """
     lines = []
     if case_name:
         lines.append(f"Case Name: {case_name}")
     if defendant_name:
         lines.append(f"Defendant: {defendant_name}")
-    if summary_prompt and summary_prompt.strip() and summary_prompt.strip() != cfg.DEFAULT_SUMMARY_PROMPT.strip():
-        lines.append(
-            "\nThe attorney provided this custom analysis prompt for per-call review.\n"
-            "Use it to understand what the attorney considers relevant, but do not\n"
-            "treat the prompt's instructions as facts about the case:\n"
-            "---\n" + summary_prompt.strip() + "\n---"
-        )
+    context = (case_context or "").strip()
+    if context:
+        lines.append("\nThe legal team provided this case context:\n" + context)
+    block = build_case_documents_block(documents)
+    if block:
+        lines.append("\n" + block)
     return "\n".join(lines) or "(no case context provided)"
 
 
@@ -740,7 +747,9 @@ def generate_case_report_pdf(
     if synthesis_inputs or identity_inputs:
         calls_by_id = {v.index: v for v in synthesis_inputs}
         response = _run_synthesis(engine, CaseReportInputs(
-            case_context=_build_case_context(case_name, defendant_name, job.summary_prompt),
+            case_context=_build_case_context(
+                case_name, defendant_name, extract_case_context(job.summary_prompt), job.case_documents,
+            ),
             calls_block=_format_calls_for_synthesis(synthesis_inputs),
             numbers_block=_format_numbers_for_synthesis(identity_inputs),
             min_findings=MIN_TOP_FINDINGS,

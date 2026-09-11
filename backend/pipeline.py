@@ -32,7 +32,12 @@ from .call_dates import filename_date_fields
 from .events import cleanup_event_queue, emit
 from .formatting import format_duration
 from .icm_parser import find_icm_report, parse_icm_report
-from .job_settings import RuntimeSelection, resolve_runtime_selection, validate_runtime_selection
+from .job_settings import (
+    RuntimeSelection,
+    effective_summary_prompt,
+    resolve_runtime_selection,
+    validate_runtime_selection,
+)
 from .models import (
     DEFAULT_SPEAKER_ASSIGNMENT,
     OUTSIDE_PARTY_LABEL,
@@ -444,10 +449,11 @@ async def _run_pipeline(job: Job) -> None:
         lambda c: _generate_pdf_one(job_id, c, job, transcripts_dir, transcripts_no_summary_dir, pdf_executor),
         _pdf_fail, asyncio.Queue(),
     )
+    summary_prompt = effective_summary_prompt(job)  # stored prompt + case documents block
     summarize = _Stage(
         "summarizing", JobStage.SUMMARIZING, runtime.summarization_workers(total_calls),
         lambda c: _summarize_one(
-            job_id, c, job.summary_prompt, job.skip_summary, summarization_engine,
+            job_id, c, summary_prompt, job.skip_summary, summarization_engine,
             runtime.effective_auto_message_mode,
         ),
         _summary_soft_fail, asyncio.Queue(), downstream=pdf,

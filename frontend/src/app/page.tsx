@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { ToggleGroup } from '@/components/ToggleGroup';
 import {
   api, errorMessage, extractCaseContext, isRunning,
-  type AppConfig, type CreateJobBody, type EngineInfo, type JobSummary, type XmlPreview,
+  type AppConfig, type CreateJobBody, type DocumentInfo, type EngineInfo, type JobSummary, type XmlPreview,
 } from '@/lib/api';
 
 const AUDIO_EXTS = ['.wav', '.mp3', '.m4a'];
@@ -59,6 +59,16 @@ const isAudioPath = (val: string) => AUDIO_EXTS.some(ext => val.toLowerCase().en
 const splitPaths = (val: string) => val.split(/[\n,]+/).map(p => p.trim()).filter(Boolean);
 const countAudioPaths = (val: string) => splitPaths(val).filter(isAudioPath).length;
 
+const DOCUMENT_ACCEPT = '.pdf,.docx,.txt,.md';
+
+/** `complaint.pdf · 4 pages · 6.2k chars` (pages omitted for text and Word files). */
+function describeDocument(d: DocumentInfo): string {
+  const parts = [d.name];
+  if (d.pages != null) parts.push(`${d.pages} page${d.pages !== 1 ? 's' : ''}`);
+  parts.push(`${d.chars >= 1000 ? `${(d.chars / 1000).toFixed(1)}k` : d.chars} chars`);
+  return parts.join(' \u00b7 ');
+}
+
 function titleCaseName(name: string): string {
   return name.toLowerCase().replace(/(^|[\s\-'])([a-z])/g, (_m, sep, ch) => sep + ch.toUpperCase());
 }
@@ -85,6 +95,7 @@ export default function JobsPage() {
   const [error, setError] = useState('');
   const [fileCount, setFileCount] = useState<number | null>(null);
   const [xmlPreview, setXmlPreview] = useState<XmlPreview | null>(null);
+  const [attachedDocs, setAttachedDocs] = useState<DocumentInfo[]>([]);
 
   const [selectedEngine, setSelectedEngine] = useState('');
   const [selectedSumEngine, setSelectedSumEngine] = useState('');
@@ -101,6 +112,8 @@ export default function JobsPage() {
   const skipSummaryRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const xmlInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+  const docPathRef = useRef<HTMLInputElement>(null);
 
   const loadJobs = async () => {
     try {
@@ -137,6 +150,7 @@ export default function JobsPage() {
     formRef.current?.reset();
     setFileCount(null);
     setXmlPreview(null);
+    setAttachedDocs([]);
     setSelectedEngine(config?.default_transcription_engine || 'assemblyai');
     setSelectedSumEngine(config?.default_summarization_engine || 'gemini');
     setAutoMessageMode(DEFAULT_AUTO_MESSAGE_MODE);
@@ -162,6 +176,7 @@ export default function JobsPage() {
       summarization_engine: selectedSumEngine || undefined,
       auto_message_mode: autoMessageMode,
       speaker_assignment: speakerAssignment,
+      case_document_paths: attachedDocs.length ? attachedDocs.map(d => d.path) : undefined,
     };
 
     if (!body.input_folder && !body.file_paths?.length) {
@@ -221,6 +236,12 @@ export default function JobsPage() {
       if (s.summarization_engine) setSelectedSumEngine(s.summarization_engine);
       setAutoMessageMode(s.auto_message_mode || DEFAULT_AUTO_MESSAGE_MODE);
       setSpeakerAssignment(s.speaker_assignment || DEFAULT_SPEAKER_ASSIGNMENT);
+      setAttachedDocs([]);
+      if (s.case_document_paths?.length) {
+        try {
+          setAttachedDocs((await api.previewDocuments(s.case_document_paths)).documents);
+        } catch { /* a moved or deleted document just drops off the re-run */ }
+      }
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch { /* settings unavailable: leave the form as is */ }
   };
@@ -278,6 +299,37 @@ export default function JobsPage() {
     try {
       applyXmlPreview((await api.previewXml(path)).preview);
     } catch { /* an unreadable path just shows no preview */ }
+  };
+
+  // Case documents are converted to text on the server; the form keeps only
+  // what the server reported (name, path, size) and submits the paths.
+  const addDocuments = (docs: DocumentInfo[]) => {
+    setAttachedDocs(prev => {
+      const known = new Set(prev.map(d => d.path));
+      return [...prev, ...docs.filter(d => !known.has(d.path))];
+    });
+  };
+
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await withUploading(async () => {
+      addDocuments((await api.uploadDocuments(files)).documents);
+    });
+    if (docInputRef.current) docInputRef.current.value = '';
+  };
+
+  const handleAddDocumentPath = async () => {
+    const path = docPathRef.current?.value.trim();
+    if (!path) { setError('Paste an absolute document path first, then click Add.'); return; }
+    await withUploading(async () => {
+      addDocuments((await api.previewDocuments([path])).documents);
+      if (docPathRef.current) docPathRef.current.value = '';
+    });
+  };
+
+  const removeDocument = (path: string) => {
+    setAttachedDocs(prev => prev.filter(d => d.path !== path));
   };
 
   const handleScanFolder = async () => {
@@ -438,7 +490,7 @@ export default function JobsPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Case Context <span className="text-slate-400 font-normal">(optional — appended to the default prompt to guide the AI)</span>
+              Case Context <span className="text-slate-400 font-normal">(optional: appended to the default prompt to guide the AI)</span>
             </label>
             <textarea
               ref={promptRef}
@@ -446,6 +498,46 @@ export default function JobsPage() {
               placeholder="E.g. Defendant is charged with first-degree murder. The alleged victim is John Smith. Focus on any references to the night of March 4th, contact with witnesses, or discussion of physical evidence."
               className={`${inputClass} resize-none`}
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Case Documents <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <div className="flex gap-2 items-center">
+              <input
+                ref={docPathRef}
+                type="text"
+                placeholder="Upload documents or paste an absolute path (e.g. /Users/you/case/complaint.pdf)"
+                className={`flex-1 ${inputClass} font-mono`}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddDocumentPath(); } }}
+              />
+              <button type="button" onClick={handleAddDocumentPath} disabled={uploading} className={`${secondaryButtonClass} shrink-0`}>
+                Add
+              </button>
+              <input ref={docInputRef} type="file" multiple accept={DOCUMENT_ACCEPT} onChange={handleDocumentUpload} className="hidden" />
+              <button type="button" onClick={() => docInputRef.current?.click()} disabled={uploading} className={`${secondaryButtonClass} shrink-0 whitespace-nowrap`}>
+                {uploading ? 'Uploading...' : 'Upload Documents...'}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Complaint, police report, or other case files. They are converted to text and given to the AI as case context when it ranks and summarizes calls.
+            </p>
+            {attachedDocs.length > 0 && (
+              <ul className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-600">
+                {attachedDocs.map(d => (
+                  <li key={d.path} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                    <span className="truncate" title={d.preview || d.path}>{describeDocument(d)}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeDocument(d.path)}
+                      className="shrink-0 text-slate-400 hover:text-red-600 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-2">
             <input type="checkbox" id="skipSummary" ref={skipSummaryRef} className="rounded border-slate-300 text-slate-800 focus:ring-slate-400" />
@@ -553,6 +645,12 @@ export default function JobsPage() {
                       <div className="mt-2 text-xs text-slate-500 bg-slate-50 rounded px-2.5 py-1.5 border border-slate-100">
                         <span className="font-medium text-slate-600">Case context:</span>{' '}
                         {caseContext.slice(0, 150)}{caseContext.length > 150 ? '...' : ''}
+                      </div>
+                    )}
+                    {(job.case_documents?.length ?? 0) > 0 && (
+                      <div className="mt-2 text-xs text-slate-500 bg-slate-50 rounded px-2.5 py-1.5 border border-slate-100">
+                        <span className="font-medium text-slate-600">Documents:</span>{' '}
+                        {job.case_documents!.map(d => d.name).join(', ')}
                       </div>
                     )}
                     {isRunning(job.stage) && (

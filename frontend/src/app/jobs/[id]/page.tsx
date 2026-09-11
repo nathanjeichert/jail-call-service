@@ -205,6 +205,7 @@ export default function JobDetailPage() {
   const jobTitle = job.case_name || 'Jail Calls';
   const inmateSpeakerSide = job.speaker_assignment === 'right_inmate' ? 'Right' : 'Left';
   const caseContext = extractCaseContext(job.summary_prompt);
+  const caseDocuments = job.case_documents ?? [];
   const elapsed = job.stage === 'created' ? '' : formatElapsed(job.started_at, job.completed_at, now);
 
   const actionButton = (action: JobAction, label: string, busyLabel: string, className: string, reconnect = true) => (
@@ -243,6 +244,12 @@ export default function JobDetailPage() {
               <div className="mt-3 text-sm text-slate-600 bg-slate-50 rounded-lg px-4 py-3 border border-slate-200">
                 <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Case Context</div>
                 <div className="whitespace-pre-wrap">{caseContext}</div>
+              </div>
+            )}
+            {caseDocuments.length > 0 && (
+              <div className="mt-3 text-sm text-slate-600 bg-slate-50 rounded-lg px-4 py-3 border border-slate-200">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Case Documents</div>
+                <div>{caseDocuments.map(d => d.name).join(', ')}</div>
               </div>
             )}
           </div>

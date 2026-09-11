@@ -66,6 +66,7 @@ class DBJob(Base):
     summarization_engine = Column(String, nullable=True)
     auto_message_mode = Column(String, nullable=True)
     speaker_assignment = Column(String, nullable=True)
+    case_documents = Column(JSON, nullable=True)  # List[CaseDocument] as dicts
 
     calls = relationship(
         "DBCall", back_populates="job", cascade="all, delete-orphan", order_by="DBCall.index",

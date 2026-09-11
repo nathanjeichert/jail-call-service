@@ -109,6 +109,23 @@ class CallResult(BaseModel):
     thinking_tokens: Optional[int] = None
 
 
+class CaseDocument(BaseModel):
+    """One operator-attached case file (complaint, police report, ...) converted to text.
+
+    Built by ``case_documents.extract_document_text``; ``pages`` is set for
+    PDFs only. The text is prompt context, never delivery content.
+    """
+
+    name: str
+    path: str
+    text: str
+    pages: Optional[int] = None
+
+    @property
+    def chars(self) -> int:
+        return len(self.text)
+
+
 class JobStage(str, Enum):
     CREATED = "created"
     CONVERTING = "converting"
@@ -143,3 +160,4 @@ class Job(BaseModel):
     summarization_engine: Optional[str] = None
     auto_message_mode: Optional[str] = None  # "exclude", "label", or None (keep)
     speaker_assignment: str = DEFAULT_SPEAKER_ASSIGNMENT
+    case_documents: Optional[List[CaseDocument]] = None  # see case_documents.py; not part of summary_prompt

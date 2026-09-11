@@ -29,6 +29,16 @@ export type JobSummary = {
   defendant_name?: string | null;
   summary_prompt?: string | null;
   speaker_assignment?: string;
+  case_documents?: { name: string; pages?: number | null; chars: number }[];
+};
+
+/** One attached case document as the server describes it after extraction (never the text itself). */
+export type DocumentInfo = {
+  name: string;
+  path: string;
+  pages?: number | null;
+  chars: number;
+  preview?: string;
 };
 
 export type CallSummary = {
@@ -61,6 +71,7 @@ export type JobSettings = {
   summarization_engine: string;
   auto_message_mode: string;
   speaker_assignment: string;
+  case_document_paths: string[];
 };
 
 export type CreateJobBody = {
@@ -75,6 +86,7 @@ export type CreateJobBody = {
   summarization_engine?: string;
   auto_message_mode: string;
   speaker_assignment: string;
+  case_document_paths?: string[];
 };
 
 /** One engine as the backend registry describes it; the UI names no engines itself. */
@@ -203,6 +215,8 @@ export const api = {
   uploadAudio: (files: FileList) => request<{ paths: string[] }>('/upload/audio', { method: 'POST', body: form(files, 'files') }),
   uploadXml: (file: File) => request<{ path: string; preview: XmlPreview }>('/upload/xml', { method: 'POST', body: form([file], 'file') }),
   previewXml: (path: string) => request<{ path: string; preview: XmlPreview }>('/xml/preview', { method: 'POST', json: { path } }),
+  uploadDocuments: (files: FileList) => request<{ documents: DocumentInfo[] }>('/upload/documents', { method: 'POST', body: form(files, 'files') }),
+  previewDocuments: (paths: string[]) => request<{ documents: DocumentInfo[] }>('/documents/preview', { method: 'POST', json: { paths } }),
 
   jobs: {
     list: () => request<JobSummary[]>('/jobs'),

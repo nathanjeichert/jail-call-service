@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from . import config as cfg
+from .case_documents import build_case_documents_block
 from .engine_registry import EngineRegistry, EngineSpec
+from .models import Job
 
 CASE_CONTEXT_MARKER = "\n\nCASE CONTEXT:\n"
 AUTO_MESSAGE_MODES = frozenset({"exclude", "label"})
@@ -52,6 +54,19 @@ def extract_case_context(summary_prompt: Optional[str]) -> str:
     if CASE_CONTEXT_MARKER not in prompt:
         return ""
     return prompt.split(CASE_CONTEXT_MARKER, 1)[1].strip()
+
+
+def effective_summary_prompt(job: Job) -> str:
+    """The per-call prompt the summarizer receives.
+
+    ``job.summary_prompt`` (the default prompt plus the operator's typed case
+    context) followed by the case-documents block. The document text is never
+    written into ``summary_prompt``, so re-runs and the job list keep showing
+    only what the operator typed.
+    """
+    prompt = job.summary_prompt or cfg.DEFAULT_SUMMARY_PROMPT
+    block = build_case_documents_block(job.case_documents)
+    return f"{prompt}\n\n{block}" if block else prompt
 
 
 def resolve_default_engine(default_engine: str, available_engines: Iterable[str]) -> str:

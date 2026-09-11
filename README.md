@@ -45,7 +45,9 @@ summarization engine; the rest of the pipeline is engine-agnostic.
 
 1. Open http://localhost:3000
 2. New job: case name, defendant, engines, speaker side, then upload or paste
-   the audio paths (and the `ICM_report.xml` if you have it)
+   the audio paths (and the `ICM_report.xml` if you have it). Optionally type
+   case context and attach case documents (the complaint, a police report, as
+   PDF / Word / text); their text guides how the AI ranks and summarizes calls
 3. The pipeline starts automatically; pause/resume/retry from the job page
 4. When done, **Review Transcripts** to check or edit summaries
 5. **Approve All & Package**, then **Download Zip**

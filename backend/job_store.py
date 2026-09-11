@@ -69,8 +69,8 @@ def _remove_job_dir(job_id: str) -> None:
 def _db_value(name: str, value):
     if isinstance(value, Enum):
         return value.value
-    if name == "turns" and value is not None:
-        return [t.model_dump() if hasattr(t, "model_dump") else t for t in value]
+    if isinstance(value, list):  # turns, case_documents: pydantic models become JSON-able dicts
+        return [item.model_dump() if hasattr(item, "model_dump") else item for item in value]
     if name == "speaker_assignment":
         return normalize_speaker_assignment(value)
     return value
@@ -110,6 +110,7 @@ def create_job(**fields) -> Job:
     job_id = str(uuid.uuid4())
     job_dir(job_id)
     fields["speaker_assignment"] = normalize_speaker_assignment(fields.get("speaker_assignment"))
+    fields = {name: _db_value(name, value) for name, value in fields.items()}
     with SessionLocal() as db:
         db_job = DBJob(
             id=job_id,
