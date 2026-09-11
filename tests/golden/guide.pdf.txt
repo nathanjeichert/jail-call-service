@@ -43,10 +43,10 @@ INDEX.HTML · INDEX VIEWUsing the Call Index
 01 Search every word spoken
 Search covers every transcript, summary, cue, and
 number; quote a phrase to match it in order. Smart
-search ranks calls by match and also finds passages
-that say it in other words, each tagged Exact words, 2
-of 3 words, or Similar meaning. Exact words only
-lists calls with every word typed.
+search ranks calls by match and also finds related
+words (cop finds police), each passage tagged Exact
+words, 2 of 3 words, or Related words. Exact words
+only lists calls with every word typed.
 02 Filter and sort
 Narrow by date, number, outcome, length, relevance,
 or speaker (the Defendant / Outside party chips

@@ -1,14 +1,12 @@
-"""Embedding models for the semantic index.
+"""Embedding models behind the related-words table.
 
-One :class:`EmbeddingSpec` per model the page can run: the ONNX file and
-vocabulary to ship, the dimensions, the token limit, and the prefixes the
-model was trained with. The operator side embeds passages with the same
-quantized ONNX file the page ships (through ``onnxruntime``), so query and
-passage vectors come from identical weights.
+One :class:`EmbeddingSpec` per model: the ONNX file and vocabulary, the
+dimensions, the token limit, and the prefixes the model was trained with.
+The model runs only at delivery time (:mod:`related` embeds single words
+with it); nothing ships to the page.
 
-:class:`WordPiece` is the BERT tokenizer those models need, written to
-mirror the port in ``templates/index_search.js``; the parity test compares
-the two on the synthetic corpus.
+:class:`WordPiece` is the BERT tokenizer those models need; :class:`Embedder`
+runs the quantized ONNX file through ``onnxruntime``.
 """
 
 from __future__ import annotations
@@ -190,14 +188,3 @@ class Embedder:
 
     def encode_query(self, text: str) -> np.ndarray:
         return self.encode([text], prefix=self.spec.query_prefix)[0]
-
-
-def quantize_int8(vectors: np.ndarray):
-    """Per-vector absmax int8 quantization: ``(int8 matrix, float32 scales)``.
-
-    Lossless for ranking in the benchmark; the page multiplies back by the
-    scale when it scores.
-    """
-    scales = np.maximum(np.abs(vectors).max(axis=1), 1e-9) / 127.0
-    q = np.clip(np.round(vectors / scales[:, None]), -127, 127).astype(np.int8)
-    return q, scales.astype(np.float32)

@@ -1,4 +1,5 @@
-"""The search package on its own: tokenizer, stemmer, passages, BM25 index.
+"""The search package on its own: tokenizer, stemmer, passages, BM25 index,
+and the related-words table (with a stand-in embedder, so no model is needed).
 
 The JavaScript port is checked against these same functions in
 ``test_search_browser.py``; this file pins the Python side.
@@ -15,7 +16,7 @@ import numpy as np
 
 from backend.search import lexical
 from backend.search.build import build_passage_set, write_search_sidecars
-from backend.search.embeddings import WordPiece, quantize_int8
+from backend.search.embeddings import WordPiece
 from backend.search.lexical import LexicalIndex
 from backend.search.passages import (
     KIND_SUMMARY,
@@ -25,6 +26,7 @@ from backend.search.passages import (
     build_passages,
     summary_text,
 )
+from backend.search.related import build_related, corpus_words, lexicon_words
 from backend.search.tokenize import index_terms, stem, stem_tokens, tokenize
 
 # Porter's published examples (Porter, 1980), a fixed regression list.
@@ -151,7 +153,7 @@ class TestLexicalIndex:
         text = (tmp_path / "app-assets" / "index.js").read_text(encoding="utf-8")
         assert text.startswith("window.JCS_SEARCH = {") and text.rstrip().endswith("};")
         fields = json.loads(text[len("window.JCS_SEARCH = "):].rstrip().rstrip(";"))
-        assert fields["semantic"] is False and fields["n"] == len(index.passages)
+        assert "related" not in fields and fields["n"] == len(index.passages)
 
 
 class TestEmbeddings:
@@ -162,11 +164,99 @@ class TestEmbeddings:
         assert tok.encode("unknown zzz", 32) == [2, 11, 12, 13, 1, 3]
         assert tok.encode("did he talk about the gun", 4) == [2, 4, 5, 3]  # truncation keeps [SEP]
 
-    def test_int8_quantization_preserves_ranking(self):
-        rng = np.random.default_rng(0)
-        v = rng.normal(size=(50, 16)).astype(np.float32)
-        v /= np.linalg.norm(v, axis=1, keepdims=True)
-        q, s = quantize_int8(v)
-        back = q.astype(np.float32) * s[:, None]
-        assert q.dtype == np.int8 and s.dtype == np.float32
-        assert np.allclose((back * v).sum(axis=1), 1.0, atol=0.01)
+
+class FakeEmbedder:
+    """Unit vectors from a fixed table: words in the same group are close,
+    unrelated words orthogonal. Stands in for the ONNX model."""
+
+    GROUPS = {"cop": 0, "cops": 0, "police": 0, "detective": 0, "lawyer": 1, "attorney": 1, "bike": 2}
+    # cosine between two words of one group is the product of these weights
+    CLOSENESS = {"cop": 1.0, "cops": 1.0, "police": 0.7, "detective": 0.65, "lawyer": 1.0, "attorney": 0.9, "bike": 1.0}
+    DIMS = 64
+    _axis: dict = {}   # word -> its private axis, stable across calls
+
+    def encode(self, words, **_):
+        out = np.zeros((len(words), self.DIMS), dtype=np.float32)
+        for i, w in enumerate(words):
+            axis = self._axis.setdefault(w, 3 + len(self._axis))
+            g = self.GROUPS.get(w)
+            if g is None:
+                out[i, axis] = 1.0    # unrelated to everything
+                continue
+            c = self.CLOSENESS[w]
+            out[i, g] = c
+            out[i, axis] = np.sqrt(1 - c * c)
+        return out
+
+
+class TestRelatedWords:
+    def _index(self):
+        payloads = [
+            {"lines": _lines(("INMATE", "Did the cops come by"), ("OUTSIDE PARTY", "A detective called me")), "brief": ""},
+            {"lines": _lines(("INMATE", "The police have the car"), ("OUTSIDE PARTY", "Talk to the lawyer first")), "brief": ""},
+            {"lines": _lines(("INMATE", "She loved the bike"),), "brief": ""},
+        ]
+        return LexicalIndex.build(build_passage_set(payloads))
+
+    def test_corpus_and_lexicon_words(self, tmp_path):
+        index = self._index()
+        words = corpus_words(index)
+        assert words["cops"] == "cop" and words["police"] == "polic" and "the" not in words and "did" not in words
+        vocab = tmp_path / "vocab.txt"
+        vocab.write_text("[PAD]\n[CLS]\n##ing\nthe\ncop\nattorney\nab\n123\ncop\n", encoding="utf-8")
+        assert lexicon_words(vocab) == ["cop", "attorney"]
+
+    def test_table_keys_are_stems_and_expansions_are_corpus_words(self):
+        index = self._index()
+        lexicon = (["cop", "attorney", "unrelated"], FakeEmbedder().encode(["cop", "attorney", "unrelated"]))
+        table = build_related(index, FakeEmbedder(), lexicon, minimum=0.6, limit=6)
+        vocab = index.vocab
+        # "cops" (in the corpus) and "cop" (lexicon only) share the stem "cop"
+        assert [vocab[vi] for vi, _ in table["cop"]] == ["polic", "detect"]
+        assert [cos for _, cos in table["cop"]] == [70, 65]
+        # a lexicon-only word finds its corpus neighbour; unrelated words have no entry
+        assert [vocab[vi] for vi, _ in table["attornei"]] == ["lawyer"]
+        assert "unrel" not in table and "bike" not in table
+        # a word never reaches its own stem
+        assert all(vocab[vi] != key for key, pairs in table.items() for vi, _ in pairs)
+        # the cap keeps the strongest
+        assert [vocab[vi] for vi, _ in build_related(index, FakeEmbedder(), lexicon, minimum=0.6, limit=1)["cop"]] == ["polic"]
+
+    def test_reference_scorer_expands_in_smart_mode_only(self):
+        index = self._index()
+        lexicon = (["cop", "attorney"], FakeEmbedder().encode(["cop", "attorney"]))
+        table = build_related(index, FakeEmbedder(), lexicon, minimum=0.6)
+        by_call = lambda hits: {index.passages[pid].call: s for pid, s in hits.items()}  # noqa: E731
+        plain = by_call(index.score("cop"))
+        assert set(plain) == {0} and plain[0]["matched"] == {"cop"} and plain[0]["related"] == set()
+        smart = by_call(index.score("cop", related=table))
+        assert set(smart) == {0, 1}
+        assert smart[0]["matched"] == {"cop"} and smart[0]["related"] == set()   # holds "cops" itself
+        assert smart[1]["matched"] == set() and smart[1]["related"] == {"cop"}   # only "police"
+        assert smart[1]["score"] < smart[0]["score"]
+        # a query word the corpus never says still finds its neighbour
+        assert set(by_call(index.score("attorney", related=table))) == {1}
+        assert index.score("attorney") == {}
+        # exact mode and quoted phrases never expand
+        assert index.score("attorney", exact=True, related=table) == {}
+        assert index.score('"the attorney first"', related=table) == {}
+
+    def test_write_sidecars_with_the_table(self, tmp_path: Path, monkeypatch):
+        from backend.search import build as build_mod
+
+        class Assets:
+            spec = type("Spec", (), {"id": "fake"})()
+            model_onnx = tmp_path / "model.onnx"
+            model_vocab = tmp_path / "vocab.txt"
+            lexicon_cache = tmp_path / "lexicon.npz"
+
+        Assets.model_vocab.write_text("cop\nattorney\n", encoding="utf-8")
+        monkeypatch.setattr(build_mod, "Embedder", lambda *a, **k: FakeEmbedder())
+        write_search_sidecars(_payloads() + [{"lines": _lines(("INMATE", "the cops and the police")), "brief": ""}],
+                              tmp_path, assets=Assets())
+        text = (tmp_path / "app-assets" / "index.js").read_text(encoding="utf-8")
+        fields = json.loads(text[len("window.JCS_SEARCH = "):].rstrip().rstrip(";"))
+        vocab = fields["vocab"].split("\n")
+        assert [vocab[vi] for vi, _ in fields["related"]["cop"]] == ["polic"]
+        assert [vocab[vi] for vi, _ in fields["related"]["attornei"]] == ["lawyer"]
+        assert Assets.lexicon_cache.is_file()   # the lexicon vectors are cached for the next delivery

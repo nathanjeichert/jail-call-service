@@ -606,7 +606,7 @@ async def _stage_generate_delivery_assets(
     output_dir: str,
     summarization_engine: Optional[SummarizationEngine] = None,
     gen_date: Optional[str] = None,
-    search_semantic: bool = True,
+    search_related: bool = True,
 ) -> None:
     """Write index.html, guide.pdf, case-report.pdf, and the app-assets/ indexes.
 
@@ -615,9 +615,9 @@ async def _stage_generate_delivery_assets(
     own semaphore, so wall time is close to the slowest single asset. A
     failed asset is reported as a warning and does not fail the job.
     ``gen_date`` overrides the "Generated" stamp (tests pin it for the
-    golden package); production leaves it as today. ``search_semantic``
-    adds the meaning-search layer (embedding model + passage vectors) to
-    ``app-assets/``; the keyword index always ships.
+    golden package); production leaves it as today. ``search_related``
+    adds the related-words table (built with the embedding model) to the
+    search index; the keyword index always ships.
     """
     from .delivery.call_view import build_call_views
     from .delivery.case_report import generate_case_report_pdf
@@ -646,7 +646,7 @@ async def _stage_generate_delivery_assets(
             "case-report.pdf",
             generate_case_report_pdf(job=job, views=views, engine=summarization_engine, gen_date=gen_date),
         ),
-        "app-assets/": lambda: generate_search_index(views, output_dir, semantic=search_semantic),
+        "app-assets/": lambda: generate_search_index(views, output_dir, related=search_related),
     }
 
     failures: List[str] = []

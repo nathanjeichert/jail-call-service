@@ -22,8 +22,8 @@ JOBS_DIR = os.path.join(_REPO_ROOT, "jobs")
 UPLOADS_DIR = os.path.join(_REPO_ROOT, "uploads")
 os.makedirs(JOBS_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
-# ONNX Runtime Web and the embedding model the delivery page ships for meaning
-# search; downloaded once by backend/search/assets.py, outside the repo.
+# The embedding model the search index's related-words table is built with;
+# downloaded once by backend/search/assets.py, outside the repo.
 SEARCH_ASSETS_DIR = os.path.expanduser(
     os.getenv("SEARCH_ASSETS_DIR", "~/Library/Application Support/JailCallService/search")
 )

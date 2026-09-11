@@ -1,52 +1,32 @@
-"""Runtime files the page ships for meaning search, fetched once and pinned.
+"""The embedding model the related-words table is built with, fetched once and pinned.
 
-ONNX Runtime Web (the wasm engine and its loader) comes from the npm
-registry tarball; the embedding model and vocabulary come from Hugging Face.
-Everything lands in :data:`backend.config.SEARCH_ASSETS_DIR`, verified by
-SHA-256, the way the local transcription models live outside the repo.
-Nothing here is imported at server start; the delivery stage calls
-:func:`ensure_search_assets` and treats a failure as "no semantic layer".
+The model and its vocabulary come from Hugging Face into
+:data:`backend.config.SEARCH_ASSETS_DIR`, verified by SHA-256, the way the
+local transcription models live outside the repo. Nothing ships to the
+delivery: the model runs only at build time (:mod:`related`), and the
+lexicon vectors it produces are cached next to it. Nothing here is imported
+at server start; the delivery stage calls :func:`ensure_search_assets` and
+treats a failure as "keyword search only".
 """
 
 from __future__ import annotations
 
 import hashlib
-import io
 import logging
-import tarfile
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 from .. import config as cfg
 from .embeddings import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS, EmbeddingSpec, RemoteFile
 
 logger = logging.getLogger(__name__)
 
-ORT_VERSION = "1.29.0"
-ORT_TARBALL = RemoteFile(
-    url=f"https://registry.npmjs.org/onnxruntime-web/-/onnxruntime-web-{ORT_VERSION}.tgz",
-    sha256="7a934b7811c3b050ecfb7619722e2b4de771ce6da20520e17a2018a440316ef3",
-    name=f"onnxruntime-web-{ORT_VERSION}.tgz",
-)
-# The three dist files the page needs: the IIFE API, the Emscripten glue
-# module, and the SIMD wasm (single-threaded when SharedArrayBuffer is absent).
-ORT_API, ORT_GLUE, ORT_WASM = ORT_DIST_FILES = ("ort.wasm.min.js", "ort-wasm-simd-threaded.mjs", "ort-wasm-simd-threaded.wasm")
-
 
 @dataclass(frozen=True)
 class SearchAssets:
     directory: Path
     spec: EmbeddingSpec
-
-    @property
-    def ort_dir(self) -> Path:
-        return self.directory / f"ort-{ORT_VERSION}"
-
-    @property
-    def ort_files(self) -> List[Path]:
-        return [self.ort_dir / name for name in ORT_DIST_FILES]
 
     @property
     def model_onnx(self) -> Path:
@@ -57,12 +37,12 @@ class SearchAssets:
         return self.directory / self.spec.vocab.name
 
     @property
-    def sidecar_dir(self) -> Path:
-        """Where the delivery-independent sidecars (model, runtime) are rendered once."""
-        return self.directory / "sidecars"
+    def lexicon_cache(self) -> Path:
+        """Vectors of the model's whole-word vocabulary, computed once per model."""
+        return self.directory / f"{self.spec.id}.lexicon.npz"
 
     def present(self) -> bool:
-        return all(p.is_file() for p in self.ort_files + [self.model_onnx, self.model_vocab])
+        return self.model_onnx.is_file() and self.model_vocab.is_file()
 
 
 def search_assets() -> SearchAssets:
@@ -90,23 +70,9 @@ def _fetch_file(remote: RemoteFile, dest: Path) -> None:
     dest.write_bytes(_download(remote))
 
 
-def _fetch_ort(assets: SearchAssets) -> None:
-    if all(p.is_file() for p in assets.ort_files):
-        return
-    data = _download(ORT_TARBALL)
-    assets.ort_dir.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
-        for name in ORT_DIST_FILES:
-            extracted = tar.extractfile(tar.getmember(f"package/dist/{name}"))
-            if extracted is None:
-                raise RuntimeError(f"{name} missing from the onnxruntime-web tarball")
-            (assets.ort_dir / name).write_bytes(extracted.read())
-
-
 def ensure_search_assets() -> SearchAssets:
     """Return the assets, downloading whatever is missing or fails its hash."""
     assets = search_assets()
-    _fetch_ort(assets)
     _fetch_file(assets.spec.onnx, assets.model_onnx)
     _fetch_file(assets.spec.vocab, assets.model_vocab)
     return assets

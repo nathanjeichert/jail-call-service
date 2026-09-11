@@ -25,16 +25,16 @@ jobs:
       - name: Install headless Chromium for the PDF tests
         run: python -m playwright install --with-deps chromium
 
-      # ONNX Runtime Web + the embedding model the delivery page ships for
-      # meaning search (pinned by hash in backend/search); the semantic
-      # browser tests skip without them.
-      - name: Cache search runtime assets
+      # The embedding model the search index's related-words table is built
+      # with (pinned by hash in backend/search); the related-words browser
+      # tests skip without it.
+      - name: Cache the search embedding model
         uses: actions/cache@v4
         with:
           path: ~/Library/Application Support/JailCallService/search
           key: search-assets-${{ hashFiles('backend/search/assets.py', 'backend/search/embeddings.py') }}
 
-      - name: Fetch search runtime assets
+      - name: Fetch the search embedding model
         run: python -m backend.search.assets
 
       - name: Lint

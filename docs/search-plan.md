@@ -1,6 +1,6 @@
 # Hybrid search for the delivery page: research and implementation plan
 
-Status: **implemented 2026-09-10** (Phases 1 and 2). Section 6 records the decisions taken and how the build differs from the plan; sections 1 to 4 are the research and the plan as reviewed. `AGENTS.md` ("Search") is the maintenance reference for the code.
+Status: **implemented 2026-09-10** (Phases 1 and 2); **meaning layer replaced 2026-09-11** (section 7). Section 6 records the decisions taken and how the build differs from the plan; sections 1 to 4 are the research and the plan as reviewed. `AGENTS.md` ("Search") is the maintenance reference for the code.
 
 ## 1. What the evidence says
 
@@ -148,3 +148,19 @@ Where the build differs from the plan above:
 Verification: 117 tests including tokenizer parity between Python and the page over every synthetic transcript line and Porter's published word list, the browser-versus-Python query vector (cosine > 0.98), WordPiece id parity, Smart versus Exact, phrases, phone formats, typos, Said-by, match tags, ranking, filters, recent searches, the missing-index and no-WebAssembly fallbacks, and the labeled similar-meaning fallback. The golden package gains `app-assets/index.js`.
 
 Parked for Phase 3: features 9 to 14 (export, term watch-list, tags and notes, similar moments, hits-over-time, suggested queries) and the payload compaction (decision 7). Benchmark and spike scripts from the research live outside the repo (`scratchpad/bench`, `scratchpad/spike-ort` of the 2026-09-10 session); the reference scorer in `backend/search/lexical.py` and `Embedder` reproduce the measurements from the demo corpus on the external drive.
+
+## 7. The meaning layer moved from passages to words (2026-09-11)
+
+The first demo run showed Smart search missing plain synonyms: "cop" returned only the six calls that say cop, never the four that say police. Measured on the *People v. John Smith* package in the real page (browser and Python cosines agreed to three decimals, so it was not a bug):
+
+* A meaning-only call joined a keyword list only above cosine 0.45, but the best passage in the whole corpus scored 0.34 for "cop". The gate could never open for a short query.
+* Lowering the floor would not have helped: the police-only calls scored 0.28 to 0.31 while unrelated calls scored 0.32 to 0.34. Mean-pooling 100 words dilutes one mention of "police" to nothing; turn-level vectors (4,643 turns) were no better (the bare turn "John." scored 0.38 against "cop"). Only sentence-length queries got a usable passage signal, which matches section 6's note that the layer mostly re-ranked calls that already had keyword hits.
+* Word-to-word cosines with the same model are clean: cop → cops 0.73, police 0.68, detective 0.64, sheriff 0.59; police → cops 0.90, detective 0.66, sheriff 0.64; attorney → lawyer 0.86; money → dollars 0.78, cash 0.66; noise falls off around 0.45 to 0.55 (cop → cruise 0.45, lawyer → doctor 0.60). At 0.62 the expansions for cop are police and detective; for police, cops, cop, detective, sheriff, crime; for attorney, lawyer.
+
+Decision (Nathan): drop passage-level similarity entirely and make the meaning layer word-level, threshold 0.62. What changed:
+
+* **Build** (`backend/search/related.py`): the corpus's surface words plus a fixed lexicon (the whole words of the model's own vocabulary, ~20k, so "attorney" expands even when no transcript says it) are embedded one word at a time; each query stem keeps up to six corpus stems at cosine ≥ 0.62, shipped inside `index.js` as `related`. The lexicon's vectors are cached beside the model, so a delivery embeds only the corpus's own words (seconds).
+* **Page**: no ONNX Runtime, no model, no `vectors.js` / `model.js` / `runtime.js` (about 50 MB less per delivery, and the WebAssembly fallback is gone with it). A related word is one more expansion of the query word it came from, weighted by its cosine, in the same slot as the word's typo and prefix expansions; a passage takes its best expansion and stays "exact" when it holds the typed word itself. Every related hit is visible: the matched word is marked dashed, the tag says "Related words" (or "N of M words + related"), and a passage that holds only related words is dashed as a whole. Exact words only and quoted phrases never expand.
+* **Reference scorer**: `LexicalIndex.score(query, related=table)` mirrors the page; `tests/test_search_index.py` pins the table builder with a stand-in embedder, and `tests/test_search_browser.py` checks the page's table against the built one and the marked, tagged related hits.
+
+Kept from before: BM25 over passages, MaxP call ranking, the 0.3 relative cutoff, typo and prefix expansion, the Said-by chips, the evidence anchoring. Passage vectors, min-max fusion, `SEMANTIC_FLOOR`, and the "similar meaning" fallback are gone.

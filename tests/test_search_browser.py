@@ -1,23 +1,23 @@
 """The page's search in headless Chromium from ``file://``.
 
 Uses the shared packages from ``conftest.py``: the keyword-only one every
-build ships, and (when the runtime assets are present locally; ``python -m
-backend.search.assets``) one with the meaning layer. Covers the JavaScript
-tokenizer's parity with ``backend.search.tokenize`` over every transcript
-line, Smart versus Exact words only, phrases, phone formats, typo tolerance,
-the Said-by chips, the match tags on evidence, recent searches, the
-missing-index fallback, and for the meaning layer: load state, WordPiece and
-vector parity with the Python embedder, and the labeled similar-meaning
-fallback.
+build ships, and (when the embedding model is present locally; ``python -m
+backend.search.assets``) one with the related-words table. Covers the
+JavaScript tokenizer's parity with ``backend.search.tokenize`` over every
+transcript line, Smart versus Exact words only, phrases, phone formats, typo
+tolerance, the Said-by chips, the match tags on evidence, recent searches,
+the missing-index fallback, and for related words: the table the page holds
+against the Python one, the marked and tagged related hits, and that Exact
+words only never expands.
 """
 
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 from playwright.sync_api import expect
 
@@ -27,12 +27,8 @@ from browser_harness import rows as _rows  # noqa: E402
 from browser_harness import search as _search  # noqa: E402
 from test_search_index import PORTER_PAIRS  # noqa: E402
 
-from backend.search.assets import search_assets  # noqa: E402
-from backend.search.embeddings import Embedder, WordPiece  # noqa: E402
 from backend.search.passages import summary_text  # noqa: E402
 from backend.search.tokenize import index_terms, stem, stem_tokens  # noqa: E402
-
-ASSETS = search_assets()
 
 
 def _tags(page):
@@ -60,10 +56,9 @@ class TestParity:
 
 
 class TestKeywordSearch:
-    def test_index_loads_without_the_meaning_layer(self, page):
-        assert page.evaluate("window.JCS.Search.state") == {
-            "lexical": "ready", "semantic": "none", "semanticReason": "", "semanticDetail": "",
-        }
+    def test_index_loads_without_related_words(self, page):
+        assert page.evaluate("window.JCS.Search.state") == {"lexical": "ready", "related": "none"}
+        assert page.evaluate("window.JCS.Search.relatedWords('lawyer')") == []
         expect(page.locator("#searchHint")).to_be_hidden()
 
     def test_stems_and_partial_matches_are_tagged(self, page):
@@ -185,48 +180,47 @@ class TestMissingIndex:
         assert all("app-assets/index.js" in p for p in problems), problems
 
 
-class TestMeaningSearch:
+class TestRelatedWords:
     @pytest.fixture
-    def spage(self, browser, semantic_dir):
-        if semantic_dir is None:
-            pytest.skip("search runtime assets not downloaded")
-        context, pg, problems = open_page(browser, semantic_dir / "index.html")
-        pg.wait_for_function("['ready','unavailable'].includes(window.JCS.Search.state.semantic)", timeout=60000)
+    def rpage(self, browser, related_dir):
+        if related_dir is None:
+            pytest.skip("search embedding model not downloaded")
+        context, pg, problems = open_page(browser, related_dir / "index.html")
         yield pg
         context.close()
         assert problems == [], problems
 
-    def test_model_loads_from_file_url(self, spage):
-        assert spage.evaluate("window.JCS.Search.state.semantic") == "ready"
+    def test_page_holds_the_table_the_build_wrote(self, rpage, related_dir):
+        assert rpage.evaluate("window.JCS.Search.state") == {"lexical": "ready", "related": "ready"}
+        text = (related_dir / "app-assets" / "index.js").read_text(encoding="utf-8")
+        fields = json.loads(text[len("window.JCS_SEARCH = "):].rstrip().rstrip(";"))
+        vocab = fields["vocab"].split("\n")
+        assert fields["related"], "the synthetic package should have related words"
+        for term in ("attornei", "cop", "lawyer"):
+            expected = [[vocab[vi], cos] for vi, cos in fields["related"].get(term, [])]
+            assert rpage.evaluate("t => window.JCS.Search.relatedWords(t)", term) == expected
 
-    def test_wordpiece_and_vectors_match_python(self, spage):
-        tok = WordPiece.from_file(ASSETS.model_vocab, ASSETS.spec.lowercase)
-        for text in ("did he talk about the gun", "Anyone mention money for the witness?", "José's café"):
-            assert spage.evaluate("t => window.JCS.Search.encodeQuery(t)", text) == tok.encode(text, ASSETS.spec.max_tokens)
-        embedder = Embedder(ASSETS.spec, ASSETS.model_onnx, ASSETS.model_vocab)
-        query = "conversations about moving the car"
-        spage.fill("#searchInput", query)
-        spage.wait_for_function("q => window.JCS.Search.vectorReady(q)", arg=query, timeout=10000)
-        js = np.asarray(spage.evaluate("q => window.JCS.Search.queryVector(q)", query), dtype=np.float32)
-        assert float(np.dot(js, embedder.encode_query(query))) > 0.98
+    def test_related_hits_are_marked_and_tagged(self, rpage):
+        # the scripts only ever say "lawyer"
+        _search(rpage, "attorney")
+        assert _rows(rpage).count() > 0
+        assert set(_tags(rpage)) == {"related words"}
+        marks = rpage.locator("#rows mark")
+        related = {w for w, _ in rpage.evaluate("window.JCS.Search.relatedWords('attornei')")}
+        assert "lawyer" in related
+        assert {stem(m.strip().lower().rstrip("'s")) for m in marks.all_inner_texts()} <= related
+        assert marks.count() == rpage.locator("#rows mark.is-related").count()
+        assert rpage.locator("#rows .excerpt.is-related").count() == _rows(rpage).locator(".excerpt").count()
+        expect(rpage.locator("#searchHint")).to_be_hidden()
+        # Exact words only never expands
+        rpage.click('#searchMode .chip[data-smart="0"]')
+        rpage.wait_for_timeout(250)
+        expect(_rows(rpage)).to_have_count(0)
 
-    def test_similar_meaning_fallback_is_labeled(self, spage):
-        spage.fill("#searchInput", "attorney")  # the scripts only ever say "lawyer"
-        spage.wait_for_function("window.JCS.Search.vectorReady('attorney')", timeout=10000)
-        spage.wait_for_timeout(300)
-        assert _rows(spage).count() > 0
-        expect(spage.locator("#searchHint")).to_contain_text("similar meaning")
-        assert set(_tags(spage)) == {"similar meaning"}
-        assert spage.locator("#rows mark").count() == 0
-        # Exact words only never shows meaning matches
-        spage.click('#searchMode .chip[data-smart="0"]')
-        spage.wait_for_timeout(250)
-        expect(_rows(spage)).to_have_count(0)
-
-    def test_keyword_hits_lead_and_are_tagged_by_words(self, spage):
-        spage.fill("#searchInput", "lawyer calls him first")
-        spage.wait_for_function("window.JCS.Search.vectorReady('lawyer calls him first')", timeout=10000)
-        spage.wait_for_timeout(300)
-        first_tags = [t.strip().lower() for t in _rows(spage).first.locator(".tag").all_inner_texts()]
+    def test_exact_words_lead_and_related_words_add(self, rpage):
+        _search(rpage, "lawyer")
+        plain = _rows(rpage).count()
+        first_tags = [t.strip().lower() for t in _rows(rpage).first.locator(".tag").all_inner_texts()]
         assert first_tags[0] == "exact words"
-        expect(spage.locator("#searchHint")).to_be_hidden()
+        assert rpage.locator("#rows mark:not(.is-related)").count() > 0
+        assert plain > 0

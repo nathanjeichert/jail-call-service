@@ -2,9 +2,9 @@
 
 Every package-driven test module (golden, delivery browser, search browser)
 uses the same ten-call, no-audio package with a pinned date, so it is built
-once per session. The meaning-search package is built too when the runtime
-assets are present (``python -m backend.search.assets``); without them
-``semantic_dir`` is None and the tests that need it skip.
+once per session. The related-words package is built too when the embedding
+model is present (``python -m backend.search.assets``); without it
+``related_dir`` is None and the tests that need it skip.
 
 Both packages build before Playwright starts, and the browser is scoped
 to the module: ``build_package`` (and other tests) run ``asyncio.run``,
@@ -46,16 +46,16 @@ def index_url(package) -> str:
 
 
 @pytest.fixture(scope="session")
-def semantic_dir(tmp_path_factory) -> Path | None:
+def related_dir(tmp_path_factory) -> Path | None:
     if not search_assets().present():
         return None
-    out = tmp_path_factory.mktemp("semantic") / "REEVES_TEST_PACKAGE"
-    build_package(out, 10, with_audio=False, gen_date=GEN_DATE, semantic=True)
+    out = tmp_path_factory.mktemp("related") / "REEVES_TEST_PACKAGE"
+    build_package(out, 10, with_audio=False, gen_date=GEN_DATE, related=True)
     return out
 
 
 @pytest.fixture(scope="module")
-def browser(package, semantic_dir):
+def browser(package, related_dir):
     with sync_playwright() as p:
         b = p.chromium.launch()
         yield b

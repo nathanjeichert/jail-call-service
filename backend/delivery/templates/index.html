@@ -279,6 +279,9 @@
   }
   .row .sum .empty { color: var(--ink-3); font-style: italic; }
   .view-index mark { background: var(--mark); color: var(--ink); font-weight: 600; padding: 0 2px; border-bottom: 2px solid var(--med); }
+  /* A related word (the query said "cop", the transcript says "police") is
+     dashed like its tag, so it never reads as the word that was typed. */
+  .view-index mark.is-related { background: transparent; border-bottom-style: dashed; }
 
   .row .acts { text-align: right; white-space: nowrap; }
   .btn {
@@ -312,7 +315,7 @@
     padding: 6px 9px;
     background: var(--sheet);
     border: 0 solid var(--med);
-    border-left-width: 3px;  /* .is-meaning dashes the style; the other sides stay at zero width */
+    border-left-width: 3px;  /* .is-related dashes the style; the other sides stay at zero width */
     cursor: pointer;
     font-size: 13px;
     line-height: 1.5;
@@ -1466,12 +1469,12 @@
           <circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/>
         </svg>
         <input type="text" class="search-input" id="searchInput"
-               placeholder="Search by words or meaning; use &quot;quotes&quot; for an exact phrase"
+               placeholder="Search words, names, or numbers; use &quot;quotes&quot; for an exact phrase"
                autofocus autocomplete="off" list="recentSearches">
         <datalist id="recentSearches"></datalist>
         <span class="search-count" id="searchCount"></span>
       </div>
-      <div class="chip-group search-mode" id="searchMode" title="Smart search ranks by matching words and similar meaning; Exact words only lists calls containing every word typed">
+      <div class="chip-group search-mode" id="searchMode" title="Smart search ranks by matching words and also finds related words (cop finds police); Exact words only lists calls containing every word typed">
         <button class="chip active" type="button" data-smart="1">Smart search</button>
         <button class="chip" type="button" data-smart="0">Exact words only</button>
       </div>
@@ -1919,7 +1922,7 @@
     const state = {
       query: '', dateFrom: '', dateTo: '', phone: '', relevance: '',
       outcome: '', length: '', starred: false, review: '',
-      smart: true,       // Smart search (words + meaning, ranked) vs Exact words only
+      smart: true,       // Smart search (words + related words, ranked) vs Exact words only
       speakers: 0,       // Said-by chip: 0 anyone, 1 defendant, 2 outside party
       // 'match' (set when a query starts) ranks by match strength until a
       // column heading is clicked; without a query it reads as date order.
@@ -2005,7 +2008,7 @@
       return d >= range[0] && d < range[1];
     }
 
-    // Run the query through Search (keyword + meaning; memoized per query)
+    // Run the query through Search (keywords + related words; memoized per query)
     // and apply the other filters.
     function getFiltered() {
       const q = state.query.trim();
@@ -2082,26 +2085,17 @@
       renderList(filtered);
     }
 
-    const SEMANTIC_NOTES = {
-      nowasm: 'This browser cannot run the meaning-search model, so results match words only.',
-      failed: 'Meaning search could not start; results match words only.',
-    };
     // The filter bar's count while a query is active, and the hint line
-    // under the bar: the state of meaning search, or that a list holds
-    // similar-meaning calls because no call contains the words.
+    // under the bar (only when the search index is missing).
     function updateSearchCount(filtered) {
       const q = state.query.trim();
       document.getElementById('ctl').classList.toggle('no-query', !q);
       document.getElementById('searchCount').innerHTML = !q ? ''
         : '<b>' + filtered.length + '</b> call' + (filtered.length === 1 ? '' : 's')
           + (state.sortKey === 'match' && filtered.length > 1 ? ' · best match first' : '');
-      const st = Search.state;
-      let msg = '';
-      if (st.lexical === 'missing') msg = 'Search index not found: extract the whole zip before opening index.html. Searching words only.';
-      else if (result && result.meaningOnly && filtered.length) msg = 'No call contains these words. Showing calls with a <b>similar meaning</b> instead.';
-      else if (q && state.smart && st.semantic === 'loading') msg = 'Preparing meaning search…';
-      else if (q && state.smart && st.semantic === 'unavailable') msg = SEMANTIC_NOTES[st.semanticReason] || '';
-      document.getElementById('searchHint').innerHTML = msg;
+      const missing = Search.state.lexical === 'missing';
+      document.getElementById('searchHint').innerHTML = missing
+        ? 'Search index not found: extract the whole zip before opening index.html. Searching words only.' : '';
     }
 
     // A chart click: narrow the list to a date range (and a tier, when a
@@ -2174,12 +2168,14 @@
 
     // Mark the query's words in a piece of text.
     const hl = text => (matcher ? matcher.mark(text) : esc(text));
-    // The match tag on an evidence passage, from the engine's match category.
+    // The match tag on an evidence passage, from the engine's match category:
+    // how many of the query's words the passage holds itself, and whether
+    // it also (or only) holds related words.
     function badgeFor(ev) {
-      if (ev.match === 'meaning') return 'Similar meaning';
       if (ev.match === 'phrase') return 'Exact phrase';
-      if (ev.match === 'partial') return ev.matched + ' of ' + ev.needed + ' words';
-      return 'Exact words';
+      const words = ev.matched < ev.needed ? ev.matched + ' of ' + ev.needed + ' words' : 'Exact words';
+      if (ev.match === 'related') return ev.matched ? words + ' + related' : 'Related words';
+      return words;
     }
 
     function buildRow(call, q) {
@@ -2192,16 +2188,17 @@
       let summaryHtml;
       if (hit && hit.evidence.length) {
         // Each passage the query matched: when, how it matched, and a window
-        // around the matched words (a meaning-only match bolds nothing).
+        // around the matched words (related words are marked dashed; a
+        // passage holding only related words is dashed as a whole).
         summaryHtml = '<div class="excerpts">' + hit.evidence.map(ev => {
-          const meaning = ev.match === 'meaning';
-          const where = Search.evidence(ev, meaning ? null : matcher);
+          const related = ev.match === 'related';
+          const where = Search.evidence(ev, matcher);
           const t = where.start == null ? 'SUMMARY' : secondsToLabel(where.start);
-          return '<div class="excerpt' + (meaning ? ' is-meaning' : '') + '" data-t="' + (where.start == null ? '' : where.start) + '"'
+          return '<div class="excerpt' + (related && !ev.matched ? ' is-related' : '') + '" data-t="' + (where.start == null ? '' : where.start) + '"'
             + ' title="' + esc(where.speaker) + '">'
             + '<span class="ex-t">' + esc(t) + '</span>'
             + '<span>' + where.html
-            + ' <span class="tag' + (meaning ? ' is-meaning' : '') + '">' + esc(badgeFor(ev)) + '</span></span>'
+            + ' <span class="tag' + (related ? ' is-related' : '') + '">' + esc(badgeFor(ev)) + '</span></span>'
             + '</div>';
         }).join('') + '</div>';
       } else if (call.brief) {
@@ -2552,8 +2549,8 @@
       dl.innerHTML = (list || recentSearches()).map(q => '<option value="' + esc(q) + '"></option>').join('');
     }
 
-    // Search loaded or changed state (the keyword index, then the meaning
-    // layer, then each query vector): re-render an active query.
+    // Search loaded or changed state (the index parsed, or was found
+    // missing): re-render an active query.
     function onSearchChange() {
       if (state.query.trim() || Search.state.lexical === 'missing') renderTable();
     }
@@ -3386,8 +3383,7 @@
   CallView.init();
   Router.init();
   ReviewUI.init();
-  // The search sidecars load after first paint: keyword search first, then
-  // the meaning layer when the package has one.
+  // The search index loads after first paint.
   Search.onChange(() => IndexView.onSearchChange());
   Search.init();
 

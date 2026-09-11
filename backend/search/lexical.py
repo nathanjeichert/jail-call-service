@@ -16,10 +16,12 @@ Layout of the sidecar object (``window.JCS_SEARCH``):
 of the page's lexical scoring: BM25 over every passage carrying any query
 term, calls ranked by their best passage (MaxP), and in Smart mode the list
 cut at :data:`RELATIVE_CUTOFF` of the top call's score (measured on the demo
-corpus: same recall as no cutoff, a third of the list). Exact mode needs
-every content term in the passage and verifies quoted phrases against the
-stemmed token stream. ``templates/index_search.js`` implements the same
-rules; the tuning script and the tests use this one.
+corpus: same recall as no cutoff, a third of the list). Smart mode also
+expands each query term with its related words (``related.py``), weighted
+by cosine, one slot per query word so a passage takes its best expansion.
+Exact mode needs every content term in the passage and verifies quoted
+phrases against the stemmed token stream. ``templates/index_search.js``
+implements the same rules; the tuning script and the tests use this one.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ import base64
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -136,37 +138,55 @@ class LexicalIndex:
         n = len(self.passages)
         return math.log(1.0 + (n - self.df[i] + 0.5) / (self.df[i] + 0.5))
 
-    def score(self, query: str, *, exact: bool = False, speakers: int = 0) -> Dict[int, dict]:
+    def score(self, query: str, *, exact: bool = False, speakers: int = 0,
+              related: Optional[Dict[str, List[Tuple[int, int]]]] = None) -> Dict[int, dict]:
         """Passage scores for a query.
 
-        Returns ``{passage id: {"score", "matched": set of terms}}``. Smart
-        mode scores every passage carrying any content term; exact mode
-        needs every one. Quoted phrases are verified against the stemmed
-        token stream in both. ``speakers`` (bit mask) restricts a term's
-        contribution to the pieces those speakers said.
+        Returns ``{passage id: {"score", "matched": set of terms, "related":
+        set of terms}}``: ``matched`` are the query terms the passage holds
+        itself, ``related`` those it holds only through a related word. Smart
+        mode scores every passage carrying any content term (or, with a
+        *related* table, a related word of one, weighted by cosine); exact
+        mode needs every term itself. Quoted phrases are verified against the
+        stemmed token stream in both. ``speakers`` (bit mask) restricts a
+        term's contribution to the pieces those speakers said.
         """
         phrases, rest = _split_phrases(query)
         terms = list(dict.fromkeys(index_terms(rest) + [t for ph in phrases for t in index_terms(ph)]))
         if not terms:
             return {}
+        phrase_terms = {t for ph in phrases for t in index_terms(ph)}
         needed = len(terms) if exact else 1
         acc: Dict[int, dict] = {}
         avgdl = self.avgdl
         for term in terms:
-            idf = self.idf(term)
-            if idf <= 0:
-                continue
-            for pid, (tf, bits) in self.postings_map[term].items():
-                if speakers and not (bits & speakers):
+            expansions = [(term, 1.0, False)]
+            if related and not exact and term not in phrase_terms:
+                expansions += [(self.vocab[vi], cos / 100.0, True) for vi, cos in related.get(term, ())]
+            best: Dict[int, Tuple[float, bool]] = {}   # passage -> (score, via a related word)
+            cap = self.idf(term) if term in self.vocab_pos else float("inf")   # a related word never outweighs the typed one
+            for word, weight, via_related in expansions:
+                idf = (min(self.idf(word), cap) if via_related else self.idf(word)) * weight
+                if idf <= 0:
                     continue
-                dl = self.lengths[pid]
-                tf_part = tf * (K1 + 1) / (tf + K1 * (1 - B + B * dl / avgdl))
-                slot = acc.setdefault(pid, {"score": 0.0, "matched": set()})
-                slot["score"] += idf * tf_part
-                slot["matched"].add(term)
-        hits = {pid: s for pid, s in acc.items() if len(s["matched"]) >= needed}
+                for pid, (tf, bits) in self.postings_map[word].items():
+                    if speakers and not (bits & speakers):
+                        continue
+                    dl = self.lengths[pid]
+                    s = idf * tf * (K1 + 1) / (tf + K1 * (1 - B + B * dl / avgdl))
+                    cur = best.get(pid)
+                    if cur is None:
+                        best[pid] = (s, via_related)
+                    elif s > cur[0]:
+                        best[pid] = (s, via_related and cur[1])  # a word the passage holds itself stays exact
+            for pid, (s, via_related) in best.items():
+                slot = acc.setdefault(pid, {"score": 0.0, "matched": set(), "related": set()})
+                slot["score"] += s
+                slot["related" if via_related else "matched"].add(term)
+        hits = {pid: s for pid, s in acc.items() if len(s["matched"]) + len(s["related"]) >= needed}
         if phrases:
-            hits = {pid: s for pid, s in hits.items() if self._has_phrases(pid, phrases)}
+            hits = {pid: s for pid, s in hits.items()
+                    if phrase_terms <= s["matched"] and self._has_phrases(pid, phrases)}
         return hits
 
     def _has_phrases(self, pid: int, phrases: List[str]) -> bool:

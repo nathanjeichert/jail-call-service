@@ -219,11 +219,12 @@ body.present #callReviewControls { display: none; }
 .tint-4 { background: var(--tint-4); }
 
 /* Match tag on a search result's passage: how the passage matched the
-   query ("Exact words", "2 of 4 words", "Similar meaning"). A meaning-only
-   match is dashed (.is-meaning, on the tag and on the passage it sits in)
-   so it never reads as a quotation. */
+   query ("Exact words", "2 of 4 words", "Related words"). A match through
+   related words is dashed (.is-related, on the tag, on the marked word, and
+   on a passage that holds only related words) so it never reads as the
+   words that were typed. */
 .tag { display: inline-block; font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); border: 1px solid var(--rule); padding: 1px 6px; white-space: nowrap; vertical-align: 1px; }
-.is-meaning { border-style: dashed; }
+.is-related { border-style: dashed; }
 
   /* ═══════════════════════════════════════════════════════════════════════
      One page, two views. The index view (#index) is a scrolling document;
@@ -495,6 +496,9 @@ body.present #callReviewControls { display: none; }
   }
   .row .sum .empty { color: var(--ink-3); font-style: italic; }
   .view-index mark { background: var(--mark); color: var(--ink); font-weight: 600; padding: 0 2px; border-bottom: 2px solid var(--med); }
+  /* A related word (the query said "cop", the transcript says "police") is
+     dashed like its tag, so it never reads as the word that was typed. */
+  .view-index mark.is-related { background: transparent; border-bottom-style: dashed; }
 
   .row .acts { text-align: right; white-space: nowrap; }
   .btn {
@@ -528,7 +532,7 @@ body.present #callReviewControls { display: none; }
     padding: 6px 9px;
     background: var(--sheet);
     border: 0 solid var(--med);
-    border-left-width: 3px;  /* .is-meaning dashes the style; the other sides stay at zero width */
+    border-left-width: 3px;  /* .is-related dashes the style; the other sides stay at zero width */
     cursor: pointer;
     font-size: 13px;
     line-height: 1.5;
@@ -1682,12 +1686,12 @@ body.present #callReviewControls { display: none; }
           <circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/>
         </svg>
         <input type="text" class="search-input" id="searchInput"
-               placeholder="Search by words or meaning; use &quot;quotes&quot; for an exact phrase"
+               placeholder="Search words, names, or numbers; use &quot;quotes&quot; for an exact phrase"
                autofocus autocomplete="off" list="recentSearches">
         <datalist id="recentSearches"></datalist>
         <span class="search-count" id="searchCount"></span>
       </div>
-      <div class="chip-group search-mode" id="searchMode" title="Smart search ranks by matching words and similar meaning; Exact words only lists calls containing every word typed">
+      <div class="chip-group search-mode" id="searchMode" title="Smart search ranks by matching words and also finds related words (cop finds police); Exact words only lists calls containing every word typed">
         <button class="chip active" type="button" data-smart="1">Smart search</button>
         <button class="chip" type="button" data-smart="0">Exact words only</button>
       </div>
@@ -2526,18 +2530,16 @@ body.present #callReviewControls { display: none; }
   })();
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Search: the index page's keyword (BM25) and meaning (embedding) search.
-  // A Jinja include that lands inside the page's IIFE; it uses CALLS, esc,
-  // and secondsToLabel from the page. The data comes from the app-assets/
-  // sidecars (classic scripts, the only data channel file:// allows):
-  //   app-assets/index.js   -> window.JCS_SEARCH   passages + BM25 postings
-  //   app-assets/vectors.js -> window.JCS_VECTORS  int8 passage vectors
-  //   app-assets/model.js   -> window.JCS_MODEL    ONNX model + vocab
-  //   app-assets/runtime.js -> ort + window.JCS_ORT ONNX Runtime wasm + glue
-  // Keyword search is live as soon as index.js parses; the meaning layer
-  // loads afterwards, one sidecar at a time, and is skipped where
-  // WebAssembly is unavailable. The tokenizer, stemmer, and scoring rules
-  // mirror backend/search/ (tokenize.py, lexical.py); change them together.
+  // Search: the index page's keyword (BM25) search with related-word
+  // expansion. A Jinja include that lands inside the page's IIFE; it uses
+  // CALLS, esc, and secondsToLabel from the page. The data comes from one
+  // sidecar (a classic script, the only data channel file:// allows):
+  //   app-assets/index.js -> window.JCS_SEARCH   passages, BM25 postings,
+  //                          and the related-words table when the package
+  //                          was built with the embedding model
+  // Search is live as soon as index.js parses. The tokenizer, stemmer, and
+  // scoring rules mirror backend/search/ (tokenize.py, lexical.py,
+  // related.py); change them together.
   // ═══════════════════════════════════════════════════════════════════════
   const Search = (function () {
     // ── Tokenizer (port of backend/search/tokenize.py) ──────────────────
@@ -2692,7 +2694,7 @@ body.present #callReviewControls { display: none; }
     // Both bytesOf paths return a fresh, offset-0 buffer, so a view is aligned.
     function typed(b64, Ctor) { return new Ctor(bytesOf(b64).buffer); }
 
-    // ── Passages, the shared unit of both indexes ───────────────────────
+    // ── Passages, the unit the index scores ─────────────────────────────
     const KIND_SUMMARY = 1;
     const SUMMARY_FIELDS = ['outside', 'inmate', 'identity', 'facility', 'outcome', 'call_type', 'brief'];
     // Mirrors passages.summary_text: what a call's summary passage holds.
@@ -2717,9 +2719,11 @@ body.present #callReviewControls { display: none; }
       return passageLines(pid).map(l => l.text.trim()).join(' ');
     }
 
-    // ── Lexical index ───────────────────────────────────────────────────
+    // ── The index ───────────────────────────────────────────────────────
     let L = null;          // decoded window.JCS_SEARCH
-    const state = { lexical: 'loading', semantic: 'idle', semanticReason: '', semanticDetail: '' };
+    // lexical: 'loading' | 'ready' | 'missing' (zip opened without extracting);
+    // related: 'none' (package built without the model) | 'ready'.
+    const state = { lexical: 'loading', related: 'none' };
     const listeners = [];
     function notify() { listeners.forEach(fn => { try { fn(state); } catch (e) { /* listener error */ } }); }
 
@@ -2733,10 +2737,13 @@ body.present #callReviewControls { display: none; }
         pCall: typed(raw.pCall, Uint32Array), pFirst: typed(raw.pFirst, Uint32Array), pLast: typed(raw.pLast, Uint32Array),
         pStart: typed(raw.pStart, Float32Array), pSpk: bytesOf(raw.pSpk), pKind: bytesOf(raw.pKind),
         pLen: typed(raw.pLen, Uint16Array),
+        // query stem -> [[vocab index, cosine * 100], ...], strongest first
+        related: raw.related || null,
         postingsCache: new Map(),   // term index -> decoded postings
         streams: new Map(),         // pid -> stemmed token stream (phrase checks)
       };
       state.lexical = 'ready';
+      state.related = L.related ? 'ready' : 'none';
     }
     // A term's postings as parallel arrays {n, pid, tf, spk}, decoded once.
     function postingsOf(ti) {
@@ -2812,9 +2819,13 @@ body.present #callReviewControls { display: none; }
       });
     }
 
-    // The parsed query: content terms with their vocabulary expansions
-    // (with an index) and the stemmed phrases. One entry is cached: the
-    // query and the matcher parse the same text within a render.
+    const FUZZY_WEIGHT = 0.7;   // a typo or prefix expansion counts this much of an exact word
+
+    // The parsed query: content terms, each with its expansions into the
+    // vocabulary ({ti, weight, related}: the term itself, else its typo or
+    // prefix neighbours; in Smart mode its related words too, weighted by
+    // cosine), and the stemmed phrases. One entry is cached: the query and
+    // the matcher parse the same text within a render.
     let parseCache = { key: null, parsed: null };
     function parseQuery(query, smart) {
       const key = (smart ? 's:' : 'e:') + query + (L ? '|L' : '');
@@ -2826,43 +2837,63 @@ body.present #callReviewControls { display: none; }
       const phraseStreams = phrases.map(stemTokens).filter(p => p.length);
       const phraseTerms = new Set([].concat(...phrases.map(indexTerms)));
       const groups = L ? terms.map((term, i) => {
-        const exact = L.termIndex.has(term) ? [L.termIndex.get(term)] : [];
-        const fuzzy = (smart && !exact.length) ? nearTerms(term, i === terms.length - 1 && !phrases.length) : [];
-        return { term, indices: exact.length ? exact : fuzzy, fuzzy: !exact.length };
+        const expansions = [];
+        if (L.termIndex.has(term)) expansions.push({ ti: L.termIndex.get(term), weight: 1, related: false });
+        else if (smart) {
+          nearTerms(term, i === terms.length - 1 && !phrases.length)
+            .forEach(ti => expansions.push({ ti, weight: FUZZY_WEIGHT, related: false }));
+        }
+        if (smart && L.related && !phraseTerms.has(term)) {
+          (L.related[term] || []).forEach(([ti, cos]) => expansions.push({ ti, weight: cos / 100, related: true }));
+        }
+        return { term, expansions };
       }) : [];
       const parsed = { terms, groups, phrases: phraseStreams, phraseTerms };
       parseCache = { key, parsed };
       return parsed;
     }
 
-    // BM25 over passages. Returns Map(pid -> {score, matched: Set(term)}).
+    // BM25 over passages. Returns Map(pid -> {score, matched: Set(term),
+    // related: Set(term)}): the query words the passage holds itself, and
+    // those it holds only through a related word.
     function lexicalScores(parsed, opts) {
       const acc = new Map();
       const speakers = opts.speakers || 0;
       parsed.groups.forEach(g => {
-        // Expansions of one query word share its slot: a passage takes the best.
-        const best = g.indices.length > 1 ? new Map() : null;
-        g.indices.forEach(ti => {
-          const w = idf(ti) * (g.fuzzy ? 0.7 : 1);
+        // Every expansion of one query word shares its slot: a passage
+        // takes the best, and a word it holds itself keeps the slot exact.
+        // A related word never weighs more than the typed word (rare
+        // related words would otherwise outrank the word that was typed).
+        const exact = g.expansions.find(x => x.weight === 1 && !x.related);
+        const cap = exact ? idf(exact.ti) : Infinity;
+        const best = new Map();  // pid -> {s, related}
+        g.expansions.forEach(x => {
+          const w = (x.related ? Math.min(idf(x.ti), cap) : idf(x.ti)) * x.weight;
           if (w <= 0) return;
-          const p = postingsOf(ti);
+          const p = postingsOf(x.ti);
           for (let k = 0; k < p.n; k++) {
             if (speakers && !(p.spk[k] & speakers)) continue;
             const pid = p.pid[k];
             const dl = L.pLen[pid];
             const s = w * p.tf[k] * (L.k1 + 1) / (p.tf[k] + L.k1 * (1 - L.b + L.b * dl / L.avgdl));
-            if (best) { if (s > (best.get(pid) || 0)) best.set(pid, s); }
-            else addScore(acc, pid, s, g.term);
+            const cur = best.get(pid);
+            if (!cur) best.set(pid, { s, related: x.related });
+            else if (s > cur.s) best.set(pid, { s, related: x.related && cur.related });
           }
         });
-        if (best) best.forEach((s, pid) => addScore(acc, pid, s, g.term));
+        best.forEach((v, pid) => {
+          let slot = acc.get(pid);
+          if (!slot) { slot = { score: 0, matched: new Set(), related: new Set() }; acc.set(pid, slot); }
+          slot.score += v.s;
+          (v.related ? slot.related : slot.matched).add(g.term);
+        });
       });
       const needed = opts.exact ? parsed.terms.length : 1;
       const hits = new Map();
       acc.forEach((s, pid) => {
-        if (s.matched.size < needed) return;
+        if (s.matched.size + s.related.size < needed) return;
         if (parsed.phrases.length) {
-          // Only a passage carrying every phrase word can hold the phrase.
+          // Only a passage carrying every phrase word itself can hold the phrase.
           for (const t of parsed.phraseTerms) if (!s.matched.has(t)) return;
           if (!hasPhrases(streamOf(pid), parsed.phrases)) return;
         }
@@ -2870,172 +2901,20 @@ body.present #callReviewControls { display: none; }
       });
       return hits;
     }
-    function addScore(acc, pid, s, term) {
-      let slot = acc.get(pid);
-      if (!slot) { slot = { score: 0, matched: new Set() }; acc.set(pid, slot); }
-      slot.score += s; slot.matched.add(term);
-    }
 
-    // ── Meaning search: model + vectors ─────────────────────────────────
-    let V = null;            // {n, d, q: Int8Array, s: Float32Array, model}
-    let M = null;            // {session, output, maxTokens, queryPrefix, tokenizer}
-    const vecCache = new Map();  // query text -> Float32Array
-    let embedQueue = null;       // the newest text waiting for a vector
-    let embedding = false;
-
-    function wordPiece(vocabList, lowercase) {
-      const ids = new Map(vocabList.map((t, i) => [t, i]));
-      const CLS = ids.get('[CLS]'), SEP = ids.get('[SEP]'), UNK = ids.get('[UNK]');
-      const isPunct = ch => {
-        const cp = ch.codePointAt(0);
-        if ((cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) || (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126)) return true;
-        return /[\p{P}\p{S}]/u.test(ch);
-      };
-      function basic(text) {
-        if (lowercase) text = text.toLowerCase();
-        text = text.normalize('NFD');
-        const out = []; let cur = '';
-        for (const ch of text) {
-          if (/\p{Mn}/u.test(ch)) continue;
-          if (/\s/.test(ch)) { if (cur) { out.push(cur); cur = ''; } }
-          else if (isPunct(ch)) { if (cur) { out.push(cur); cur = ''; } out.push(ch); }
-          else cur += ch;
-        }
-        if (cur) out.push(cur);
-        return out;
-      }
-      function pieces(tok) {
-        if (tok.length > 100) return [UNK];
-        const out = []; let start = 0;
-        while (start < tok.length) {
-          let end = tok.length, found = -1;
-          while (start < end) {
-            const sub = (start > 0 ? '##' : '') + tok.slice(start, end);
-            if (ids.has(sub)) { found = ids.get(sub); break; }
-            end--;
-          }
-          if (found === -1) return [UNK];
-          out.push(found); start = end;
-        }
-        return out;
-      }
-      return {
-        encode(text, maxTokens) {
-          let out = [CLS];
-          for (const tok of basic(text)) out.push(...pieces(tok));
-          out = out.slice(0, maxTokens - 1); out.push(SEP);
-          return out;
-        },
-      };
-    }
-
-    function injectScript(src) {
-      return new Promise((resolve, reject) => {
-        const el = document.createElement('script');
-        el.src = src;
-        el.onload = () => { el.remove(); resolve(); };
-        el.onerror = () => { el.remove(); reject(new Error('could not load ' + src)); };
-        document.head.appendChild(el);
-      });
-    }
-
-    async function loadSemantic() {
-      if (typeof WebAssembly === 'undefined') {
-        state.semantic = 'unavailable'; state.semanticReason = 'nowasm';
-        notify(); return;
-      }
-      state.semantic = 'loading'; notify();
-      try {
-        await injectScript('app-assets/vectors.js');
-        const rawV = window.JCS_VECTORS; window.JCS_VECTORS = null;
-        V = { n: rawV.n, d: rawV.d, q: typed(rawV.q, Int8Array), s: typed(rawV.s, Float32Array), model: rawV.model };
-        await injectScript('app-assets/runtime.js');
-        const rawOrt = window.JCS_ORT; window.JCS_ORT = null;
-        await injectScript('app-assets/model.js');
-        const rawM = window.JCS_MODEL; window.JCS_MODEL = null;
-        if (rawM.id !== V.model) throw new Error('vectors were built with ' + V.model + ', model is ' + rawM.id);
-        const wasmBytes = bytesOf(rawOrt.wasm);
-        const modelBytes = bytesOf(rawM.onnx);
-        ort.env.wasm.numThreads = 1;
-        ort.env.wasm.wasmBinary = wasmBytes.buffer;
-        ort.env.wasm.wasmPaths = { mjs: URL.createObjectURL(new Blob([rawOrt.glue], { type: 'text/javascript' })) };
-        const session = await ort.InferenceSession.create(modelBytes, { executionProviders: ['wasm'] });
-        M = {
-          session, output: session.outputNames[0], maxTokens: rawM.maxTokens, queryPrefix: rawM.queryPrefix || '',
-          tokenizer: wordPiece(rawM.vocab.split('\n'), rawM.lowercase !== false),
-        };
-        state.semantic = 'ready';
-      } catch (e) {
-        state.semantic = 'unavailable'; state.semanticReason = 'failed';
-        state.semanticDetail = e && e.message ? e.message : String(e);
-      }
-      notify();
-    }
-
-    async function embed(text) {
-      const ids = M.tokenizer.encode(M.queryPrefix + text, M.maxTokens); const n = ids.length;
-      const feeds = {
-        input_ids: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, n]),
-        attention_mask: new ort.Tensor('int64', new BigInt64Array(n).fill(1n), [1, n]),
-        token_type_ids: new ort.Tensor('int64', new BigInt64Array(n), [1, n]),
-      };
-      const res = await M.session.run(feeds);
-      const h = res[M.output]; const d = h.dims[2]; const v = new Float32Array(d);
-      for (let t = 0; t < n; t++) for (let j = 0; j < d; j++) v[j] += h.data[t * d + j];
-      let norm = 0; for (let j = 0; j < d; j++) { v[j] /= n; norm += v[j] * v[j]; }
-      norm = Math.sqrt(norm) || 1; for (let j = 0; j < d; j++) v[j] /= norm;
-      return v;
-    }
-    // The query vector if it is cached; otherwise queue the text. Only the
-    // newest queued text is embedded (typing outruns the model), and the
-    // page is notified when the vector it is waiting for lands.
-    function queryVector(text) {
-      const cached = vecCache.get(text);
-      if (cached) return cached;
-      embedQueue = text;
-      if (!embedding) drainEmbeds();
-      return null;
-    }
-    async function drainEmbeds() {
-      embedding = true;
-      while (embedQueue !== null) {
-        const text = embedQueue; embedQueue = null;
-        try { vecCache.set(text, await embed(text)); } catch (e) { /* the next query retries */ }
-        if (embedQueue === null) notify();
-      }
-      embedding = false;
-    }
-    // Best passage per call by cosine.
-    function semanticCallMax(vec, speakers) {
-      const d = V.d; const q = V.q; const s = V.s;
-      const bestScore = new Float32Array(CALLS.length).fill(-Infinity);
-      const bestPid = new Int32Array(CALLS.length).fill(-1);
-      for (let pid = 0; pid < V.n; pid++) {
-        if (speakers && !(L.pSpk[pid] & speakers)) continue;
-        let acc = 0; const o = pid * d;
-        for (let j = 0; j < d; j++) acc += q[o + j] * vec[j];
-        acc *= s[pid];
-        const c = L.pCall[pid];
-        if (acc > bestScore[c]) { bestScore[c] = acc; bestPid[c] = pid; }
-      }
-      return { bestScore, bestPid };
-    }
-
-    // ── Fusion (the rules tuned on the demo corpus) ─────────────────────
-    const LEXICAL_WEIGHT = 0.7;      // keyword evidence leads
-    const LEXICAL_CUTOFF = 0.3;      // calls under this share of the top keyword call are dropped
-    const SEMANTIC_FLOOR = 0.45;     // a meaning-only call joins a keyword list only above this cosine
-    const SEMANTIC_FALLBACK = 0.30;  // with no keyword hit at all: the top meaning-only calls above this
-    const SEMANTIC_FALLBACK_MAX = 10;
+    // ── Ranking (the rules tuned on the demo corpus) ────────────────────
+    const LEXICAL_CUTOFF = 0.3;      // calls under this share of the top call are dropped (Smart mode)
     const EVIDENCE_PER_CALL = 3;
 
     /**
-     * Run a query. Returns { calls: Map(call index -> {score, evidence}),
-     * meaningOnly }. Evidence items are {pid, match, matched, needed}
-     * (match: 'phrase' | 'words' | 'partial' | 'meaning'); without a
-     * search index the page's own data is scanned with the matcher and the
-     * items carry {text, start, speaker} instead of a pid. One entry is
-     * memoized, so re-renders that do not change the query are free.
+     * Run a query. Returns { calls: Map(call index -> {score, evidence}) }.
+     * Evidence items are {pid, match, matched, related, needed} (match:
+     * 'phrase' | 'words' | 'partial' | 'related'; matched and related count
+     * the query words the passage holds itself and through related words);
+     * without a search index the page's own data is scanned with the
+     * matcher and the items carry {text, start, speaker} instead of a pid.
+     * One entry is memoized, so re-renders that do not change the query
+     * are free.
      */
     let queryCache = { key: null, result: null };
     function query(text, opts) {
@@ -3043,7 +2922,7 @@ body.present #callReviewControls { display: none; }
       const smart = opts.smart !== false;
       const speakers = opts.speakers || 0;
       text = String(text || '').trim();
-      const key = [text, smart, speakers, state.lexical, state.semantic, vecCache.has(text)].join(' ');
+      const key = [text, smart, speakers, state.lexical].join(' ');
       if (queryCache.key === key) return queryCache.result;
       const result = L ? indexedQuery(text, smart, speakers) : scanQuery(text);
       queryCache = { key, result };
@@ -3052,77 +2931,44 @@ body.present #callReviewControls { display: none; }
 
     function indexedQuery(text, smart, speakers) {
       const parsed = parseQuery(text, smart);
-      if (!parsed.terms.length) return { calls: new Map(), meaningOnly: false };
+      if (!parsed.terms.length) return { calls: new Map() };
       const lex = lexicalScores(parsed, { exact: !smart, speakers });
 
-      // Keyword side: best passage per call, cut below a share of the top.
-      const lexCalls = new Map();
+      // Best passage per call (MaxP), cut below a share of the top.
+      const best = new Map();
       lex.forEach((s, pid) => {
-        const c = L.pCall[pid]; const slot = lexCalls.get(c);
-        if (!slot || s.score > slot.score) lexCalls.set(c, { score: s.score, pid });
+        const c = L.pCall[pid]; const slot = best.get(c);
+        if (!slot || s.score > slot.score) best.set(c, { score: s.score, pid });
       });
-      let topLex = 0; lexCalls.forEach(v => { if (v.score > topLex) topLex = v.score; });
-      if (smart) lexCalls.forEach((v, c) => { if (v.score < LEXICAL_CUTOFF * topLex) lexCalls.delete(c); });
+      let top = 0; best.forEach(v => { if (v.score > top) top = v.score; });
+      if (smart) best.forEach((v, c) => { if (v.score < LEXICAL_CUTOFF * top) best.delete(c); });
 
-      // Meaning side: Smart mode only, never for a numbers-only query.
-      let sem = null;
-      if (smart && state.semantic === 'ready' && !isDigits(parsed.terms.join(''))) {
-        const vec = queryVector(text);
-        if (vec) sem = semanticCallMax(vec, speakers);
-      }
-      const semScore = c => (sem && sem.bestPid[c] >= 0 ? sem.bestScore[c] : -Infinity);
-
-      const combined = new Map();  // call -> {score, semPid, semScore}
-      let meaningOnly = false;
-      if (lexCalls.size) {
-        const cands = new Set(lexCalls.keys());
-        if (sem) for (let c = 0; c < CALLS.length; c++) if (semScore(c) >= SEMANTIC_FLOOR) cands.add(c);
-        let lo = Infinity, hi = -Infinity;
-        cands.forEach(c => { const s = Math.max(semScore(c), 0); lo = Math.min(lo, s); hi = Math.max(hi, s); });
-        cands.forEach(c => {
-          const lx = lexCalls.get(c);
-          const ss = Math.max(semScore(c), 0);
-          const ln = lx ? lx.score / topLex : 0;
-          const sn = hi > lo ? (ss - lo) / (hi - lo) : 0;
-          combined.set(c, { score: LEXICAL_WEIGHT * ln + (1 - LEXICAL_WEIGHT) * sn, semPid: sem ? sem.bestPid[c] : -1, semScore: ss });
-        });
-      } else if (sem) {
-        meaningOnly = true;
-        const above = [];
-        for (let c = 0; c < CALLS.length; c++) if (semScore(c) >= SEMANTIC_FALLBACK) above.push(c);
-        above.sort((a, b) => semScore(b) - semScore(a)).slice(0, SEMANTIC_FALLBACK_MAX)
-          .forEach(c => combined.set(c, { score: semScore(c), semPid: sem.bestPid[c], semScore: semScore(c) }));
-      }
-
-      // Evidence per call: the best keyword passages (one per region, since
-      // passages overlap), then the meaning passage.
+      // Evidence per call: the best passages, one per region (passages
+      // overlap), those holding the typed words before related-only ones.
       const byCall = new Map();
       lex.forEach((s, pid) => {
         const c = L.pCall[pid];
-        if (!combined.has(c)) return;
+        if (!best.has(c)) return;
         let arr = byCall.get(c); if (!arr) { arr = []; byCall.set(c, arr); }
-        arr.push({ pid, score: s.score, matched: s.matched.size });
+        arr.push({ pid, score: s.score, matched: s.matched.size, related: s.related.size });
       });
       const needed = parsed.terms.length;
       const calls = new Map();
-      combined.forEach((v, c) => {
+      best.forEach((v, c) => {
         const kept = [];
-        (byCall.get(c) || []).sort((a, b) => b.score - a.score).forEach(e => {
+        (byCall.get(c) || []).sort((a, b) => (b.matched - a.matched) || (b.score - a.score)).forEach(e => {
           if (kept.length >= EVIDENCE_PER_CALL) return;
           const overlaps = !isSummary(e.pid) && kept.some(k => !isSummary(k.pid)
             && L.pFirst[e.pid] <= L.pLast[k.pid] && L.pLast[e.pid] >= L.pFirst[k.pid]);
           if (!overlaps) kept.push(e);
         });
         const evidence = kept.map(e => ({
-          pid: e.pid, matched: e.matched, needed,
-          match: e.matched < needed ? 'partial' : (parsed.phrases.length ? 'phrase' : 'words'),
+          pid: e.pid, matched: e.matched, related: e.related, needed,
+          match: parsed.phrases.length ? 'phrase' : e.related ? 'related' : e.matched < needed ? 'partial' : 'words',
         }));
-        if (v.semPid >= 0 && !evidence.some(e => e.pid === v.semPid) && (!evidence.length || v.semScore >= SEMANTIC_FLOOR)) {
-          evidence.push({ pid: v.semPid, matched: 0, needed, match: 'meaning' });
-        }
-        calls.set(c, { score: v.score, evidence: evidence.slice(0, EVIDENCE_PER_CALL) });
+        calls.set(c, { score: v.score / top, evidence });
       });
-      return { calls, meaningOnly };
+      return { calls };
     }
 
     // No search index (the zip was opened without extracting): scan the
@@ -3130,55 +2976,64 @@ body.present #callReviewControls { display: none; }
     function scanQuery(text) {
       const mk = matcher(text);
       const calls = new Map();
-      if (!mk) return { calls, meaningOnly: false };
+      if (!mk) return { calls };
       const needed = Math.max(mk.terms.length, 1);
       CALLS.forEach((call, idx) => {
         const evidence = [];
         for (const t of Data.turnsOf(call)) {
           if (evidence.length >= EVIDENCE_PER_CALL) break;
-          if (mk.test(t.text)) evidence.push({ text: t.text, start: t.start, speaker: t.speaker, matched: needed, needed, match: 'words' });
+          if (mk.test(t.text)) evidence.push({ text: t.text, start: t.start, speaker: t.speaker, matched: needed, related: 0, needed, match: 'words' });
         }
         const summary = summaryText(call);
         if (evidence.length < EVIDENCE_PER_CALL && mk.test(summary)) {
-          evidence.push({ text: summary, start: null, speaker: 'SUMMARY', matched: needed, needed, match: 'words' });
+          evidence.push({ text: summary, start: null, speaker: 'SUMMARY', matched: needed, related: 0, needed, match: 'words' });
         }
         if (evidence.length) calls.set(idx, { score: evidence.length, evidence });
       });
-      return { calls, meaningOnly: false };
+      return { calls };
     }
 
     // ── Highlighting shared by the index rows, the detail panel, and the
     //    call view's transcript search ─────────────────────────────────
     const WORD_RE = /\(?\d{3}\)?[-. ]?\d{3}[-. ]?\d{4}|\d{3}[-. ]\d{4}|[A-Za-z0-9À-ɏ’']+/g;
-    // A matcher for a query: hit(word) says whether a display word carries
-    // one of the query's terms (memoized: display vocabularies are small),
-    // test(text) whether a text does, mark(text) wraps the hits in <mark>.
+    // A matcher for a query: hit(word) says how a display word matches
+    // ('' for no match, 'exact' for one of the query's words or its typo
+    // and prefix expansions, 'related' for a related word; memoized:
+    // display vocabularies are small), test(text) whether a text matches,
+    // mark(text) wraps the hits in <mark> (related words get .is-related).
     // A query with no content terms (only stopwords) matches as a substring.
     function matcher(text) {
       const raw = String(text || '').trim();
       if (!raw) return null;
       const parsed = parseQuery(raw, true);
-      const termSet = new Set(parsed.terms);
-      // Expansions (typos, prefixes) mark the vocabulary word they reached.
-      parsed.groups.forEach(g => { if (g.fuzzy) g.indices.forEach(ti => termSet.add(L.vocab[ti])); });
+      const exactSet = new Set(parsed.terms);
+      const relatedSet = new Set();
+      // Expansions mark the vocabulary word they reached.
+      parsed.groups.forEach(g => g.expansions.forEach(x => (x.related ? relatedSet : exactSet).add(L.vocab[x.ti])));
+      relatedSet.forEach(t => { if (exactSet.has(t)) relatedSet.delete(t); });
       const lower = raw.toLowerCase();
       const memo = new Map();
       const hit = word => {
         const w = word.toLowerCase();
         let h = memo.get(w);
         if (h === undefined) {
-          h = !STOPWORDS.has(w) && !FILLER.has(w) && indexTerms(w).some(t => termSet.has(t));
+          h = '';
+          if (!STOPWORDS.has(w) && !FILLER.has(w)) {
+            const terms = indexTerms(w);
+            if (terms.some(t => exactSet.has(t))) h = 'exact';
+            else if (terms.some(t => relatedSet.has(t))) h = 'related';
+          }
           memo.set(w, h);
         }
         return h;
       };
-      if (!termSet.size) {
-        return { terms: [], hit: () => false,
+      if (!exactSet.size) {
+        return { terms: [], hit: () => '',
                  test: s => String(s || '').toLowerCase().indexOf(lower) !== -1,
                  mark: s => highlight(String(s == null ? '' : s), raw) };
       }
       return {
-        terms: Array.from(termSet), hit,
+        terms: Array.from(exactSet), hit,
         test(s) { return (String(s || '').match(WORD_RE) || []).some(hit); },
         mark(s) {
           const str = String(s == null ? '' : s);
@@ -3186,7 +3041,8 @@ body.present #callReviewControls { display: none; }
           WORD_RE.lastIndex = 0;
           while ((m = WORD_RE.exec(str)) !== null) {
             out += esc(str.slice(last, m.index));
-            out += hit(m[0]) ? '<mark>' + esc(m[0]) + '</mark>' : esc(m[0]);
+            const h = hit(m[0]);
+            out += h ? '<mark' + (h === 'related' ? ' class="is-related"' : '') + '>' + esc(m[0]) + '</mark>' : esc(m[0]);
             last = m.index + m[0].length;
           }
           return out + esc(str.slice(last));
@@ -3195,14 +3051,22 @@ body.present #callReviewControls { display: none; }
     }
 
     const SNIPPET_LEN = 200;
+    // The first hit in `text` at or after `from`: an exact hit when there is
+    // one, else a related-word hit; -1 for none.
+    function firstHit(text, mk, from) {
+      let related = -1, m;
+      WORD_RE.lastIndex = Math.max(0, from || 0);
+      while ((m = WORD_RE.exec(text)) !== null) {
+        const h = mk.hit(m[0]);
+        if (h === 'exact') return m.index;
+        if (h && related === -1) related = m.index;
+      }
+      return related;
+    }
     // A window of `text` around the first hit at or after `at` (whole text
     // when short), with the hits marked.
     function snippet(text, mk, at) {
-      if (mk && mk.terms.length) {
-        WORD_RE.lastIndex = Math.max(0, at || 0);
-        let m; at = -1;
-        while ((m = WORD_RE.exec(text)) !== null) { if (mk.hit(m[0])) { at = m.index; break; } }
-      } else at = -1;
+      at = mk && mk.terms.length ? firstHit(text, mk, at) : -1;
       if (at === -1 || text.length <= SNIPPET_LEN) {
         const cut = text.length > SNIPPET_LEN ? text.slice(0, SNIPPET_LEN).replace(/\s+\S*$/, '') + '…' : text;
         return mk ? mk.mark(cut) : esc(cut);
@@ -3214,8 +3078,8 @@ body.present #callReviewControls { display: none; }
     }
     // Where an evidence item points and what it shows: {start, speaker,
     // html}. For an indexed passage the anchor is the line carrying most of
-    // the query's words (the first line for a meaning match); a summary
-    // passage or a scanned summary has no time (start null).
+    // the query's words (a typed word outweighs any number of related
+    // words); a summary passage or a scanned summary has no time (start null).
     function evidence(item, mk) {
       if (item.pid == null) return { start: item.start, speaker: item.speaker, html: snippet(item.text, mk, 0) };
       const pid = item.pid;
@@ -3224,7 +3088,7 @@ body.present #callReviewControls { display: none; }
       let line = lines[0], best = -1, offset = 0, at = 0;
       lines.forEach(l => {
         const t = l.text.trim();
-        const n = mk ? (t.match(WORD_RE) || []).reduce((a, w) => a + (mk.hit(w) ? 1 : 0), 0) : 0;
+        const n = mk ? (t.match(WORD_RE) || []).reduce((a, w) => { const h = mk.hit(w); return a + (h === 'exact' ? 1000 : h ? 1 : 0); }, 0) : 0;
         if (n > best) { best = n; line = l; at = offset; }
         offset += t.length + 1;
       });
@@ -3233,19 +3097,20 @@ body.present #callReviewControls { display: none; }
     }
 
     function init() {
-      injectScript('app-assets/index.js').then(() => {
+      const el = document.createElement('script');
+      el.src = 'app-assets/index.js';
+      el.onload = () => {
+        el.remove();
         const raw = window.JCS_SEARCH; window.JCS_SEARCH = null;
         loadLexical(raw);
         notify();
-        // The meaning layer is optional (index.js says whether the package
-        // has one). Its scripts load one at a time after keyword search is live.
-        if (raw.semantic) setTimeout(loadSemantic, 50);
-        else { state.semantic = 'none'; notify(); }
-      }).catch(() => {
+      };
+      el.onerror = () => {
+        el.remove();
         state.lexical = 'missing';
-        state.semantic = 'unavailable';
         notify();
-      });
+      };
+      document.head.appendChild(el);
     }
 
     return {
@@ -3253,9 +3118,7 @@ body.present #callReviewControls { display: none; }
       onChange(fn) { listeners.push(fn); },
       // exposed for the parity and browser tests
       tokenize, indexTerms, stemTokens, stem, summaryText,
-      vectorReady(text) { return vecCache.has(String(text || '').trim()); },
-      queryVector(text) { const v = vecCache.get(String(text || '').trim()); return v ? Array.from(v) : null; },
-      encodeQuery(text) { return M ? M.tokenizer.encode(M.queryPrefix + text, M.maxTokens) : null; },
+      relatedWords(term) { return L && L.related ? (L.related[term] || []).map(([ti, cos]) => [L.vocab[ti], cos]) : []; },
     };
   })();
 
@@ -3845,7 +3708,7 @@ body.present #callReviewControls { display: none; }
     const state = {
       query: '', dateFrom: '', dateTo: '', phone: '', relevance: '',
       outcome: '', length: '', starred: false, review: '',
-      smart: true,       // Smart search (words + meaning, ranked) vs Exact words only
+      smart: true,       // Smart search (words + related words, ranked) vs Exact words only
       speakers: 0,       // Said-by chip: 0 anyone, 1 defendant, 2 outside party
       // 'match' (set when a query starts) ranks by match strength until a
       // column heading is clicked; without a query it reads as date order.
@@ -3931,7 +3794,7 @@ body.present #callReviewControls { display: none; }
       return d >= range[0] && d < range[1];
     }
 
-    // Run the query through Search (keyword + meaning; memoized per query)
+    // Run the query through Search (keywords + related words; memoized per query)
     // and apply the other filters.
     function getFiltered() {
       const q = state.query.trim();
@@ -4008,26 +3871,17 @@ body.present #callReviewControls { display: none; }
       renderList(filtered);
     }
 
-    const SEMANTIC_NOTES = {
-      nowasm: 'This browser cannot run the meaning-search model, so results match words only.',
-      failed: 'Meaning search could not start; results match words only.',
-    };
     // The filter bar's count while a query is active, and the hint line
-    // under the bar: the state of meaning search, or that a list holds
-    // similar-meaning calls because no call contains the words.
+    // under the bar (only when the search index is missing).
     function updateSearchCount(filtered) {
       const q = state.query.trim();
       document.getElementById('ctl').classList.toggle('no-query', !q);
       document.getElementById('searchCount').innerHTML = !q ? ''
         : '<b>' + filtered.length + '</b> call' + (filtered.length === 1 ? '' : 's')
           + (state.sortKey === 'match' && filtered.length > 1 ? ' · best match first' : '');
-      const st = Search.state;
-      let msg = '';
-      if (st.lexical === 'missing') msg = 'Search index not found: extract the whole zip before opening index.html. Searching words only.';
-      else if (result && result.meaningOnly && filtered.length) msg = 'No call contains these words. Showing calls with a <b>similar meaning</b> instead.';
-      else if (q && state.smart && st.semantic === 'loading') msg = 'Preparing meaning search…';
-      else if (q && state.smart && st.semantic === 'unavailable') msg = SEMANTIC_NOTES[st.semanticReason] || '';
-      document.getElementById('searchHint').innerHTML = msg;
+      const missing = Search.state.lexical === 'missing';
+      document.getElementById('searchHint').innerHTML = missing
+        ? 'Search index not found: extract the whole zip before opening index.html. Searching words only.' : '';
     }
 
     // A chart click: narrow the list to a date range (and a tier, when a
@@ -4100,12 +3954,14 @@ body.present #callReviewControls { display: none; }
 
     // Mark the query's words in a piece of text.
     const hl = text => (matcher ? matcher.mark(text) : esc(text));
-    // The match tag on an evidence passage, from the engine's match category.
+    // The match tag on an evidence passage, from the engine's match category:
+    // how many of the query's words the passage holds itself, and whether
+    // it also (or only) holds related words.
     function badgeFor(ev) {
-      if (ev.match === 'meaning') return 'Similar meaning';
       if (ev.match === 'phrase') return 'Exact phrase';
-      if (ev.match === 'partial') return ev.matched + ' of ' + ev.needed + ' words';
-      return 'Exact words';
+      const words = ev.matched < ev.needed ? ev.matched + ' of ' + ev.needed + ' words' : 'Exact words';
+      if (ev.match === 'related') return ev.matched ? words + ' + related' : 'Related words';
+      return words;
     }
 
     function buildRow(call, q) {
@@ -4118,16 +3974,17 @@ body.present #callReviewControls { display: none; }
       let summaryHtml;
       if (hit && hit.evidence.length) {
         // Each passage the query matched: when, how it matched, and a window
-        // around the matched words (a meaning-only match bolds nothing).
+        // around the matched words (related words are marked dashed; a
+        // passage holding only related words is dashed as a whole).
         summaryHtml = '<div class="excerpts">' + hit.evidence.map(ev => {
-          const meaning = ev.match === 'meaning';
-          const where = Search.evidence(ev, meaning ? null : matcher);
+          const related = ev.match === 'related';
+          const where = Search.evidence(ev, matcher);
           const t = where.start == null ? 'SUMMARY' : secondsToLabel(where.start);
-          return '<div class="excerpt' + (meaning ? ' is-meaning' : '') + '" data-t="' + (where.start == null ? '' : where.start) + '"'
+          return '<div class="excerpt' + (related && !ev.matched ? ' is-related' : '') + '" data-t="' + (where.start == null ? '' : where.start) + '"'
             + ' title="' + esc(where.speaker) + '">'
             + '<span class="ex-t">' + esc(t) + '</span>'
             + '<span>' + where.html
-            + ' <span class="tag' + (meaning ? ' is-meaning' : '') + '">' + esc(badgeFor(ev)) + '</span></span>'
+            + ' <span class="tag' + (related ? ' is-related' : '') + '">' + esc(badgeFor(ev)) + '</span></span>'
             + '</div>';
         }).join('') + '</div>';
       } else if (call.brief) {
@@ -4478,8 +4335,8 @@ body.present #callReviewControls { display: none; }
       dl.innerHTML = (list || recentSearches()).map(q => '<option value="' + esc(q) + '"></option>').join('');
     }
 
-    // Search loaded or changed state (the keyword index, then the meaning
-    // layer, then each query vector): re-render an active query.
+    // Search loaded or changed state (the index parsed, or was found
+    // missing): re-render an active query.
     function onSearchChange() {
       if (state.query.trim() || Search.state.lexical === 'missing') renderTable();
     }
@@ -5312,8 +5169,7 @@ body.present #callReviewControls { display: none; }
   CallView.init();
   Router.init();
   ReviewUI.init();
-  // The search sidecars load after first paint: keyword search first, then
-  // the meaning layer when the package has one.
+  // The search index loads after first paint.
   Search.onChange(() => IndexView.onSearchChange());
   Search.init();
 
