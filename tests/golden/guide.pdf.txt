@@ -35,17 +35,20 @@ STATE V. MARCUS REEVES
 SECTION 02
 INDEX.HTML · INDEX VIEWUsing the Call Index
 01 Search every word spoken
-The search box covers every transcript,
-summary, cue, and phone number in the
-delivery. While a search is active, each row
-shows the matching transcript excerpts with
-timestamps, and the counter reports matching
-calls and total mentions.
+Search covers every transcript, summary, cue,
+and number; quote a phrase to match it in order.
+Smart search ranks calls by match and also
+finds passages that say it in other words, each
+tagged Exact words, 2 of 3 words, or Similar
+meaning. Exact words only lists calls with every
+word typed.
 02 Filter and sort
-Narrow by date range, outside number, or
-relevance: the High / Medium / Low counts
-under the case name are clickable filters too.
-Click a column heading to sort.
+Narrow by date, number, outcome, length,
+relevance, or speaker (the Defendant / Outside
+party chips count one side's words); the High /
+Medium / Low counts are clickable filters too. A
+search lists the best match first; click a heading
+to sort another way.
 03 Expand a row
 Selecting a row opens the call's summary,
 outside-party identity, review cues, and the full

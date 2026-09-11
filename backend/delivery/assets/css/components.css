@@ -45,3 +45,10 @@
 .tint-2 { background: var(--tint-2); }
 .tint-3 { background: var(--tint-3); }
 .tint-4 { background: var(--tint-4); }
+
+/* Match tag on a search result's passage: how the passage matched the
+   query ("Exact words", "2 of 4 words", "Similar meaning"). A meaning-only
+   match is dashed (.is-meaning, on the tag and on the passage it sits in)
+   so it never reads as a quotation. */
+.tag { display: inline-block; font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); border: 1px solid var(--rule); padding: 1px 6px; white-space: nowrap; vertical-align: 1px; }
+.is-meaning { border-style: dashed; }

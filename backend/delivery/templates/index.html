@@ -108,6 +108,8 @@
     border-bottom: 1px solid var(--rule);
   }
   .ctl-inner { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+  .ctl-row--filters { margin-top: 10px; }
+  .ctl { --ctl-box: 44px; }  /* the search box and its mode switch share a height */
   .search-wrap {
     flex: 1 1 320px;
     min-width: 260px;
@@ -117,7 +119,7 @@
     background: var(--sheet);
     border: 1px solid var(--ink);
     padding: 0 15px;
-    height: 44px;
+    height: var(--ctl-box);
   }
   .search-wrap svg { color: var(--ink-3); flex-shrink: 0; }
   .search-wrap:focus-within { box-shadow: inset 0 -2px 0 var(--ink); }
@@ -207,6 +209,16 @@
     text-underline-offset: 3px;
   }
   .chip-clear:hover { color: var(--ink); }
+
+  /* The search mode switch sits beside the box at its height; the speaker
+     chips only mean something while a query is active. */
+  .search-mode { border-color: var(--ink); }
+  .search-mode .chip { height: calc(var(--ctl-box) - 2px); padding: 0 16px; font-size: 11.5px; }
+  .ctl.no-query .said-by { opacity: .45; pointer-events: none; }
+  .filter-select--narrow { min-width: 120px; }
+  .search-hint { font-size: 12.5px; color: var(--ink-3); padding-top: 9px; }
+  .search-hint:empty { display: none; }
+  .search-hint b { color: var(--ink); font-weight: 600; }
 
   /* ── Index table ────────────────────────────────────────────────────── */
   .view-index .main { padding: 0 36px 90px; }
@@ -298,7 +310,8 @@
     gap: 10px;
     padding: 6px 9px;
     background: var(--sheet);
-    border-left: 3px solid var(--med);
+    border: 0 solid var(--med);
+    border-left-width: 3px;  /* .is-meaning dashes the style; the other sides stay at zero width */
     cursor: pointer;
     font-size: 13px;
     line-height: 1.5;
@@ -315,6 +328,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .excerpt .tag { margin-left: 8px; }
 
   /* ── Calendar and timeline modes ────────────────────────────────────── */
   /* The tally row's mode switch, and the two chart modes that replace the
@@ -1414,14 +1428,27 @@
   </header>
 
   <div class="ctl" id="ctl">
-    <div class="ctl-inner">
+    <div class="ctl-inner ctl-row">
       <div class="search-wrap">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
           <circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/>
         </svg>
         <input type="text" class="search-input" id="searchInput"
-               placeholder="Search every word spoken: transcripts, summaries, cues, numbers…" autofocus>
+               placeholder="Search by words or meaning; use &quot;quotes&quot; for an exact phrase"
+               autofocus autocomplete="off" list="recentSearches">
+        <datalist id="recentSearches"></datalist>
         <span class="search-count" id="searchCount"></span>
+      </div>
+      <div class="chip-group search-mode" id="searchMode" title="Smart search ranks by matching words and similar meaning; Exact words only lists calls containing every word typed">
+        <button class="chip active" type="button" data-smart="1">Smart search</button>
+        <button class="chip" type="button" data-smart="0">Exact words only</button>
+      </div>
+    </div>
+    <div class="ctl-inner ctl-row ctl-row--filters">
+      <div class="chip-group said-by" id="saidBy" title="Only count words said by this speaker">
+        <button class="chip active" type="button" data-spk="0">Anyone</button>
+        <button class="chip" type="button" data-spk="1">Defendant</button>
+        <button class="chip" type="button" data-spk="2">Outside party</button>
       </div>
       <span class="filter-label">From</span>
       <input type="date" class="filter-input" id="dateFrom">
@@ -1429,6 +1456,16 @@
       <input type="date" class="filter-input" id="dateTo">
       <select class="filter-select" id="phoneFilter">
         <option value="">All numbers</option>
+      </select>
+      <select class="filter-select filter-select--narrow" id="outcomeFilter">
+        <option value="">Any outcome</option>
+      </select>
+      <select class="filter-select filter-select--narrow" id="lengthFilter">
+        <option value="">Any length</option>
+        <option value="u1">Under 1 min</option>
+        <option value="1-5">1 to 5 min</option>
+        <option value="5-15">5 to 15 min</option>
+        <option value="o15">Over 15 min</option>
       </select>
       <div class="chip-group">
         <button class="chip" data-rel="" id="relAll">All</button>
@@ -1438,6 +1475,7 @@
       </div>
       <button class="chip-clear" id="clearFilters">Clear</button>
     </div>
+    <div class="search-hint" id="searchHint"></div>
   </div>
 
   <main class="main">
@@ -1627,15 +1665,7 @@
     },
 
     prepare() {
-      CALLS.forEach(c => {
-        c.rel_rank = REL_RANK[c.relevance] || 0;
-        c.turns_blob = Data.turnsOf(c).map(t => t.text).join(' ').toLowerCase();
-        c.search_blob = [
-          c.filename, c.inmate, c.outside, c.brief,
-          c.identity, c.facility, c.outcome, c.call_type,
-          (c.cues || []).map(n => (n.quote || '') + ' ' + (n.note || '')).join(' '),
-        ].join(' ').toLowerCase() + ' ' + c.turns_blob;
-      });
+      CALLS.forEach(c => { c.rel_rank = REL_RANK[c.relevance] || 0; });
       // The frame the calendar and timeline draw in: the span of every dated
       // call (null when no call has a date, which hides those modes) and the
       // busiest day, which fixes the calendar's tint legend.
@@ -1745,6 +1775,7 @@
   }
 
 {% include "index_charts.js" %}
+{% include "index_search.js" %}
 
   // ═══════════════════════════════════════════════════════════════════════
   // Router: the URL hash is the only navigation state.
@@ -1815,6 +1846,11 @@
     const root = document.getElementById('index');
     const state = {
       query: '', dateFrom: '', dateTo: '', phone: '', relevance: '',
+      outcome: '', length: '',
+      smart: true,       // Smart search (words + meaning, ranked) vs Exact words only
+      speakers: 0,       // Said-by chip: 0 anyone, 1 defendant, 2 outside party
+      // 'match' (set when a query starts) ranks by match strength until a
+      // column heading is clicked; without a query it reads as date order.
       sortKey: 'call_sort', sortDir: 'asc',
       page: 1, pageSize: 50, openIdx: null,
       mode: 'list',    // 'list' | 'calendar' | 'timeline' (the URL hash names it)
@@ -1824,6 +1860,9 @@
     const nav = { targets: [], pos: -1 };
     let visible = false;
     let savedScroll = 0;
+    // The current query's search result and highlighter (null without a query).
+    let result = null;
+    let matcher = null;
 
     function buildMasthead() {
       const totalSec = CALLS.reduce((a, c) => a + (c.duration || 0), 0);
@@ -1867,17 +1906,31 @@
       document.documentElement.style.setProperty('--ctl-h', ctl.getBoundingClientRect().height + 'px');
     }
 
-    function populatePhones() {
-      const phones = new Set();
-      CALLS.forEach(c => { if (c.outside) phones.add(c.outside); });
-      const sel = document.getElementById('phoneFilter');
-      Array.from(phones).sort().forEach(p => {
-        const o = document.createElement('option'); o.value = p; o.textContent = p; sel.appendChild(o);
+    // The number and outcome menus list each value with its call count.
+    function populateSelect(id, key) {
+      const counts = new Map();
+      CALLS.forEach(c => { const v = c[key]; if (v) counts.set(v, (counts.get(v) || 0) + 1); });
+      const sel = document.getElementById(id);
+      Array.from(counts.keys()).sort().forEach(v => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v + ' · ' + counts.get(v) + (counts.get(v) === 1 ? ' call' : ' calls');
+        sel.appendChild(o);
       });
     }
+    const LENGTH_BANDS = { u1: [0, 60], '1-5': [60, 300], '5-15': [300, 900], o15: [900, Infinity] };
+    function inLengthBand(call, band) {
+      const range = LENGTH_BANDS[band];
+      if (!range) return true;
+      const d = call.duration || 0;
+      return d >= range[0] && d < range[1];
+    }
 
+    // Run the query through Search (keyword + meaning; memoized per query)
+    // and apply the other filters.
     function getFiltered() {
-      const q = state.query.trim().toLowerCase();
+      const q = state.query.trim();
+      result = q ? Search.query(q, { smart: state.smart, speakers: state.speakers }) : null;
+      matcher = q ? Search.matcher(q) : null;
       return CALLS.filter(call => {
         if (state.dateFrom || state.dateTo) {
           if (!call.call_date) return false;
@@ -1885,13 +1938,19 @@
           if (state.dateTo && call.call_date > state.dateTo) return false;
         }
         if (state.phone && call.outside !== state.phone) return false;
+        if (state.outcome && call.outcome !== state.outcome) return false;
+        if (state.length && !inLengthBand(call, state.length)) return false;
         if (state.relevance && call.relevance !== state.relevance) return false;
-        if (q && call.search_blob.indexOf(q) === -1) return false;
+        if (result && !result.calls.has(call.index)) return false;
         return true;
       });
     }
     function getSorted(rows) {
-      const key = state.sortKey;
+      if (state.sortKey === 'match' && result) {
+        return rows.slice().sort((a, b) =>
+          (result.calls.get(b.index).score - result.calls.get(a.index).score) || (a.index - b.index));
+      }
+      const key = state.sortKey === 'match' ? 'call_sort' : state.sortKey;
       const dir = state.sortDir === 'asc' ? 1 : -1;
       return rows.slice().sort((a, b) => {
         const av = a[key], bv = b[key];
@@ -1902,35 +1961,6 @@
         return String(av).localeCompare(String(bv)) * dir;
       });
     }
-    function countOccurrences(blob, q) {
-      if (!q) return 0;
-      let n = 0, i = 0;
-      while ((i = blob.indexOf(q, i)) !== -1) { n++; i += q.length; }
-      return n;
-    }
-
-    function buildExcerpts(call, q) {
-      if (!q) return [];
-      const qLower = q.toLowerCase();
-      const out = [];
-      const turns = Data.turnsOf(call);
-      for (let i = 0; i < turns.length && out.length < 3; i++) {
-        const text = turns[i].text;
-        const idx = text.toLowerCase().indexOf(qLower);
-        if (idx === -1) continue;
-        const lo = Math.max(0, idx - 55);
-        const hi = Math.min(text.length, idx + q.length + 85);
-        let snippet = text.slice(lo, hi);
-        if (lo > 0) snippet = '…' + snippet;
-        if (hi < text.length) snippet += '…';
-        out.push({ start: turns[i].start, speaker: turns[i].speaker, snippet });
-      }
-      if (out.length < 3 && call.brief && call.brief.toLowerCase().indexOf(qLower) !== -1) {
-        out.push({ start: null, speaker: 'SUMMARY', snippet: call.brief });
-      }
-      return out;
-    }
-
     // Render the active mode against the current filters. The list is the
     // table below; the calendar and timeline (index_charts.js) draw the same
     // filtered set inside a frame fixed to the delivery's date extent.
@@ -1958,15 +1988,26 @@
       renderList(filtered);
     }
 
-    // The filter bar's count: "N calls · M mentions" while a query is active.
+    const SEMANTIC_NOTES = {
+      nowasm: 'This browser cannot run the meaning-search model, so results match words only.',
+      failed: 'Meaning search could not start; results match words only.',
+    };
+    // The filter bar's count while a query is active, and the hint line
+    // under the bar: the state of meaning search, or that a list holds
+    // similar-meaning calls because no call contains the words.
     function updateSearchCount(filtered) {
-      const countEl = document.getElementById('searchCount');
       const q = state.query.trim();
-      if (!q) { countEl.textContent = ''; return; }
-      const qLower = q.toLowerCase();
-      const mentions = filtered.reduce((a, c) => a + countOccurrences(c.turns_blob, qLower), 0);
-      countEl.innerHTML = '<b>' + filtered.length + '</b> call' + (filtered.length === 1 ? '' : 's')
-        + (mentions ? ' · <b>' + mentions + '</b> mention' + (mentions === 1 ? '' : 's') : '');
+      document.getElementById('ctl').classList.toggle('no-query', !q);
+      document.getElementById('searchCount').innerHTML = !q ? ''
+        : '<b>' + filtered.length + '</b> call' + (filtered.length === 1 ? '' : 's')
+          + (state.sortKey === 'match' && filtered.length > 1 ? ' · best match first' : '');
+      const st = Search.state;
+      let msg = '';
+      if (st.lexical === 'missing') msg = 'Search index not found: extract the whole zip before opening index.html. Searching words only.';
+      else if (result && result.meaningOnly && filtered.length) msg = 'No call contains these words. Showing calls with a <b>similar meaning</b> instead.';
+      else if (q && state.smart && st.semantic === 'loading') msg = 'Preparing meaning search…';
+      else if (q && state.smart && st.semantic === 'unavailable') msg = SEMANTIC_NOTES[st.semanticReason] || '';
+      document.getElementById('searchHint').innerHTML = msg;
     }
 
     // A chart click: narrow the list to a date range (and a tier, when a
@@ -2037,24 +2078,40 @@
       if (state.openIdx != null) initTransNav(q);
     }
 
+    // Mark the query's words in a piece of text.
+    const hl = text => (matcher ? matcher.mark(text) : esc(text));
+    // The match tag on an evidence passage, from the engine's match category.
+    function badgeFor(ev) {
+      if (ev.match === 'meaning') return 'Similar meaning';
+      if (ev.match === 'phrase') return 'Exact phrase';
+      if (ev.match === 'partial') return ev.matched + ' of ' + ev.needed + ' words';
+      return 'Exact words';
+    }
+
     function buildRow(call, q) {
       const div = document.createElement('div');
       const isOpen = state.openIdx === call.index;
       div.className = 'row' + (call.relevance ? ' rel-' + call.relevance : '') + (isOpen ? ' open' : '');
       div.dataset.idx = call.index;
 
-      const excerpts = q ? buildExcerpts(call, q) : [];
+      const hit = result ? result.calls.get(call.index) : null;
       let summaryHtml;
-      if (excerpts.length) {
-        summaryHtml = '<div class="excerpts">' + excerpts.map(ex => {
-          const t = ex.start != null ? secondsToLabel(ex.start) : esc(ex.speaker);
-          return '<div class="excerpt" data-t="' + (ex.start != null ? ex.start : '') + '">'
+      if (hit && hit.evidence.length) {
+        // Each passage the query matched: when, how it matched, and a window
+        // around the matched words (a meaning-only match bolds nothing).
+        summaryHtml = '<div class="excerpts">' + hit.evidence.map(ev => {
+          const meaning = ev.match === 'meaning';
+          const where = Search.evidence(ev, meaning ? null : matcher);
+          const t = where.start == null ? 'SUMMARY' : secondsToLabel(where.start);
+          return '<div class="excerpt' + (meaning ? ' is-meaning' : '') + '" data-t="' + (where.start == null ? '' : where.start) + '"'
+            + ' title="' + esc(where.speaker) + '">'
             + '<span class="ex-t">' + esc(t) + '</span>'
-            + '<span>' + highlight(ex.snippet, q) + '</span>'
+            + '<span>' + where.html
+            + ' <span class="tag' + (meaning ? ' is-meaning' : '') + '">' + esc(badgeFor(ev)) + '</span></span>'
             + '</div>';
         }).join('') + '</div>';
       } else if (call.brief) {
-        summaryHtml = '<div class="clamp">' + highlight(call.brief, q) + '</div>';
+        summaryHtml = '<div class="clamp">' + hl(call.brief) + '</div>';
       } else {
         summaryHtml = '<div class="empty">No summary</div>';
       }
@@ -2066,8 +2123,8 @@
         relMark(call.relevance) +
         '<span class="date"><b>' + esc(dt.d) + '</b><span>' + esc(dt.t) + '</span></span>' +
         '<span class="dur">' + esc(call.duration_str || '—') + '</span>' +
-        '<span class="party"><b>' + highlight(call.outside || '—', q) + '</b>' +
-          (idShort ? '<span title="' + esc(idShort) + '">' + highlight(idShort, q) + '</span>' : '') +
+        '<span class="party"><b>' + hl(call.outside || '—') + '</b>' +
+          (idShort ? '<span title="' + esc(idShort) + '">' + hl(idShort) + '</span>' : '') +
         '</span>' +
         '<span class="sum">' + summaryHtml + '</span>' +
         '<span class="acts">' +
@@ -2083,10 +2140,10 @@
       div.dataset.idx = call.index;
 
       const briefHtml = call.brief
-        ? '<h4>Summary</h4><p class="brief">' + highlight(call.brief, q) + '</p>'
+        ? '<h4>Summary</h4><p class="brief">' + hl(call.brief) + '</p>'
         : '<h4>Summary</h4><p class="brief" style="color:var(--ink-3)">No summary for this call.</p>';
       const idHtml = call.identity
-        ? '<div class="id-block"><h4>Outside Party</h4><p>' + highlight(call.identity, q) + '</p></div>'
+        ? '<div class="id-block"><h4>Outside Party</h4><p>' + hl(call.identity) + '</p></div>'
         : '';
 
       let cuesHtml = '';
@@ -2094,8 +2151,8 @@
       if (cues.length) {
         const rows = cues.map((cue, i) => {
           const noteBits = [];
-          if (cue.note) noteBits.push('<b>' + highlight(cue.note, q) + '</b>');
-          if (cue.quote) noteBits.push('<span class="q">&ldquo;' + highlight(cue.quote, q) + '&rdquo;</span>');
+          if (cue.note) noteBits.push('<b>' + hl(cue.note) + '</b>');
+          if (cue.quote) noteBits.push('<span class="q">&ldquo;' + hl(cue.quote) + '&rdquo;</span>');
           const citeParts = [];
           if (cue.line_cite) citeParts.push('Tr. ' + esc(cue.line_cite));
           if (cue.page) citeParts.push('<a data-cue-pdf="' + i + '">PDF p.' + cue.page + '</a>');
@@ -2125,13 +2182,13 @@
 
       let turnsHtml;
       if (turns.length) {
-        const qLower = q ? q.toLowerCase() : '';
         turnsHtml = turns.map((t, i) => {
-          const isMatch = qLower && t.text.toLowerCase().indexOf(qLower) !== -1;
+          const html = hl(t.text);
+          const isMatch = html.indexOf('<mark>') !== -1;
           const cls = 'turn' + (isMatch ? ' is-match' : '') + (cueTurnSet.has(i) ? ' has-cue' : '');
           return '<div class="' + cls + '" data-t="' + t.start + '" data-i="' + i + '">'
             + '<span class="who">' + esc(t.speaker) + '<span class="t">' + esc(secondsToLabel(t.start)) + '</span></span>'
-            + '<span class="tx">' + highlight(t.text, q) + '</span>'
+            + '<span class="tx">' + html + '</span>'
             + '</div>';
         }).join('');
       } else {
@@ -2288,10 +2345,33 @@
       });
 
       let debounce = null;
-      document.getElementById('searchInput').addEventListener('input', e => {
+      const searchInput = document.getElementById('searchInput');
+      searchInput.addEventListener('input', e => {
         clearTimeout(debounce);
-        debounce = setTimeout(() => { state.query = e.target.value; state.page = 1; renderTable(); }, 180);
+        debounce = setTimeout(() => {
+          const was = state.query.trim();
+          state.query = e.target.value; state.page = 1;
+          if (state.query.trim() && !was) { state.sortKey = 'match'; state.sortDir = 'desc'; }  // a new query ranks by match
+          renderTable();
+        }, 180);
       });
+      // A query the reviewer settles on (leaves the box, presses Enter) is
+      // remembered for the recent-searches menu.
+      searchInput.addEventListener('change', () => rememberSearch(searchInput.value));
+
+      function setChipGroup(groupId, attr, value) {
+        document.querySelectorAll('#' + groupId + ' .chip').forEach(b => b.classList.toggle('active', b.dataset[attr] === String(value)));
+      }
+      // A chip group whose data-<attr> value feeds `apply`, then re-renders.
+      function bindChipGroup(groupId, attr, apply) {
+        document.querySelectorAll('#' + groupId + ' .chip').forEach(btn => {
+          btn.addEventListener('click', () => { apply(btn.dataset[attr]); setChipGroup(groupId, attr, btn.dataset[attr]); onFilterChange(); });
+        });
+      }
+      bindChipGroup('searchMode', 'smart', v => { state.smart = v === '1'; });
+      bindChipGroup('saidBy', 'spk', v => { state.speakers = parseInt(v, 10) || 0; });
+      document.getElementById('outcomeFilter').addEventListener('change', e => { state.outcome = e.target.value; onFilterChange(); });
+      document.getElementById('lengthFilter').addEventListener('change', e => { state.length = e.target.value; onFilterChange(); });
 
       function onFilterChange() { state.page = 1; renderTable(); }
       document.getElementById('dateFrom').addEventListener('change', e => { state.dateFrom = e.target.value; onFilterChange(); });
@@ -2317,12 +2397,17 @@
 
       document.getElementById('clearFilters').addEventListener('click', () => {
         state.query = ''; state.dateFrom = ''; state.dateTo = '';
-        state.phone = ''; state.relevance = '';
+        state.phone = ''; state.relevance = ''; state.outcome = ''; state.length = '';
+        state.speakers = 0;
+        if (state.sortKey === 'match') { state.sortKey = 'call_sort'; state.sortDir = 'asc'; }
         state.page = 1;
         document.getElementById('searchInput').value = '';
         document.getElementById('dateFrom').value = '';
         document.getElementById('dateTo').value = '';
         document.getElementById('phoneFilter').value = '';
+        document.getElementById('outcomeFilter').value = '';
+        document.getElementById('lengthFilter').value = '';
+        setChipGroup('saidBy', 'spk', 0);
         document.querySelectorAll('.chip[data-rel]').forEach(b => b.classList.toggle('active', b.id === 'relAll'));
         renderTable();
       });
@@ -2352,9 +2437,33 @@
       if (document.fonts && document.fonts.ready) document.fonts.ready.then(measureCtl);
     }
 
+    const RECENT_KEY = 'jcs_recent_searches';
+    function recentSearches() {
+      try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') || []; } catch (e) { return []; }
+    }
+    function rememberSearch(q) {
+      q = String(q || '').trim();
+      if (q.length < 3) return;
+      const list = [q].concat(recentSearches().filter(x => x.toLowerCase() !== q.toLowerCase())).slice(0, 8);
+      try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable */ }
+      renderRecentSearches(list);
+    }
+    function renderRecentSearches(list) {
+      const dl = document.getElementById('recentSearches');
+      dl.innerHTML = (list || recentSearches()).map(q => '<option value="' + esc(q) + '"></option>').join('');
+    }
+
+    // Search loaded or changed state (the keyword index, then the meaning
+    // layer, then each query vector): re-render an active query.
+    function onSearchChange() {
+      if (state.query.trim() || Search.state.lexical === 'missing') renderTable();
+    }
+
     function init() {
       buildMasthead();
-      populatePhones();
+      populateSelect('phoneFilter', 'outside');
+      populateSelect('outcomeFilter', 'outcome');
+      renderRecentSearches();
       bindEvents();
       // The chart modes need dated calls; without any, the switch is not offered.
       document.getElementById('modeGroup').classList.toggle('hidden', !Data.dateExtent);
@@ -2385,7 +2494,7 @@
       visible = false;
     }
 
-    return { init, show, hide, render: renderTable, state, isVisible: () => visible };
+    return { init, show, hide, render: renderTable, state, isVisible: () => visible, onSearchChange };
   })();
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -2625,7 +2734,8 @@
 
     // ── Transcript rendering ──
     function renderPage(page, query) {
-      const q = (query || '').trim().toLowerCase();
+      const q = (query || '').trim();
+      const mk = q ? Search.matcher(q) : null;
       const pages = {};
       lineEntries.forEach(l => {
         const p = l.page || 1;
@@ -2646,7 +2756,7 @@
         const lines = (pages[p] || []).sort((a, b) => (a.line || 0) - (b.line || 0));
         lines.forEach(entry => {
           const lineText = entry.rendered_text || entry.text || '';
-          if (q && lineText.toLowerCase().includes(q)) pageHasMatch = true;
+          if (mk && mk.test(lineText)) pageHasMatch = true;
           const div = document.createElement('div');
           div.className = 'trans-line';
           div.dataset.start = entry.start || 0;
@@ -2678,7 +2788,7 @@
           } else {
             // Fallback: no word data or search active — render as before
             div.addEventListener('click', () => seekTo(parseFloat(entry.start) || 0));
-            const highlighted = q ? highlight(lineText, q) : esc(lineText);
+            const highlighted = mk ? mk.mark(lineText) : esc(lineText);
             div.innerHTML = lineNum + '<span class="line-text">' + highlighted + '</span>';
           }
 
@@ -3110,11 +3220,15 @@
   IndexView.init();
   CallView.init();
   Router.init();
+  // The search sidecars load after first paint: keyword search first, then
+  // the meaning layer when the package has one.
+  Search.onChange(() => IndexView.onSearchChange());
+  Search.init();
 
   // Exposed for the browser tests and console debugging; nothing in the
   // page calls through this object.
   window.JCS = {
-    Data, IndexView, CallView, Router, Charts,
+    Data, IndexView, CallView, Router, Charts, Search,
     helpers: { esc, escRe, highlight, relMark, formatTime, formatDur, secondsToLabel, hashTime, parseTime, fmtDate, fmtDateParts },
   };
 })();

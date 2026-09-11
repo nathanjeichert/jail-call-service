@@ -1,13 +1,10 @@
 """Browser tests for the delivery page (``index.html``) with Playwright.
 
-Builds the synthetic package once (no audio, pinned date), opens
-``index.html`` from a ``file://`` URL in headless Chromium, and drives both
-views the way a reviewer does: search, filter, expand a row, open a cue,
-go back, deep-link, present mode. Every test also asserts that no console
-error or uncaught exception occurred.
-
-The package has no MP3s, so the one expected console line is the audio
-element's failed resource load; it is filtered out by its URL.
+Opens the synthetic package's ``index.html`` (``conftest.py``: built once
+per session, no audio, pinned date) from a ``file://`` URL in headless
+Chromium and drives both views the way a reviewer does: search, filter,
+expand a row, open a cue, go back, deep-link, present mode. Every test also
+asserts that no console error or uncaught exception occurred.
 """
 
 from __future__ import annotations
@@ -16,61 +13,13 @@ import re
 import sys
 from pathlib import Path
 
-import pytest
-from playwright.sync_api import expect, sync_playwright
+from playwright.sync_api import expect
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from make_test_package import build_package  # noqa: E402
+from browser_harness import rows as _rows  # noqa: E402
+from browser_harness import search as _search  # noqa: E402
 
 DEEP_LINK_CALL = "002-20260313_123302_9095550226.mp3"
-
-
-@pytest.fixture(scope="module")
-def package(tmp_path_factory) -> dict:
-    out = tmp_path_factory.mktemp("browser") / "REEVES_TEST_PACKAGE"
-    calls = build_package(out, 10, with_audio=False, gen_date="January 15, 2026")
-    return {"url": (out / "index.html").as_uri(), "calls": calls}
-
-
-@pytest.fixture(scope="module")
-def index_url(package) -> str:
-    return package["url"]
-
-
-@pytest.fixture(scope="module")
-def browser(index_url):
-    # The package builds first: build_package runs the delivery stage with
-    # asyncio.run, which cannot start once sync Playwright's loop is running.
-    with sync_playwright() as p:
-        b = p.chromium.launch()
-        yield b
-        b.close()
-
-
-@pytest.fixture
-def page(browser, index_url):
-    context = browser.new_context(viewport={"width": 1400, "height": 900})
-    pg = context.new_page()
-    problems: list[str] = []
-
-    def on_console(msg):
-        if msg.type != "error":
-            return
-        if (msg.location or {}).get("url", "").endswith(".mp3"):
-            return  # the no-audio package: the <audio> element's missing MP3
-        problems.append(f"console.error: {msg.text}")
-
-    pg.on("console", on_console)
-    pg.on("pageerror", lambda err: problems.append(f"pageerror: {err}"))
-    pg.goto(index_url)
-    pg.wait_for_function("document.fonts.status === 'loaded'")
-    yield pg
-    context.close()
-    assert problems == [], problems
-
-
-def _rows(page):
-    return page.locator("#rows .row")
 
 
 def _expand_first_row(page):
@@ -78,10 +27,6 @@ def _expand_first_row(page):
     _rows(page).first.locator(".date").click()
     expect(page.locator("#rows .detail")).to_have_count(1)
     return page.locator("#rows .detail")
-
-
-def _search(page, query: str):
-    page.fill("#searchInput", query)
 
 
 class TestIndexView:
@@ -98,7 +43,7 @@ class TestIndexView:
     def test_query_filters_rows_and_highlights_matches(self, page):
         _search(page, "Darnell")
         expect(_rows(page)).to_have_count(4)
-        expect(page.locator("#searchCount")).to_have_text("4 calls · 4 mentions")
+        expect(page.locator("#searchCount")).to_have_text("4 calls · best match first")
         marks = page.locator("#rows mark")
         assert marks.count() >= 4
         assert {m.strip().lower() for m in marks.all_inner_texts()} == {"darnell"}
