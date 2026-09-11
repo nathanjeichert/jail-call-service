@@ -3902,6 +3902,10 @@
     let activePlaybackTime = 0;
     let transcriptScrollGuard = 0;
     let pendingSeek = 0;
+    // The line a whole-second deep link revealed, held as the active line
+    // while the player sits paused at that time (the seek's own timeupdate
+    // would otherwise re-mark the line still playing at t or nothing).
+    let revealHold = null; // { start: "<line data-start>", at: seconds }
 
     function entryKey(entry) {
       if (!entry) return '';
@@ -3991,6 +3995,7 @@
       ws.stop();
       resetProgressUI(call.duration || 0);
       pendingSeek = (seekSeconds != null && seekSeconds > 0) ? seekSeconds : 0;
+      revealHold = null;
       loadAudioForCall(call);
       renderCueTicks(call);
 
@@ -4304,10 +4309,15 @@
       if (lineEl) {
         setTranscriptScrollGuard(700);
         lineEl.scrollIntoView({ block: 'center' });
-        // A cue's whole-second timestamp usually lands just before its line
-        // starts, so nothing is "active" yet: mark the revealed line until
-        // playback takes over.
-        if (!root.querySelector('.trans-line.active')) lineEl.classList.add('active');
+        // The time-based sync has already marked the line playing at t (the
+        // previous speaker's last word for a cue link) or nothing at all:
+        // move the highlight to the revealed line until playback takes over.
+        if (startingWithin || !root.querySelector('.trans-line.active')) {
+          root.querySelectorAll('.trans-line.active').forEach(el => el.classList.remove('active'));
+          root.querySelectorAll('.word-ts.active-word').forEach(el => el.classList.remove('active-word'));
+          lineEl.classList.add('active');
+          revealHold = { start: entryStart, at: t };
+        }
       }
     }
 
@@ -4334,6 +4344,7 @@
     }
 
     function seekTo(seconds) {
+      revealHold = null;
       if (ws.getDuration() > 0) {
         const clamped = Math.max(0, Math.min(seconds, ws.getDuration()));
         ws.setTime(clamped);
@@ -4386,11 +4397,16 @@
 
     function syncActiveLines(t, options) {
       const forceReveal = !!(options && options.forceReveal);
+      // A revealed deep-link line stays active until playback starts or the
+      // playhead leaves that second.
+      if (revealHold && (ws.isPlaying() || Math.abs(t - revealHold.at) >= 1)) revealHold = null;
+      const hold = revealHold;
       let activeEntry = null;
       for (const entry of lineEntries) {
         const start = parseFloat(entry.start) || 0;
         const end = parseFloat(entry.end) || 0;
-        if (t >= start && t < (end || start + 5)) {
+        const hit = hold ? String(entry.start || 0) === hold.start : (t >= start && t < (end || start + 5));
+        if (hit) {
           activeEntry = entry;
           break;
         }
@@ -4411,14 +4427,14 @@
       root.querySelectorAll('.trans-line').forEach(el => {
         const start = parseFloat(el.dataset.start) || 0;
         const end = parseFloat(el.dataset.end) || 0;
-        const isActive = t >= start && t < (end || start + 5);
+        const isActive = hold ? el.dataset.start === hold.start : (t >= start && t < (end || start + 5));
         el.classList.toggle('active', isActive);
         if (isActive && !activeLineEl) activeLineEl = el;
         // Highlight active word within the line
         el.querySelectorAll('.word-ts').forEach(word => {
           const ws0 = parseFloat(word.dataset.ws) || 0;
           const we0 = parseFloat(word.dataset.we) || 0;
-          word.classList.toggle('active-word', t >= ws0 && t < we0);
+          word.classList.toggle('active-word', !hold && t >= ws0 && t < we0);
         });
       });
 
