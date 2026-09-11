@@ -613,13 +613,15 @@ export default function JobsPage() {
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
                         {job.has_zip && (
-                          <a
-                            href={api.jobs.downloadUrl(job.id)}
-                            onClick={e => e.stopPropagation()}
+                          // A button, not an <a>: the card itself is a link and
+                          // nested anchors are invalid HTML (React hydration error).
+                          <button
+                            type="button"
+                            onClick={e => { e.preventDefault(); e.stopPropagation(); window.location.assign(api.jobs.downloadUrl(job.id)); }}
                             className="px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-medium hover:bg-green-100 transition-colors"
                           >
                             Download
-                          </a>
+                          </button>
                         )}
                         {['done', 'error', 'paused'].includes(job.stage) && (
                           <button

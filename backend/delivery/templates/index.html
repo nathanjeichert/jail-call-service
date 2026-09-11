@@ -2158,7 +2158,7 @@
           if (cue.page) citeParts.push('<a data-cue-pdf="' + i + '">PDF p.' + cue.page + '</a>');
           return '<tr data-cue-idx="' + i + '">'
             + '<td class="ts">' + esc(cue.ts) + '</td>'
-            + '<td class="note">' + noteBits.join(': ') + '</td>'
+            + '<td class="note">' + noteBits.join(' ') + '</td>'
             + '<td class="cite">' + citeParts.join(' · ') + '</td>'
             + '</tr>';
         }).join('');
@@ -2928,19 +2928,24 @@
       }
     }
 
-    // Jump the transcript view to the line containing time t. Cue timestamps
-    // are rounded to whole seconds and can land in the gap just before a
-    // line starts, so fall back to the next upcoming line when none contains t.
+    // Jump the transcript view to the line for time t. A cue link carries the
+    // cited line's start floored to a whole second (#call=…&t=MM:SS), and the
+    // previous speaker's last word usually spans that second, so for a
+    // whole-second t prefer the line that starts inside [t, t+1): that is the
+    // cited line. Otherwise take the line containing t, then the next line.
     function revealTranscriptAt(t) {
+      const wholeSecond = Number.isInteger(t);
+      let startingWithin = null;
       let containing = null;
       let upcoming = null;
       for (const entry of lineEntries) {
         const start = parseFloat(entry.start) || 0;
         const end = parseFloat(entry.end) || 0;
-        if (t >= start && t < (end || start + 5)) { containing = entry; break; }
+        if (wholeSecond && start >= t && start < t + 1 && !startingWithin) startingWithin = entry;
+        if (!containing && t >= start && t < (end || start + 5)) containing = entry;
         if (start >= t && (!upcoming || start < (parseFloat(upcoming.start) || 0))) upcoming = entry;
       }
-      const entry = containing || upcoming;
+      const entry = startingWithin || containing || upcoming;
       if (!entry) return;
       const page = entry.page || 1;
       if (page !== currentPage) goToPage(page, { source: 'playback' });

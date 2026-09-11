@@ -402,9 +402,11 @@ section.chapter .band { padding-top: 3pt; }
     border: 1px solid var(--ink);
     background: var(--paper);
 }
-/* Keep the card header together so a page break never lands between the
-   relevance marker and its call title, but allow the cue table below to
-   split cleanly across pages for long call cards. */
+/* Keep the card header, brief, outside-party line, and action links together
+   (.cc-lead) so a page break never strands the header at the bottom of a
+   page or the links at the top of one, while the cue table below splits by
+   row across pages for long call cards. */
+.cc-lead { page-break-inside: avoid; }
 .cc-head { page-break-inside: avoid; page-break-after: avoid; }
 
 .cc-head {
@@ -433,6 +435,8 @@ section.chapter .band { padding-top: 3pt; }
 }
 
 .cc-body { padding: 12pt 15pt 13.5pt; }
+.cc-body--lead { padding-bottom: 0; }
+.cc-body--cues { padding-top: 0; }
 .cc-brief {
     margin: 0;
     font-family: var(--serif);
@@ -490,10 +494,11 @@ section.chapter .band { padding-top: 3pt; }
     gap: 9pt;
     padding: 9pt 15pt;
     border-top: 1px solid var(--rule);
-    /* Keep the action row glued to the cue table so a page break never
-       strands it alone at the top of the next page. */
+    border-bottom: 1px solid var(--rule);
+    /* Sits inside .cc-lead, above the cue table. No break-before: avoid:
+       Paged.js honors that by pushing the preceding content to the next
+       page, which once left a whole card body there and the header alone. */
     page-break-inside: avoid;
-    page-break-before: avoid;
 }
 .cc-foot a {
     font-size: 7.1pt;
@@ -814,20 +819,27 @@ section.chapter .band { padding-top: 3pt; }
     {% if high_cards %}
     {% for c in high_cards %}
     <div class="cc">
+        <div class="cc-lead">
         <div class="cc-head">
             <span class="rv rv--high">High</span>
             <span class="who">{{ c.party }}</span>
             <span class="when">CALL {{ "%03d"|format(c.call_index) }} · {{ c.datetime }} · {{ c.duration }}</span>
         </div>
-        <div class="cc-body">
+        <div class="cc-body cc-body--lead">
             {% if c.brief %}
             <p class="cc-brief">{{ c.brief }}</p>
             {% endif %}
             {% if c.speakers %}
             <div class="cc-speakers"><b>Outside party</b>: {{ c.speakers }}</div>
             {% endif %}
-
-            {% if c.has_cues %}
+        </div>
+        <div class="cc-foot">
+            <a href="{{ c.viewer_link }}">Open in Viewer →</a>
+            <a href="{{ c.pdf_link }}">Transcript PDF</a>
+        </div>
+        </div>
+        {% if c.has_cues %}
+        <div class="cc-body cc-body--cues">
             <table class="cc-cues">
                 {% for cue in c.cues %}
                 <tr>
@@ -836,17 +848,13 @@ section.chapter .band { padding-top: 3pt; }
                         <a href="{{ cue.viewer_link }}">{{ cue.timestamp|replace("[", "")|replace("]", "") }}</a>
                         {% endif %}
                     </td>
-                    <td class="q">{% if cue.note %}<b>{{ cue.note }}</b>{% endif %}{% if cue.note and cue.quote %}: {% endif %}{% if cue.quote %}<i>&ldquo;{{ cue.quote }}&rdquo;</i>{% endif %}</td>
+                    <td class="q">{% if cue.note %}<b>{{ cue.note }}</b>{% endif %}{% if cue.note and cue.quote %} {% endif %}{% if cue.quote %}<i>&ldquo;{{ cue.quote }}&rdquo;</i>{% endif %}</td>
                     <td class="cite">{% if cue.line_cite %}TR. {{ cue.line_cite }}{% endif %}</td>
                 </tr>
                 {% endfor %}
             </table>
-            {% endif %}
         </div>
-        <div class="cc-foot">
-            <a href="{{ c.viewer_link }}">Open in Viewer →</a>
-            <a href="{{ c.pdf_link }}">Transcript PDF</a>
-        </div>
+        {% endif %}
     </div>
     {% endfor %}
 
@@ -930,7 +938,7 @@ section.chapter .band { padding-top: 3pt; }
     </table>
 
     {% if total_caller_count > top_callers|length %}
-    <p class="trunc-note">SHOWING TOP {{ top_callers|length }} OF {{ total_caller_count }} NUMBERS · FULL SET IN SEARCH.HTML</p>
+    <p class="trunc-note">SHOWING TOP {{ top_callers|length }} OF {{ total_caller_count }} NUMBERS · FULL SET IN INDEX.HTML</p>
     {% endif %}
 
     {% else %}
