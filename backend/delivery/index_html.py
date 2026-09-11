@@ -27,7 +27,9 @@ Input is the per-call :class:`~backend.delivery.call_view.CallView` list the
 delivery stage builds once for every surface.
 """
 
+import hashlib
 import html
+import json
 import re
 from typing import List, Optional, Sequence
 
@@ -49,6 +51,10 @@ def build_call_payload(view: CallView) -> dict:
     call = view.call
     cues = [
         {
+            "id": hashlib.sha256(json.dumps(
+                [cue.get("line_cite"), cue.get("note"), cue.get("quote"), cue["seconds"]],
+                ensure_ascii=False,
+            ).encode("utf-8")).hexdigest()[:24],
             "t": cue["seconds"],
             "ts": cue["timestamp"].strip("[]"),
             "speaker": cue.get("speaker", "") or "",
@@ -101,6 +107,14 @@ def _case_title_html(case_name: str) -> str:
 def generate_index_html(views: Sequence[CallView], case_name: str = "", gen_date: Optional[str] = None) -> str:
     """Render ``index.html`` for the given call views."""
     call_data: List[dict] = [build_call_payload(v) for v in views]
+    # Bind review files to this transcript set, independent of generated dates,
+    # summaries, and the folder where the recipient extracts the delivery.
+    review_manifest = [
+        [c["audio_filename"], c["duration"], c["outside"], c["lines"]] for c in call_data
+    ]
+    review_id = hashlib.sha256(
+        json.dumps([case_name, review_manifest], ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
     title = f"{case_name} — Call Index" if case_name else "Call Index"
     gen_date = gen_date or format_generated_date()
 
@@ -112,5 +126,6 @@ def generate_index_html(views: Sequence[CallView], case_name: str = "", gen_date
         gen_date=gen_date,
         theme_css=theme_css("screen", FONT_FAMILIES),
         case_name_json=dump_script_safe_json(case_name or "Jail Calls"),
+        review_id_json=dump_script_safe_json(review_id),
         data_json=dump_script_safe_json(call_data),
     )

@@ -1,4 +1,5 @@
 import json
+import re
 import unittest
 
 from backend.delivery.call_view import build_call_views
@@ -28,6 +29,20 @@ def _fixture_call() -> CallResult:
 
 
 class DeliveryHtmlTests(unittest.TestCase):
+    def test_review_identity_tracks_transcripts_but_not_summary_or_generation_date(self):
+        call = _fixture_call()
+
+        def identity(case_name="Case", date="January 1, 2026"):
+            page = generate_index_html(build_call_views([call]), case_name=case_name, gen_date=date)
+            return re.search(r'<meta name="jcs-review-id" content="([a-f0-9]{64})">', page).group(1)
+
+        original = identity()
+        call.summary = "A corrected summary"
+        self.assertEqual(original, identity(date="February 1, 2026"))
+        self.assertNotEqual(original, identity(case_name="Different case"))
+        call.turns[0].text = "A different transcript"
+        self.assertNotEqual(original, identity())
+
     def test_dump_script_safe_json_escapes_inline_script_breakers(self):
         payload = [{"text": "Danger </script> \u2028 \u2029"}]
 

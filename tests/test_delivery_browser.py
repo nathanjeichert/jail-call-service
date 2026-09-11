@@ -211,7 +211,7 @@ class TestChartModes:
 
     def test_mode_switch_is_offered_and_starts_on_the_list(self, page):
         expect(page.locator("#modeGroup")).to_be_visible()
-        expect(page.locator("#modeGroup [data-mode]")).to_have_count(3)
+        expect(page.locator("#modeGroup [data-mode]")).to_have_count(4)
         expect(page.locator("#modeGroup .chip.active")).to_have_text("List")
         expect(page.locator("#modeCalendar")).to_be_hidden()
         expect(page.locator("#modeTimeline")).to_be_hidden()

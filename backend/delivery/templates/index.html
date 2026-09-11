@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="jcs-review-id" content={{ review_id_json }}>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
 <title>{{ title }}</title>
@@ -1333,7 +1334,8 @@
   .side-empty { color: var(--ink-3); font-style: italic; font-size: 12.5px; }
 
   .side-cue {
-    display: flex;
+    display: grid;
+    grid-template-columns: 34px 1fr;
     gap: 10px;
     padding: 8px 0 7px;
     border-bottom: 1px solid var(--rule-faint);
@@ -1416,6 +1418,11 @@
 </head>
 <body>
 
+<div class="review-save-bar" id="reviewSaveBar">
+  <span id="reviewSaveStatus" role="status" aria-live="polite">Preparing review storage…</span>
+  <button type="button" class="review-button" id="reviewConnect">Enable autosave</button>
+</div>
+
 <!-- ═══════════════════════ Index view ═══════════════════════ -->
 <div class="view view-index" id="index">
   <div class="band">
@@ -1446,6 +1453,7 @@
         <button class="chip" type="button" data-mode="list">List</button>
         <button class="chip" type="button" data-mode="calendar">Calendar</button>
         <button class="chip" type="button" data-mode="timeline">Timeline</button>
+        <button class="chip" type="button" data-mode="notes">Pinned notes <span id="pinCount">0</span></button>
       </div>
       <span class="tally-range" id="tallyRange"></span>
     </div>
@@ -1499,6 +1507,13 @@
       </div>
       <button class="chip-clear" id="clearFilters">Clear</button>
     </div>
+    <div class="ctl-inner review-filters">
+      <label><input type="checkbox" id="starFilter"> Starred only</label>
+      <label>Review <select class="filter-select" id="reviewFilter" aria-label="Review status">
+        <option value="">All calls</option><option value="unreviewed">Unreviewed</option><option value="reviewed">Reviewed</option>
+      </select></label>
+      <span id="reviewProgress"></span>
+    </div>
     <div class="search-hint" id="searchHint"></div>
   </div>
 
@@ -1526,6 +1541,7 @@
     <!-- The calendar and timeline modes (index_charts.js) draw into these. -->
     <section class="mode-chart hidden" id="modeCalendar" aria-label="Calendar"></section>
     <section class="mode-chart hidden" id="modeTimeline" aria-label="Timeline"></section>
+    <section class="hidden" id="modeNotes" aria-label="Pinned notes"></section>
   </main>
 </div>
 
@@ -1536,6 +1552,7 @@
       <div class="band-left">
         <a class="band-back" href="#index" id="backToIndex" title="Back to the call index">&larr; Call Index</a>
         <span class="lbl lbl--ink">Call Viewer</span>
+        <a class="band-back" href="#notes">Pinned notes</a>
       </div>
     </div>
 
@@ -1561,6 +1578,7 @@
           </div>
           <h2 id="mainTitle"></h2>
           <div class="meta" id="mainMeta"></div>
+          <div id="callReviewControls"></div>
         </div>
 
         <!-- Audio transport -->
@@ -1644,6 +1662,33 @@
 
 <div class="toast" id="toast"></div>
 
+<dialog class="review-dialog" id="reviewSetup" aria-labelledby="reviewSetupTitle">
+  <h2 id="reviewSetupTitle">Save your review</h2>
+  <p id="reviewSetupHelp"></p>
+  <p id="reviewSetupError" role="alert"></p>
+  <div class="review-dialog-actions">
+    <button type="button" class="review-button" id="reviewSetupCancel">Cancel</button>
+    <button type="button" class="review-button" id="reviewSetupOther">Choose folder</button>
+    <button type="button" class="review-button" id="reviewSetupChoose">Reconnect</button>
+  </div>
+</dialog>
+<dialog class="review-dialog" id="phoneNameDialog" aria-labelledby="phoneNameTitle">
+  <form id="phoneNameForm">
+    <h2 id="phoneNameTitle">Name this number</h2>
+    <p id="phoneNameNumber"></p>
+    <label>Apply to <select class="review-relevance" id="phoneNameScope">
+      <option value="number">All calls using this number</option><option value="call">This call only</option>
+    </select></label>
+    <label>Name <input id="phoneNameInput" type="text" maxlength="120" autocomplete="off"></label>
+    <p id="phoneNameHelp">Individual call names take precedence over the number’s default name. Transcript text and PDFs stay as delivered.</p>
+    <div class="review-dialog-actions">
+      <button type="button" class="review-button" id="phoneNameDefault">Use number default</button>
+      <button type="button" class="review-button" id="phoneNameCancel">Cancel</button>
+      <button type="submit" class="review-button">Save name</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
 (function () {
   'use strict';
@@ -1655,6 +1700,7 @@
   // them for search and excerpts.
   // ═══════════════════════════════════════════════════════════════════════
   const CASE_NAME = {{ case_name_json }};
+  const REVIEW_ID = {{ review_id_json }};
   const CALLS = {{ data_json }};
   const REL_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1, '': 0 };
 
@@ -1800,6 +1846,8 @@
 
 {% include "index_charts.js" %}
 {% include "index_search.js" %}
+{% include "index_review.js" %}
+{% include "index_review_ui.js" %}
 
   // ═══════════════════════════════════════════════════════════════════════
   // Router: the URL hash is the only navigation state.
@@ -1812,7 +1860,7 @@
     parse(hash) {
       const h = String(hash || '').replace(/^#/, '');
       if (!h || h === 'index') return { view: 'index', mode: 'list' };
-      if (h === 'calendar' || h === 'timeline') return { view: 'index', mode: h };
+      if (h === 'calendar' || h === 'timeline' || h === 'notes') return { view: 'index', mode: h };
       const params = new URLSearchParams(h);
       if (params.has('call')) return { view: 'call', call: params.get('call') || '', t: params.get('t') };
       return { view: 'index', mode: 'list' };
@@ -1870,7 +1918,7 @@
     const root = document.getElementById('index');
     const state = {
       query: '', dateFrom: '', dateTo: '', phone: '', relevance: '',
-      outcome: '', length: '',
+      outcome: '', length: '', starred: false, review: '',
       smart: true,       // Smart search (words + meaning, ranked) vs Exact words only
       speakers: 0,       // Said-by chip: 0 anyone, 1 defendant, 2 outside party
       // 'match' (set when a query starts) ranks by match strength until a
@@ -1933,13 +1981,21 @@
     // The number and outcome menus list each value with its call count.
     function populateSelect(id, key) {
       const counts = new Map();
-      CALLS.forEach(c => { const v = c[key]; if (v) counts.set(v, (counts.get(v) || 0) + 1); });
+      const names = new Map();
+      CALLS.forEach(c => {
+        const v = c[key];
+        if (v) { counts.set(v, (counts.get(v) || 0) + 1); if (key === 'outside') names.set(v, Review.numberName(c)); }
+      });
       const sel = document.getElementById(id);
+      const selected = sel.value;
+      while (sel.options.length > 1) sel.remove(1);
       Array.from(counts.keys()).sort().forEach(v => {
         const o = document.createElement('option');
-        o.value = v; o.textContent = v + ' · ' + counts.get(v) + (counts.get(v) === 1 ? ' call' : ' calls');
+        const named = names.get(v) || '';
+        o.value = v; o.textContent = (named ? named + ' · ' + v : v) + ' · ' + counts.get(v) + (counts.get(v) === 1 ? ' call' : ' calls');
         sel.appendChild(o);
       });
+      sel.value = selected;
     }
     const LENGTH_BANDS = { u1: [0, 60], '1-5': [60, 300], '5-15': [300, 900], o15: [900, Infinity] };
     function inLengthBand(call, band) {
@@ -1965,14 +2021,25 @@
         if (state.outcome && call.outcome !== state.outcome) return false;
         if (state.length && !inLengthBand(call, state.length)) return false;
         if (state.relevance && call.relevance !== state.relevance) return false;
-        if (result && !result.calls.has(call.index)) return false;
+        if (state.starred && !call.starred) return false;
+        if (state.review === 'reviewed' && !call.reviewed) return false;
+        if (state.review === 'unreviewed' && call.reviewed) return false;
+        if (result && !result.calls.has(call.index) && !nameMatches(call)) return false;
         return true;
       });
+    }
+    function nameMatches(call) {
+      if (!matcher || !call.outside_name) return false;
+      const tokens = Search.stemTokens(call.outside_name);
+      const query = Search.stemTokens(state.query);
+      if (!query.length || !query.every(t => tokens.includes(t))) return false;
+      const phrases = state.query.match(/"[^"]+"/g) || [];
+      return phrases.every(p => (' ' + tokens.join(' ') + ' ').includes(' ' + Search.stemTokens(p).join(' ') + ' '));
     }
     function getSorted(rows) {
       if (state.sortKey === 'match' && result) {
         return rows.slice().sort((a, b) =>
-          (result.calls.get(b.index).score - result.calls.get(a.index).score) || (a.index - b.index));
+          ((result.calls.get(b.index) || {score: 0}).score - (result.calls.get(a.index) || {score: 0}).score) || (a.index - b.index));
       }
       const key = state.sortKey === 'match' ? 'call_sort' : state.sortKey;
       const dir = state.sortDir === 'asc' ? 1 : -1;
@@ -1996,6 +2063,8 @@
       document.getElementById('modeList').classList.toggle('hidden', state.mode !== 'list');
       calEl.classList.toggle('hidden', state.mode !== 'calendar');
       tlEl.classList.toggle('hidden', state.mode !== 'timeline');
+      const notesEl = document.getElementById('modeNotes');
+      notesEl.classList.toggle('hidden', state.mode !== 'notes');
       document.querySelectorAll('#modeGroup [data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === state.mode));
       if (state.mode === 'calendar') {
         Charts.calendar(calEl, {
@@ -2009,6 +2078,7 @@
         Charts.timeline(tlEl, { calls: filtered, extent: Data.dateExtent, onRange: showRange });
         return;
       }
+      if (state.mode === 'notes') { ReviewUI.renderNotes(notesEl, getSorted(filtered)); return; }
       renderList(filtered);
     }
 
@@ -2141,10 +2211,10 @@
       }
 
       const dt = fmtDate(call.datetime || call.call_date);
-      const idShort = call.identity || '';
+      const idShort = call.outside_name || call.identity || '';
 
       div.innerHTML =
-        relMark(call.relevance) +
+        '<span>' + relMark(call.relevance) + ReviewUI.quick(call) + '</span>' +
         '<span class="date"><b>' + esc(dt.d) + '</b><span>' + esc(dt.t) + '</span></span>' +
         '<span class="dur">' + esc(call.duration_str || '—') + '</span>' +
         '<span class="party"><b>' + hl(call.outside || '—') + '</b>' +
@@ -2184,6 +2254,7 @@
             + '<td class="ts">' + esc(cue.ts) + '</td>'
             + '<td class="note">' + noteBits.join(' ') + '</td>'
             + '<td class="cite">' + citeParts.join(' · ') + '</td>'
+            + '<td>' + ReviewUI.pinButton(call, cue) + '</td>'
             + '</tr>';
         }).join('');
         cuesHtml = '<div class="cues"><h4>Notes: ' + cues.length + '</h4><table>' + rows + '</table></div>';
@@ -2253,7 +2324,7 @@
             : '')
         + '</div>';
 
-      div.innerHTML =
+      div.innerHTML = ReviewUI.controls(call) +
         '<div class="detail-grid">'
         + '<div>' + briefHtml + idHtml + '</div>'
         + cuesHtml
@@ -2395,6 +2466,8 @@
       bindChipGroup('searchMode', 'smart', v => { state.smart = v === '1'; });
       bindChipGroup('saidBy', 'spk', v => { state.speakers = parseInt(v, 10) || 0; });
       document.getElementById('outcomeFilter').addEventListener('change', e => { state.outcome = e.target.value; onFilterChange(); });
+      document.getElementById('starFilter').addEventListener('change', e => { state.starred = e.target.checked; onFilterChange(); });
+      document.getElementById('reviewFilter').addEventListener('change', e => { state.review = e.target.value; onFilterChange(); });
       document.getElementById('lengthFilter').addEventListener('change', e => { state.length = e.target.value; onFilterChange(); });
 
       function onFilterChange() { state.page = 1; renderTable(); }
@@ -2422,7 +2495,9 @@
       document.getElementById('clearFilters').addEventListener('click', () => {
         state.query = ''; state.dateFrom = ''; state.dateTo = '';
         state.phone = ''; state.relevance = ''; state.outcome = ''; state.length = '';
-        state.speakers = 0;
+        state.speakers = 0; state.starred = false; state.review = '';
+        document.getElementById('starFilter').checked = false;
+        document.getElementById('reviewFilter').value = '';
         if (state.sortKey === 'match') { state.sortKey = 'call_sort'; state.sortDir = 'asc'; }
         state.page = 1;
         document.getElementById('searchInput').value = '';
@@ -2490,7 +2565,8 @@
       renderRecentSearches();
       bindEvents();
       // The chart modes need dated calls; without any, the switch is not offered.
-      document.getElementById('modeGroup').classList.toggle('hidden', !Data.dateExtent);
+      document.getElementById('modeGroup').classList.remove('hidden');
+      document.querySelectorAll('#modeGroup [data-mode=calendar], #modeGroup [data-mode=timeline]').forEach(el => el.classList.toggle('hidden', !Data.dateExtent));
       renderTable();
     }
 
@@ -2499,7 +2575,7 @@
     // them intact. `mode` comes from the hash; a chart mode falls back to
     // the list when no call has a date.
     function show(mode) {
-      const next = (mode === 'calendar' || mode === 'timeline') && Data.dateExtent ? mode : 'list';
+      const next = mode === 'notes' ? 'notes' : (mode === 'calendar' || mode === 'timeline') && Data.dateExtent ? mode : 'list';
       const changed = next !== state.mode;
       state.mode = next;
       if (visible) { if (changed) renderTable(); return; }
@@ -2507,7 +2583,7 @@
       document.title = CASE_NAME + ' — Call Index';
       root.classList.add('active-view');
       visible = true;
-      if (changed) renderTable();
+      renderTable();
       measureCtl();
       window.scrollTo(0, savedScroll);
     }
@@ -2518,7 +2594,13 @@
       visible = false;
     }
 
-    return { init, show, hide, render: renderTable, state, isVisible: () => visible, onSearchChange };
+    function refreshReview() {
+      buildMasthead();
+      populateSelect('phoneFilter', 'outside');
+      if (visible) renderTable();
+      measureCtl();
+    }
+    return { init, show, hide, refreshReview, render: renderTable, state, isVisible: () => visible, onSearchChange };
   })();
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -2627,9 +2709,10 @@
     // ── Call list rail ──
     function buildCallList() {
       callCount.textContent = CALLS.length + ' call' + (CALLS.length === 1 ? '' : 's');
+      callsList.innerHTML = '';
       CALLS.forEach((call, i) => {
         const item = document.createElement('div');
-        item.className = 'call-item';
+        item.className = 'call-item' + (i === currentCallIdx ? ' active' : '');
         item.dataset.idx = i;
         item.title = call.filename;
         const dp = fmtDateParts(call.datetime);
@@ -2637,7 +2720,7 @@
         const cueBit = (call.cues && call.cues.length) ? ' · ' + call.cues.length + ' note' + (call.cues.length === 1 ? '' : 's') : '';
         item.innerHTML =
           '<div class="l1"><span class="d">' + esc(when) + '</span><span>' + formatDur(call.duration) + '</span></div>' +
-          '<div class="l2">' + esc(call.outside || call.filename) + '</div>' +
+          '<div class="l2">' + esc((call.starred ? '★ ' : '') + (call.reviewed ? '✓ ' : '') + (call.outside_name || call.outside || call.filename)) + '</div>' +
           '<div class="l3">' + relMark(call.relevance, cueBit) + '</div>';
         item.addEventListener('click', () => Router.go(Router.callHash(call)));
         callsList.appendChild(item);
@@ -2656,14 +2739,7 @@
         el.classList.toggle('active', i === idx);
       });
 
-      // Update header
-      callPos.textContent = 'Call ' + String(idx + 1).padStart(3, '0') + ' of ' + CALLS.length;
-      mainTitleFilename.textContent = call.filename;
-      const dp = fmtDateParts(call.datetime);
-      mainTitle.innerHTML = esc(call.outside || call.filename)
-        + (dp ? '<span class="dash">·</span><span class="dt">' + esc(dp.long) + '</span>' : '');
-      const metaParts = [dp && dp.time, formatDur(call.duration), call.inmate, call.facility, call.outcome].filter(Boolean);
-      mainMeta.innerHTML = metaParts.map(esc).join('<span class="sep">·</span>');
+      updateHeader(call);
 
       // Update audio
       loadingOverlay.classList.remove('hidden');
@@ -2673,11 +2749,7 @@
       revealHold = null;
       loadAudioForCall(call);
       renderCueTicks(call);
-
-      // Update analysis rail
       renderAnalysis(call);
-
-      // Build line entries
       lineEntries = call.lines || [];
       totalPages = lineEntries.reduce((m, l) => Math.max(m, l.page || 1), 1);
       followPlayback = true;
@@ -2685,11 +2757,9 @@
       activePlaybackPage = 1;
       activePlaybackTime = 0;
       updateFollowUi();
-
       searchInput.value = '';
       searchClear.style.display = 'none';
       goToPage(1, { source: 'load' });
-
       if (pendingSeek > 0) {
         timeCurrent.textContent = formatTime(pendingSeek);
         syncProgressUI(pendingSeek, call.duration || 0);
@@ -2697,6 +2767,41 @@
         syncActiveCue(pendingSeek);
         revealTranscriptAt(pendingSeek);
       }
+    }
+
+    function updateHeader(call) {
+      const idx = currentCallIdx;
+      document.getElementById('callReviewControls').innerHTML = ReviewUI.controls(call);
+      callPos.textContent = 'Call ' + String(idx + 1).padStart(3, '0') + ' of ' + CALLS.length;
+      mainTitleFilename.textContent = call.filename;
+      const dp = fmtDateParts(call.datetime);
+      mainTitle.innerHTML = esc(call.outside_name ? call.outside_name + ' · ' + call.outside : call.outside || call.filename)
+        + (dp ? '<span class="dash">·</span><span class="dt">' + esc(dp.long) + '</span>' : '');
+      const metaParts = [dp && dp.time, formatDur(call.duration), call.inmate, call.facility, call.outcome].filter(Boolean);
+      mainMeta.innerHTML = metaParts.map(esc).join('<span class="sep">·</span>');
+
+    }
+
+    function refreshReview() {
+      CALLS.forEach((call, i) => {
+        const item = callsList.children[i];
+        if (!item) return;
+        const label = (call.starred ? '★ ' : '') + (call.reviewed ? '✓ ' : '') + (call.outside_name || call.outside || call.filename);
+        const name = item.querySelector('.l2');
+        if (name.textContent !== label) name.textContent = label;
+        if (item.dataset.relevance !== call.relevance) {
+          const n = call.cues.length;
+          item.querySelector('.l3').innerHTML = relMark(call.relevance, n ? ' · ' + n + ' note' + (n === 1 ? '' : 's') : '');
+          item.dataset.relevance = call.relevance;
+        }
+      });
+      if (!visible || currentCallIdx < 0) return;
+      const call = CALLS[currentCallIdx];
+      updateHeader(call);
+      const analysisScroll = summaryBody.scrollTop;
+      renderAnalysis(call);
+      summaryBody.scrollTop = analysisScroll;
+      syncActiveCue(ws.getCurrentTime());
     }
 
     // ── Analysis rail ──
@@ -2718,6 +2823,7 @@
             '<div class="side-cue" data-cue-t="' + cue.t + '" data-cue-i="' + i + '">'
             + '<span class="t">' + esc(cue.ts) + '</span>'
             + '<span class="n">' + esc(cue.note || cue.quote || '') + '</span>'
+            + ReviewUI.pinButton(call, cue)
             + '</div>'
           ).join('');
           parts.push('<div class="side-sec"><h4>Notes: ' + cues.length + '</h4>' + rows + '</div>');
@@ -3123,7 +3229,7 @@
     // ── Keyboard shortcuts (call view only) ──
     function onKeydown(e) {
       if (!visible) return;
-      if (e.target === searchInput) {
+      if (document.querySelector('dialog[open]') || e.target.closest('input, textarea, select, button, a, [contenteditable]')) {
         if (e.key === 'Escape') { searchInput.blur(); }
         return;
       }
@@ -3194,6 +3300,14 @@
       audioEl.addEventListener('ended', () => {
         syncProgressUI(ws.getDuration(), ws.getDuration());
         onPlayerPause();
+        const call = CALLS[currentCallIdx];
+        // Native played ranges exclude seeks. A manual reviewed/unreviewed
+        // choice takes precedence over automatic marking, including on replay.
+        if (call && Review.get(call, 'reviewed', null) === null && audioEl.duration > 0 && isFinite(audioEl.duration)) {
+          let played = 0;
+          for (let i = 0; i < audioEl.played.length; i++) played += audioEl.played.end(i) - audioEl.played.start(i);
+          if (audioEl.duration - played <= Math.min(5, audioEl.duration * 0.02)) Review.set(call, 'reviewed', true);
+        }
       });
 
       progressInput.addEventListener('pointerdown', () => {
@@ -3251,7 +3365,7 @@
     }
 
     return {
-      init, show, hide, togglePresent, seekTo, toggleCallsRail, toggleSummaryPane,
+      init, show, hide, refreshReview, togglePresent, seekTo, toggleCallsRail, toggleSummaryPane,
       isVisible: () => visible,
       currentIndex: () => currentCallIdx,
       currentPage: () => currentPage,
@@ -3265,6 +3379,7 @@
   IndexView.init();
   CallView.init();
   Router.init();
+  ReviewUI.init();
   // The search sidecars load after first paint: keyword search first, then
   // the meaning layer when the package has one.
   Search.onChange(() => IndexView.onSearchChange());
@@ -3273,7 +3388,7 @@
   // Exposed for the browser tests and console debugging; nothing in the
   // page calls through this object.
   window.JCS = {
-    Data, IndexView, CallView, Router, Charts, Search,
+    Data, IndexView, CallView, Router, Charts, Search, Review,
     helpers: { esc, escRe, highlight, relMark, formatTime, formatDur, secondsToLabel, hashTime, parseTime, fmtDate, fmtDateParts },
   };
 })();

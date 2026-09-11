@@ -194,8 +194,9 @@
         top.appendChild(mark(c.relevance));
         const when = (withDate ? dayLabel(keyToDate(c.call_date)) + ' · ' : '') + (clockLabel(c) || '') + (c.duration_str ? ' · ' + c.duration_str : '');
         top.appendChild(el('span', 'ct-when', when.replace(/^ · /, '')));
-        if (c.outside) top.appendChild(el('span', 'ct-who', c.outside));
+        if (c.outside) top.appendChild(el('span', 'ct-who', c.outside_name ? c.outside_name + ' · ' + c.outside : c.outside));
         row.appendChild(top);
+        if (c.starred || c.reviewed) row.appendChild(el('div', 'ct-sub', [c.starred ? '★ Starred' : '', c.reviewed ? '✓ Reviewed' : ''].filter(Boolean).join(' · ')));
         if (c.brief) row.appendChild(el('div', 'ct-brief', c.brief));
         box.appendChild(row);
       });
