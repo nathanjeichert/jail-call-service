@@ -195,6 +195,24 @@ def paginate_structured_summary(
         pages[current_page].append(cue)
         remaining -= cue_height
 
+    # Redistribute a sparse final sheet without changing page count, note order,
+    # text, or the conservative height limits. Compare unused vertical space so
+    # page 1's context cards count toward its load as well.
+    if len(pages) > 1:
+        left, right = pages[-2], pages[-1]
+        left_height = sum(_estimate_cue_height(cue) for cue in left)
+        right_height = sum(_estimate_cue_height(cue) for cue in right)
+        if right_height < page_budgets[-1] * 0.35:
+            while len(left) > 1:
+                height = _estimate_cue_height(left[-1])
+                left_space = page_budgets[-2] - left_height
+                right_space = page_budgets[-1] - right_height
+                if height > right_space or abs(left_space + height - right_space + height) >= abs(left_space - right_space):
+                    break
+                right.insert(0, left.pop())
+                left_height -= height
+                right_height += height
+
     return {
         "context_layout": context_layout,
         "page1_review_cues": pages[0] if pages else [],

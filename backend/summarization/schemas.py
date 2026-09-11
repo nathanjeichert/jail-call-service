@@ -53,14 +53,21 @@ class SummaryResponse(BaseModel):
     brief_summary: str = Field(default="")
 
 
-class CaseReportFinding(BaseModel):
+class CaseReportSource(BaseModel):
     call_id: int = Field(ge=0)
-    headline: str = Field(min_length=1)
     timestamp: Optional[str] = Field(
         default=None,
         description="Use a [MM:SS] note timestamp from the cited call, or null.",
     )
+
+
+class CaseReportFinding(CaseReportSource):
+    headline: str = Field(min_length=1)
     detail: str = Field(min_length=1)
+    sources: List[CaseReportSource] = Field(
+        default_factory=list,
+        description="Every additional supporting call/moment discussed in the finding; use only input call IDs and note timestamps.",
+    )
 
 
 class CaseReportIdentity(BaseModel):

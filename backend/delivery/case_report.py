@@ -21,7 +21,7 @@ import re
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
@@ -83,22 +83,26 @@ def _extract_local_target(uri: str) -> Optional[str]:
     unquote/requote round-trip). URIs that do not end in a local-target
     pattern return None and are left untouched.
     """
-    if not uri:
+    if not uri or urlsplit(uri).scheme not in ("", "file"):
         return None
     match = _LOCAL_TARGET_RE.search(uri)
     return match.group(1) if match else None
 
 
-def _rewrite_local_links_to_launch_actions(pdf_bytes: bytes) -> bytes:
-    """Rewrite relative /URI link actions to /Launch so macOS opens local files correctly."""
+def _rewrite_local_links(pdf_bytes: bytes) -> bytes:
+    """Preserve the document catalog and make local links delivery-relative.
+
+    GoToR addresses a page in another PDF; URI retains the HTML fragment.
+    Launch treats a fragment as part of a filename in some native readers.
+    """
     try:
         from pypdf import PdfReader, PdfWriter
-        from pypdf.generic import NameObject, TextStringObject
+        from pypdf.generic import ArrayObject, BooleanObject, DictionaryObject, NameObject, NumberObject, TextStringObject
 
         reader = PdfReader(io.BytesIO(pdf_bytes))
-        writer = PdfWriter()
+        writer = PdfWriter(clone_from=reader)
 
-        for page in reader.pages:
+        for page in writer.pages:
             annots = page.get("/Annots") or []
             for annot in annots:
                 annotation_obj = annot.get_object()
@@ -110,19 +114,25 @@ def _rewrite_local_links_to_launch_actions(pdf_bytes: bytes) -> bytes:
                 target = _extract_local_target(uri) if isinstance(uri, str) else None
                 if not target:
                     continue
-                action_obj[NameObject("/S")] = NameObject("/Launch")
-                action_obj[NameObject("/F")] = TextStringObject(target)
-                action_obj.pop("/URI", None)
-                annotation_obj[NameObject("/A")] = action_obj
-
-            writer.add_page(page)
+                if target.startswith("transcripts/"):
+                    path, _, fragment = target.partition("#")
+                    page_number = parse_qs(fragment).get("page", ["1"])[0]
+                    page_index = max(int(page_number) - 1, 0) if page_number.isdecimal() else 0
+                    annotation_obj[NameObject("/A")] = DictionaryObject({
+                        NameObject("/S"): NameObject("/GoToR"),
+                        NameObject("/F"): TextStringObject(unquote(path)),
+                        NameObject("/D"): ArrayObject([NumberObject(page_index), NameObject("/Fit")]),
+                        NameObject("/NewWindow"): BooleanObject(True),
+                    })
+                else:
+                    action_obj[NameObject("/URI")] = TextStringObject(target)
 
         output = io.BytesIO()
         writer.write(output)
         return output.getvalue()
     except Exception as e:
         logger.warning(
-            "Could not rewrite case-report PDF links for local launch actions: %s",
+            "Could not make case-report PDF links relative: %s",
             e,
         )
         return pdf_bytes
@@ -713,6 +723,33 @@ def _build_call_card(view: CallView) -> Dict[str, Any]:
     }
 
 
+def _finding_sources(item, views_by_id: Dict[int, CallView]) -> List[dict]:
+    """Link known calls; timed links must resolve to a note in that call."""
+    sources, seen = [], set()
+    for source in [item, *item.sources]:
+        view = views_by_id.get(source.call_id)
+        if not view:
+            continue
+        ts = (source.timestamp or "").strip().strip("[]")
+        cue = next((c for c in view.cues if (c.get("timestamp") or "").strip("[]") == ts), None) if ts else None
+        ts = cue["timestamp"].strip("[]") if cue else ""
+        key = (view.index, ts)
+        if key in seen:
+            continue
+        seen.add(key)
+        pdf_link = _transcript_pdf_link(view.call)
+        if cue and cue.get("page"):
+            pdf_link += f"#page={view.pdf_front_matter_pages + cue['page']}"
+        sources.append({
+            "call_index": view.index + 1,
+            "call_date": _format_call_datetime_short(view.call),
+            "timestamp": ts,
+            "viewer_link": _viewer_link(view.call, ts or None),
+            "pdf_link": pdf_link,
+        })
+    return sources
+
+
 # ────────────────────────── main entry ──────────────────────────
 
 def generate_case_report_pdf(
@@ -746,6 +783,7 @@ def generate_case_report_pdf(
 
     if synthesis_inputs or identity_inputs:
         calls_by_id = {v.index: v for v in synthesis_inputs}
+        views_by_id = {v.index: v for v in views}
         response = _run_synthesis(engine, CaseReportInputs(
             case_context=_build_case_context(
                 case_name, defendant_name, extract_case_context(job.summary_prompt), job.case_documents,
@@ -762,16 +800,10 @@ def generate_case_report_pdf(
                 view = calls_by_id.get(item.call_id)
                 if not view:
                     continue
-                call = view.call
-                ts_clean = (item.timestamp or "").strip()
                 findings.append({
                     "headline": item.headline.strip(),
                     "detail": item.detail.strip(),
-                    "timestamp": ts_clean,
-                    "call_filename": shorten(call.filename, 56),
-                    "call_date": _format_call_datetime_short(call),
-                    "viewer_link": _viewer_link(call, ts_clean or None),
-                    "pdf_link": _transcript_pdf_link(call),
+                    "sources": _finding_sources(item, views_by_id),
                 })
             identity_map = {
                 item.number: {"inference": item.inference, "confidence": item.confidence or ""}
@@ -843,8 +875,8 @@ def generate_case_report_pdf(
     # Chromium resolves the relative <a href> values ("index.html#call=...",
     # "transcripts/xxx.pdf") against the temp file it renders from, baking
     # absolute file:///tmp/... URIs into the link annotations. The rewriter
-    # below strips that machine-specific prefix and converts each local link
-    # to a /Launch action carrying the portable delivery-relative path, so
-    # links keep working from the extracted delivery root on any machine.
+    # below strips that machine-specific prefix while retaining destinations
+    # and the action type appropriate to each target. Reader policies may
+    # still require permission to open another local document.
     raw_pdf = render_pdf(html_str, paged=True)
-    return _rewrite_local_links_to_launch_actions(raw_pdf)
+    return _rewrite_local_links(raw_pdf)

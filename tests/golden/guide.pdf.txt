@@ -24,6 +24,8 @@ transcripts-no-summary/ Clean transcript PDFs: the same transcripts without the 
 production.
 audio/ MP3 audio, repaired and converted from the facility's source recordings. Played by the
 viewer; also opens in any media player.
+app-assets/ Required app files. Powers offline search. Leave this folder beside index.html; you do not
+need to open or edit its contents.
 guide.pdf This document.
 KEEP THE FOLDER INTACT
 Extract the delivery fully before use and keep the files together: the links between index.html and the PDFs are relative paths

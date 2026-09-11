@@ -70,6 +70,7 @@ def build_call_payload(view: CallView) -> dict:
         "filename": call.filename,
         "audio_filename": view.audio_filename,
         "pdf_filename": view.pdf_filename,
+        "pdf_front_matter_pages": view.pdf_front_matter_pages,
         "duration": view.duration,
         "duration_str": view.duration_label,
         "inmate": call.inmate_name or "",

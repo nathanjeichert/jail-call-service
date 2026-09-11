@@ -400,7 +400,7 @@ def build_package(output_dir: Path, count: int = 10, *, with_audio: bool = True,
         job, str(output_dir), StubSynthesisEngine(synthesis), gen_date=gen_date, search_semantic=semantic,
     ))
 
-    expected = ["index.html", "guide.pdf", "case-report.pdf", "search/index.js"]
+    expected = ["index.html", "guide.pdf", "case-report.pdf", "app-assets/index.js"]
     missing = [name for name in expected if not (output_dir / name).is_file()]
     if missing:
         raise RuntimeError(f"missing delivery assets: {', '.join(missing)}")

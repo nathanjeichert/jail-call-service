@@ -1831,7 +1831,7 @@
   function pdfUrl(call, page) {
     if (!call.pdf_filename) return '';
     let u = 'transcripts/' + encodeURIComponent(call.pdf_filename);
-    if (page) u += '#page=' + page;
+    if (page) u += '#page=' + (page + call.pdf_front_matter_pages);
     return u;
   }
   function openPdf(call, page) { const u = pdfUrl(call, page); if (u) window.open(u, '_blank'); }
@@ -3229,17 +3229,23 @@
     // ── Keyboard shortcuts (call view only) ──
     function onKeydown(e) {
       if (!visible) return;
-      if (document.querySelector('dialog[open]') || e.target.closest('input, textarea, select, button, a, [contenteditable]')) {
-        if (e.key === 'Escape') { searchInput.blur(); }
+      if (document.querySelector('dialog[open]')) return;
+      if (e.target.closest('input, textarea, select, [contenteditable]')) {
+        if (e.key === 'Escape') searchInput.blur();
         return;
       }
+      // Esc leaves present mode even while the Present button (or any other
+      // button or link) holds focus, which a click or Tab leaves it with.
+      if (e.key === 'Escape') { togglePresent(false); return; }
+      // Space/Enter keep their native button and link activation; the
+      // transport keys stay available after a control receives focus.
+      if (e.target.closest('button, a') && (e.key === ' ' || e.key === 'Enter')) return;
       if (e.key === ' ') { e.preventDefault(); togglePlay(); }
       if (e.key === 'ArrowLeft') skipBy(-5);
       if (e.key === 'ArrowRight') skipBy(5);
       if (e.key === 'ArrowUp') { e.preventDefault(); goPage(-1); }
       if (e.key === 'ArrowDown') { e.preventDefault(); goPage(1); }
       if (e.key === 'p' || e.key === 'P') togglePresent();
-      if (e.key === 'Escape') togglePresent(false);
     }
 
     function bindEvents() {

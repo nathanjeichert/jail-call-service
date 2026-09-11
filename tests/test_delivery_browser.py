@@ -155,6 +155,14 @@ class TestCallView:
         page.keyboard.press("Escape")
         expect(page.locator("body")).not_to_have_class(re.compile(r"\bpresent\b"))
         expect(page.locator("#railCalls")).to_be_visible()
+        # Entering through the button leaves the button focused (Chromium
+        # focuses clicked buttons); Esc must still reach the exit handler.
+        page.click("#presentBtn")
+        expect(page.locator("body")).to_have_class(re.compile(r"\bpresent\b"))
+        page.locator("#presentBtn").focus()
+        assert page.evaluate("document.activeElement && document.activeElement.id") == "presentBtn"
+        page.keyboard.press("Escape")
+        expect(page.locator("body")).not_to_have_class(re.compile(r"\bpresent\b"))
         # Leaving the call view in present mode (the band is hidden, so via
         # the hash) never leaks it into the index.
         page.keyboard.press("p")

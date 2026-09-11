@@ -458,6 +458,19 @@ section.chapter .band { padding-top: 3pt; }
     margin-top: 10.5pt;
 }
 .cc-cues tr { page-break-inside: avoid; }
+/* A note table that runs onto the next page repeats the call number there.
+   Paged.js rebuilds the split ancestors as empty shells carrying their
+   attributes and data-split-from, and unsets ::before on them, hence the
+   attr() label and the !important. */
+.pagedjs_area .cc-body--cues[data-split-from]::before {
+    content: "Call " attr(data-call) " \2014  continued" !important;
+    display: block;
+    padding: 5pt 0 6pt;
+    font: 600 7.5pt var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+}
 .cc-cues td {
     padding: 6pt 0 5.25pt;
     border-top: 1px solid var(--rule-faint);
@@ -786,10 +799,12 @@ section.chapter .band { padding-top: 3pt; }
         <div>
             <h3>{{ f.headline }}</h3>
             <p>{{ f.detail }}</p>
+            {% for source in f.sources %}
             <div class="cite">
-                <span class="call">{{ f.call_filename }}</span><span>{{ f.call_date }}</span>{% if f.timestamp %}<span class="ts">{{ f.timestamp }}</span>{% endif %}
-                <a href="{{ f.viewer_link }}">Viewer →</a><a href="{{ f.pdf_link }}">PDF</a>
+                <span class="call">Call {{ "%03d"|format(source.call_index) }}</span><span>{{ source.call_date }}</span>{% if source.timestamp %}<span class="ts">{{ source.timestamp }}</span>{% endif %}
+                <a href="{{ source.viewer_link }}">Viewer →</a><a href="{{ source.pdf_link }}">PDF</a>
             </div>
+            {% endfor %}
         </div>
     </div>
     {% endfor %}
@@ -845,8 +860,9 @@ section.chapter .band { padding-top: 3pt; }
         </div>
         </div>
         {% if c.has_cues %}
-        <div class="cc-body cc-body--cues">
+        <div class="cc-body cc-body--cues" data-call="{{ "%03d"|format(c.call_index) }}">
             <table class="cc-cues">
+                <tbody>
                 {% for cue in c.cues %}
                 <tr>
                     <td class="ts">
@@ -858,6 +874,7 @@ section.chapter .band { padding-top: 3pt; }
                     <td class="cite">{% if cue.line_cite %}TR. {{ cue.line_cite }}{% endif %}</td>
                 </tr>
                 {% endfor %}
+                </tbody>
             </table>
         </div>
         {% endif %}

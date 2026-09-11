@@ -33,12 +33,14 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Iterable, List, Optional
 
 from ..formatting import format_duration, timestamp_to_seconds
 from ..models import CallResult, TranscriptTurn, call_stem
 from ..summaries import DUMMY_SUMMARY_PREFIX, parse_summary_sections, sections_from_summary_json
 from ..transcript_layout import compute_line_entries, hydrate_review_cues
+from .summary_layout import paginate_structured_summary
 
 
 def _one_line(value: object) -> str:
@@ -97,6 +99,17 @@ class CallView:
     @property
     def identity(self) -> str:
         return _one_line(self.sections.get("speakers"))
+
+    @cached_property
+    def summary_pagination(self) -> dict:
+        return paginate_structured_summary(self.cues, speakers=self.identity, call_summary=self.brief)
+
+    @property
+    def pdf_front_matter_pages(self) -> int:
+        """Physical pages before printed transcript page 1 (cover plus summary)."""
+        if not self.summary:
+            return 1
+        return 2 + (len(self.summary_pagination["overflow_review_cue_pages"]) if self.structured else 0)
 
 
 def build_call_view(call: CallResult) -> CallView:

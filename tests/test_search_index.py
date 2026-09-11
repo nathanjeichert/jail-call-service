@@ -147,8 +147,8 @@ class TestLexicalIndex:
 
     def test_write_sidecars_keyword_only(self, tmp_path: Path):
         index = write_search_sidecars(_payloads(), tmp_path)
-        assert sorted(p.name for p in (tmp_path / "search").iterdir()) == ["index.js"]
-        text = (tmp_path / "search" / "index.js").read_text(encoding="utf-8")
+        assert sorted(p.name for p in (tmp_path / "app-assets").iterdir()) == ["index.js"]
+        text = (tmp_path / "app-assets" / "index.js").read_text(encoding="utf-8")
         assert text.startswith("window.JCS_SEARCH = {") and text.rstrip().endswith("};")
         fields = json.loads(text[len("window.JCS_SEARCH = "):].rstrip().rstrip(";"))
         assert fields["semantic"] is False and fields["n"] == len(index.passages)

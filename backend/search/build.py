@@ -35,7 +35,7 @@ from .passages import Passage, build_passages, summary_passage
 
 logger = logging.getLogger(__name__)
 
-SEARCH_DIR = "search"
+SEARCH_DIR = "app-assets"
 
 
 def build_passage_set(payloads: Sequence[dict]) -> List[Passage]:

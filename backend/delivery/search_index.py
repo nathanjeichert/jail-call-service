@@ -1,4 +1,4 @@
-"""The delivery's ``search/`` folder: the page's lexical and semantic indexes.
+"""The delivery's ``app-assets/`` folder: the page's lexical and semantic indexes.
 
 Adapter between the delivery stage and :mod:`backend.search`: turns the
 call views into the payload dicts the page embeds (the same
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_search_index(views: Sequence[CallView], output_dir: str, *, semantic: bool = True) -> None:
-    """Write ``<output_dir>/search/`` for the views."""
+    """Write ``<output_dir>/app-assets/`` for the views."""
     assets = None
     if semantic:
         try:

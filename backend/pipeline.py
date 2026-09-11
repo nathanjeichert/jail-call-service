@@ -608,7 +608,7 @@ async def _stage_generate_delivery_assets(
     gen_date: Optional[str] = None,
     search_semantic: bool = True,
 ) -> None:
-    """Write index.html, guide.pdf, case-report.pdf, and the search/ indexes.
+    """Write index.html, guide.pdf, case-report.pdf, and the app-assets/ indexes.
 
     The writers run in parallel: the shared Chromium renderer is safe to
     call from concurrent threads and gates real render concurrency with its
@@ -617,7 +617,7 @@ async def _stage_generate_delivery_assets(
     ``gen_date`` overrides the "Generated" stamp (tests pin it for the
     golden package); production leaves it as today. ``search_semantic``
     adds the meaning-search layer (embedding model + passage vectors) to
-    ``search/``; the keyword index always ships.
+    ``app-assets/``; the keyword index always ships.
     """
     from .delivery.call_view import build_call_views
     from .delivery.case_report import generate_case_report_pdf
@@ -646,7 +646,7 @@ async def _stage_generate_delivery_assets(
             "case-report.pdf",
             generate_case_report_pdf(job=job, views=views, engine=summarization_engine, gen_date=gen_date),
         ),
-        "search/": lambda: generate_search_index(views, output_dir, semantic=search_semantic),
+        "app-assets/": lambda: generate_search_index(views, output_dir, semantic=search_semantic),
     }
 
     failures: List[str] = []

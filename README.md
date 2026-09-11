@@ -60,7 +60,7 @@ summarization engine; the rest of the pipeline is engine-agnostic.
 ├── transcripts-no-summary/   # same PDFs without the summary sheet
 ├── audio/                    # converted MP3s
 ├── index.html                # searchable call index + offline player with synced transcript
-├── search/                   # its search indexes: keyword (index.js) and, when built, meaning search
+├── app-assets/               # its search indexes: keyword (index.js) and, when built, meaning search
 │                             #   (passage vectors, the embedding model, ONNX Runtime) as script sidecars
 ├── case-report.pdf           # case-level findings, caller stats, timeline
 └── guide.pdf                 # how to use the package

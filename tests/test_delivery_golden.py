@@ -6,14 +6,14 @@ compares each digest to the committed copy under ``tests/golden/``:
 
 * ``index.html``: the page source verbatim, with the base64 font payloads
   replaced by a marker so the digest stays readable.
-* ``search/index.js`` (golden ``search-index.js``): the keyword search
+* ``app-assets/index.js`` (golden ``search-index.js``): the keyword search
   sidecar verbatim; passages, vocabulary, and postings are deterministic.
   The package is built without the meaning layer, so no runtime assets are
   needed.
 * ``case-report.pdf`` / ``guide.pdf`` / every transcript PDF: per-page
-  extracted text plus every link annotation (``/Launch`` target, URI, or
-  named destination), so pagination, copy, cites, and link portability are
-  all pinned.
+  extracted text plus every link annotation (``/GoToR`` file and page, URI,
+  or named destination), so pagination, copy, cites, and link portability
+  are all pinned.
 
 Any intentional change to a template, the layout core, summaries, or the
 delivery code shows up here as a diff. Review it, then refresh the goldens::
@@ -53,6 +53,10 @@ def _link_line(annot) -> str | None:
     if action is not None:
         action = action.get_object()
         kind = str(action.get("/S", ""))
+        if kind == "/GoToR":
+            dest = action.get("/D")
+            page = f" page {int(dest[0]) + 1}" if dest else ""
+            return f"  link {kind} {action.get('/F')}{page}"
         target = action.get("/F") if kind == "/Launch" else action.get("/URI")
         if target is None:
             target = action.get("/D")
@@ -80,7 +84,7 @@ def _digest_pdf_dir(directory: Path) -> str:
 
 ARTIFACTS = {
     "index.html": lambda root: _digest_html(root / "index.html"),
-    "search-index.js": lambda root: (root / "search" / "index.js").read_text(encoding="utf-8"),
+    "search-index.js": lambda root: (root / "app-assets" / "index.js").read_text(encoding="utf-8"),
     "case-report.pdf": lambda root: _digest_pdf(root / "case-report.pdf"),
     "guide.pdf": lambda root: _digest_pdf(root / "guide.pdf"),
     "transcripts": lambda root: _digest_pdf_dir(root / "transcripts"),

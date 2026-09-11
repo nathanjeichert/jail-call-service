@@ -107,7 +107,8 @@
     }
     function showSetup() {
       document.getElementById('reviewSetupError').textContent = '';
-      document.getElementById('reviewSetupHelp').textContent = Review.setupHelp;
+      const folder = Review.status().folderName;
+      document.getElementById('reviewSetupHelp').textContent = (folder ? 'Connected folder: ' + folder + '. ' : '') + Review.setupHelp;
       if (!setup.open) setup.showModal();
     }
     function ensureSave() {

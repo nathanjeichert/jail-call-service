@@ -170,7 +170,7 @@ class TestMissingIndex:
     def test_scan_fallback_and_notice(self, browser, package_dir, tmp_path):
         broken = tmp_path / "broken"
         shutil.copytree(package_dir, broken)
-        shutil.rmtree(broken / "search")
+        shutil.rmtree(broken / "app-assets")
         context, pg, problems = open_page(browser, broken / "index.html")
         try:
             assert pg.evaluate("window.JCS.Search.state.lexical") == "missing"
@@ -182,7 +182,7 @@ class TestMissingIndex:
         finally:
             context.close()
         # the failed sidecar load is reported by the browser as a console error; nothing else may be
-        assert all("search/index.js" in p for p in problems), problems
+        assert all("app-assets/index.js" in p for p in problems), problems
 
 
 class TestMeaningSearch:

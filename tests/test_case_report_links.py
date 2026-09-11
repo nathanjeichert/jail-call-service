@@ -1,15 +1,13 @@
-"""Unit tests for the case-report local-link extraction and /Launch rewriter."""
+"""Unit tests for the case-report local-link extraction and rewriter."""
 
 import io
 import unittest
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.annotations import Link
+from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, TextStringObject
 
-from backend.delivery.case_report import (
-    _extract_local_target,
-    _rewrite_local_links_to_launch_actions,
-)
+from backend.delivery.case_report import _extract_local_target, _rewrite_local_links
 
 
 class ExtractLocalTargetTests(unittest.TestCase):
@@ -59,6 +57,7 @@ class ExtractLocalTargetTests(unittest.TestCase):
 
     def test_non_local_uris_return_none(self):
         self.assertIsNone(_extract_local_target("https://example.com/page"))
+        self.assertIsNone(_extract_local_target("https://example.com/transcripts/001-a.pdf"))
         self.assertIsNone(_extract_local_target("file:///tmp/t/other.html"))
         # The retired two-page form is not produced any more and is not a local target.
         self.assertIsNone(_extract_local_target("file:///tmp/t/viewer.html?call=a.mp3"))
@@ -67,43 +66,85 @@ class ExtractLocalTargetTests(unittest.TestCase):
         self.assertIsNone(_extract_local_target("transcripts/nested/001.pdf"))
 
 
-class RewriteLaunchActionTests(unittest.TestCase):
-    def _pdf_with_links(self, uris):
-        writer = PdfWriter()
-        writer.add_blank_page(width=612, height=792)
-        for i, uri in enumerate(uris):
-            writer.add_annotation(
-                page_number=0,
-                annotation=Link(rect=(10, 10 + 20 * i, 100, 25 + 20 * i), url=uri),
-            )
-        buf = io.BytesIO()
-        writer.write(buf)
-        return buf.getvalue()
+def _pdf_with_links(uris, *, named_dest=None):
+    """Two blank pages; link annotations on page 1, optionally a named
+    destination to page 2 plus a GoTo link that uses it (the contents page)."""
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.add_blank_page(width=612, height=792)
+    for i, uri in enumerate(uris):
+        writer.add_annotation(
+            page_number=0,
+            annotation=Link(rect=(10, 10 + 20 * i, 100, 25 + 20 * i), url=uri),
+        )
+    if named_dest:
+        writer.add_named_destination(named_dest, 1)
+        action = DictionaryObject({
+            NameObject("/S"): NameObject("/GoTo"),
+            NameObject("/D"): TextStringObject(named_dest),
+        })
+        annot = DictionaryObject({
+            NameObject("/Type"): NameObject("/Annot"),
+            NameObject("/Subtype"): NameObject("/Link"),
+            NameObject("/Rect"): ArrayObject([NumberObject(10), NumberObject(200), NumberObject(100), NumberObject(215)]),
+            NameObject("/A"): action,
+        })
+        writer.add_annotation(page_number=0, annotation=annot)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
 
-    def test_local_links_become_relative_launch_actions(self):
+
+def _actions(pdf_bytes):
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    out = []
+    for annot in reader.pages[0]["/Annots"]:
+        a = annot.get_object()["/A"].get_object()
+        out.append({k: a.get(k) for k in ("/S", "/F", "/URI", "/D", "/NewWindow")})
+    return reader, out
+
+
+class RewriteLocalLinksTests(unittest.TestCase):
+    def test_viewer_links_stay_uri_actions_with_relative_targets(self):
         local = (
             "file:///var/folders/zz/tmpq1w2.html/../"
             "index.html#call=001-call.mp3&t=00%3A31"
         )
         external = "https://example.com/docs"
-        pdf = self._pdf_with_links([local, external])
+        _, actions = _actions(_rewrite_local_links(_pdf_with_links([local, external])))
 
-        out = _rewrite_local_links_to_launch_actions(pdf)
-        reader = PdfReader(io.BytesIO(out))
+        self.assertEqual([str(a["/S"]) for a in actions], ["/URI", "/URI"])
+        # The fragment stays in a URI, where readers hand it to the browser;
+        # a /Launch would make some readers treat it as part of the filename.
+        self.assertEqual(actions[0]["/URI"], "index.html#call=001-call.mp3&t=00%3A31")
+        self.assertIsNone(actions[0]["/F"])
+        self.assertEqual(actions[1]["/URI"], "https://example.com/docs")
 
-        actions = []
-        for annot in reader.pages[0]["/Annots"]:
-            a = annot.get_object()["/A"].get_object()
-            actions.append((str(a.get("/S")), a.get("/F"), a.get("/URI")))
+    def test_transcript_links_become_remote_gotos_to_the_physical_page(self):
+        pdf = _pdf_with_links([
+            "file:///tmp/x/transcripts/002-call.pdf#page=5",
+            "file:///tmp/x/transcripts/003-a%20call.pdf",
+        ])
+        _, actions = _actions(_rewrite_local_links(pdf))
 
-        launch = [a for a in actions if a[0] == "/Launch"]
-        uri = [a for a in actions if a[0] == "/URI"]
-        self.assertEqual(len(launch), 1)
-        self.assertEqual(launch[0][1], "index.html#call=001-call.mp3&t=00%3A31")
-        self.assertIsNone(launch[0][2])
-        # The external link must remain an untouched URI action.
-        self.assertEqual(len(uri), 1)
-        self.assertEqual(uri[0][2], "https://example.com/docs")
+        self.assertEqual([str(a["/S"]) for a in actions], ["/GoToR", "/GoToR"])
+        self.assertEqual(actions[0]["/F"], "transcripts/002-call.pdf")
+        self.assertEqual(list(actions[0]["/D"]), [4, "/Fit"])  # page 5, zero-based
+        self.assertTrue(actions[0]["/NewWindow"])
+        self.assertIsNone(actions[0]["/URI"])
+        # No fragment: page 1. The file name is unquoted for the reader.
+        self.assertEqual(actions[1]["/F"], "transcripts/003-a call.pdf")
+        self.assertEqual(list(actions[1]["/D"]), [0, "/Fit"])
+
+    def test_named_destinations_survive_the_rewrite(self):
+        pdf = _pdf_with_links(["file:///tmp/x/index.html"], named_dest="sec-findings")
+        reader, actions = _actions(_rewrite_local_links(pdf))
+
+        self.assertIn("sec-findings", reader.named_destinations)
+        goto = [a for a in actions if str(a["/S"]) == "/GoTo"]
+        self.assertEqual(len(goto), 1)
+        self.assertEqual(goto[0]["/D"], "sec-findings")
+        self.assertEqual(len(reader.pages), 2)
 
 
 if __name__ == "__main__":

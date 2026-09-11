@@ -79,6 +79,7 @@ TASK 1 — findings
   - call_id: integer call id from INPUT_CALLS
   - headline: 4-9 word title
   - timestamp: a [MM:SS] timestamp that already appears in that call's notes, or null
+  - sources: additional supporting moments, each with call_id and timestamp. Cite every call discussed in the detail, including each side of a cross-call comparison. Use only INPUT_CALLS IDs and timestamps from that call's notes; use null if no specific moment applies.
   - detail: one to three sentences explaining what was said and why it matters
 - If nothing warrants attention, return an empty findings array.
 

@@ -59,24 +59,24 @@ Pre-Hearing Contact With a Listed Witness
 Across multiple calls, the defendant asked the outside party to keep a man named Darnell from speaking to
 investigators until defense counsel made contact. The outside party reported a DA investigator had already
 visited the witness's apartment.
-20260303_093302_9095550144.wav Mar 3, 2026 · 9:33 AM [00:21] VIEWER → PDF
+Call 001 Mar 3, 2026 · 9:33 AM 00:21 VIEWER → PDF
 02
 Items Removed From the Impounded Vehicle
 An outside party retrieving the defendant's car reported that police removed items from the trunk before
 towing and that no inventory list was available at the lot.
-20260313_123302_9095550226.wav Mar 13, 2026 · 12:33 PM [01:14] VIEWER → PDF
+Call 002 Mar 13, 2026 · 12:33 PM 01:14 VIEWER → PDF
 03
 Employer Statement on the Night of the Incident
 The defendant stated his employer could confirm he was closing the shop until at least 9:40 PM on the night in
 question and expected investigators to contact the employer.
-20260323_153302_7605550317.wav Mar 23, 2026 · 3:33 PM VIEWER → PDF
+Call 003 Mar 23, 2026 · 3:33 PM VIEWER → PDF
 3 FINDINGSTop Findings
-  link /Launch index.html#call=001-20260303_093302_9095550144.mp3&t=00%3A21
-  link /Launch transcripts/001-20260303_093302_9095550144.pdf
-  link /Launch index.html#call=002-20260313_123302_9095550226.mp3&t=01%3A14
-  link /Launch transcripts/002-20260313_123302_9095550226.pdf
-  link /Launch index.html#call=003-20260323_153302_7605550317.mp3
-  link /Launch transcripts/003-20260323_153302_7605550317.pdf
+  link /URI index.html#call=001-20260303_093302_9095550144.mp3&t=00%3A21
+  link /GoToR transcripts/001-20260303_093302_9095550144.pdf page 3
+  link /URI index.html#call=002-20260313_123302_9095550226.mp3&t=01%3A14
+  link /GoToR transcripts/002-20260313_123302_9095550226.pdf page 3
+  link /URI index.html#call=003-20260323_153302_7605550317.mp3
+  link /GoToR transcripts/003-20260323_153302_7605550317.pdf page 1
 ## page 4
 HIGH-RELEVANCE CALLS PRIVILEGED & CONFIDENTIAL 04 / 07
 STATE V. MARCUS REEVES
@@ -108,16 +108,17 @@ inventory was provided.“Three hundred eighty to release it. I'm not paying tha
 until your hearing — it just sits there racking up fees either way.”
 TR. 1:6-1:8
 3 CALLS FLAGGED HIGHHigh-Relevance Calls
-  link /Launch index.html#call=001-20260303_093302_9095550144.mp3
-  link /Launch transcripts/001-20260303_093302_9095550144.pdf
-  link /Launch index.html#call=001-20260303_093302_9095550144.mp3&t=00%3A21
-  link /Launch index.html#call=001-20260303_093302_9095550144.mp3&t=01%3A05
-  link /Launch index.html#call=001-20260303_093302_9095550144.mp3&t=01%3A49
-  link /Launch index.html#call=002-20260313_123302_9095550226.mp3
-  link /Launch transcripts/002-20260313_123302_9095550226.pdf
-  link /Launch index.html#call=002-20260313_123302_9095550226.mp3&t=01%3A14
+  link /URI index.html#call=001-20260303_093302_9095550144.mp3
+  link /GoToR transcripts/001-20260303_093302_9095550144.pdf page 1
+  link /URI index.html#call=001-20260303_093302_9095550144.mp3&t=00%3A21
+  link /URI index.html#call=001-20260303_093302_9095550144.mp3&t=01%3A05
+  link /URI index.html#call=001-20260303_093302_9095550144.mp3&t=01%3A49
+  link /URI index.html#call=002-20260313_123302_9095550226.mp3
+  link /GoToR transcripts/002-20260313_123302_9095550226.pdf page 1
+  link /URI index.html#call=002-20260313_123302_9095550226.mp3&t=01%3A14
 ## page 5
 HIGH-RELEVANCE CALLS PRIVILEGED & CONFIDENTIAL 05 / 07
+CALL 002 — CONTINUED
 02:29 Statement about the defendant's whereabouts and timeline on the night of the incident.
 “The guy at the lot said the police took some stuff out of the trunk before it got
 towed. He didn't have a list.”
@@ -142,13 +143,13 @@ TR. 1:12-1:13
 investigators before counsel makes contact.“I heard you. The money came through
 Tuesday, by the way. I'm set for a couple weeks.”
 TR. 1:16-1:17
-  link /Launch index.html#call=002-20260313_123302_9095550226.mp3&t=02%3A29
-  link /Launch index.html#call=002-20260313_123302_9095550226.mp3&t=03%3A44
-  link /Launch index.html#call=003-20260323_153302_7605550317.mp3
-  link /Launch transcripts/003-20260323_153302_7605550317.pdf
-  link /Launch index.html#call=003-20260323_153302_7605550317.mp3&t=02%3A24
-  link /Launch index.html#call=003-20260323_153302_7605550317.mp3&t=04%3A01
-  link /Launch index.html#call=003-20260323_153302_7605550317.mp3&t=05%3A37
+  link /URI index.html#call=002-20260313_123302_9095550226.mp3&t=02%3A29
+  link /URI index.html#call=002-20260313_123302_9095550226.mp3&t=03%3A44
+  link /URI index.html#call=003-20260323_153302_7605550317.mp3
+  link /GoToR transcripts/003-20260323_153302_7605550317.pdf page 1
+  link /URI index.html#call=003-20260323_153302_7605550317.mp3&t=02%3A24
+  link /URI index.html#call=003-20260323_153302_7605550317.mp3&t=04%3A01
+  link /URI index.html#call=003-20260323_153302_7605550317.mp3&t=05%3A37
 ## page 6
 MEDIUM-RELEVANCE CALLS PRIVILEGED & CONFIDENTIAL 06 / 07
 STATE V. MARCUS REEVES
@@ -176,12 +177,12 @@ defendant's daughter, church, and
 commissary money. · 2 CUES
 PDF →
 3 CALLS FLAGGED MEDIUMMedium-Relevance Calls
-  link /Launch index.html#call=004-20260401_183302_9515550419.mp3
-  link /Launch transcripts/004-20260401_183302_9515550419.pdf
-  link /Launch index.html#call=005-20260411_103302_9095550144.mp3
-  link /Launch transcripts/005-20260411_103302_9095550144.pdf
-  link /Launch index.html#call=006-20260421_133302_9095550226.mp3
-  link /Launch transcripts/006-20260421_133302_9095550226.pdf
+  link /URI index.html#call=004-20260401_183302_9515550419.mp3
+  link /GoToR transcripts/004-20260401_183302_9515550419.pdf page 1
+  link /URI index.html#call=005-20260411_103302_9095550144.mp3
+  link /GoToR transcripts/005-20260411_103302_9095550144.pdf page 1
+  link /URI index.html#call=006-20260421_133302_9095550226.mp3
+  link /GoToR transcripts/006-20260421_133302_9095550226.pdf page 1
 ## page 7
 CALLER STATISTICS PRIVILEGED & CONFIDENTIAL 07 / 07
 STATE V. MARCUS REEVES

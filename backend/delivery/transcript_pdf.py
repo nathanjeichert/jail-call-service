@@ -30,7 +30,7 @@ from ..formatting import (
 from ..transcript_layout import LINES_PER_PAGE, MAX_LINE_CHARS
 from .call_view import CallView
 from .pdf_render import render_pdf
-from .summary_layout import PAGE_HEIGHT, inch, paginate_structured_summary
+from .summary_layout import PAGE_HEIGHT, inch
 from .templates import render_template
 from .theme import theme_css
 
@@ -175,9 +175,7 @@ def _build_cover_context(title_data: dict, view: CallView, include_summary: bool
         ctx["speakers"] = view.identity
         ctx["call_summary"] = view.brief
 
-        pagination = paginate_structured_summary(
-            ctx["review_cues"], speakers=ctx["speakers"], call_summary=ctx["call_summary"],
-        )
+        pagination = view.summary_pagination
         ctx["page1_review_cues"] = pagination["page1_review_cues"]
         ctx["overflow_review_cue_pages"] = pagination["overflow_review_cue_pages"]
         ctx["context_layout"] = pagination["context_layout"]

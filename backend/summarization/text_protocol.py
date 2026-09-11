@@ -17,7 +17,7 @@ import logging
 import re
 from typing import Dict, List, Tuple
 
-from .schemas import CaseReportFinding, CaseReportIdentity, CaseReportResponse
+from .schemas import CaseReportFinding, CaseReportIdentity, CaseReportResponse, CaseReportSource
 
 logger = logging.getLogger(__name__)
 
@@ -95,10 +95,12 @@ FINDING_START
 CALL_ID: <integer call id from INPUT_CALLS>
 HEADLINE: <4-9 word title in title case>
 TIMESTAMP: <[MM:SS] from that call's notes if a specific moment, otherwise NONE>
+SOURCES: <JSON array of additional supporting moments, each with call_id and timestamp; [] if none>
 DETAIL: <one to three sentences explaining what was said and why it matters>
 FINDING_END
 
 The TIMESTAMP must be one that already appears in that call's NOTES, or NONE. Do not invent timestamps. If absolutely nothing in the input warrants attorney attention, return a single FINDING_START / FINDING_END block with HEADLINE: NONE.
+SOURCES must cite every additional call discussed in DETAIL, including each side of a cross-call comparison. Use only INPUT_CALLS IDs and note timestamps from the cited call; use JSON null when no specific moment applies.
 
 ═══════════════════════════════════════════════════════════════════
 TASK 2 — OUTSIDE PARTY IDENTITY INFERENCE
@@ -211,7 +213,7 @@ def parse_system_audio_response(response_text: str) -> Tuple[str, list]:
 # ────────────────────────── Case report blocks ──────────────────────────
 
 _FINDING_BLOCK_RE = re.compile(r"FINDING_START\s*(.*?)\s*FINDING_END", re.DOTALL | re.IGNORECASE)
-_FINDING_FIELD_RE = re.compile(r"^(CALL_ID|HEADLINE|TIMESTAMP):\s*(.*?)\s*$", re.IGNORECASE | re.MULTILINE)
+_FINDING_FIELD_RE = re.compile(r"^(CALL_ID|HEADLINE|TIMESTAMP|SOURCES):\s*(.*?)\s*$", re.IGNORECASE | re.MULTILINE)
 _IDENTITY_BLOCK_RE = re.compile(r"IDENTITY_START\s*(.*?)\s*IDENTITY_END", re.DOTALL | re.IGNORECASE)
 _IDENTITY_FIELD_RE = re.compile(r"^(NUMBER|INFERENCE|CONFIDENCE):\s*(.*?)\s*$", re.IGNORECASE | re.MULTILINE)
 
@@ -254,7 +256,18 @@ def parse_case_report_text(text: str) -> CaseReportResponse:
             continue
         ts_raw = (fields.get("TIMESTAMP") or "").strip()
         timestamp = None if ts_raw.upper() in ("NONE", "N/A", "") else ts_raw
-        findings.append(CaseReportFinding(call_id=call_id, headline=headline, timestamp=timestamp, detail=detail))
+        sources = []
+        try:
+            raw_sources = json.loads(fields.get("SOURCES") or "[]")
+            if isinstance(raw_sources, list):
+                for source in raw_sources:
+                    try:
+                        sources.append(CaseReportSource.model_validate(source))
+                    except ValueError:
+                        continue
+        except (ValueError, TypeError):
+            pass
+        findings.append(CaseReportFinding(call_id=call_id, headline=headline, timestamp=timestamp, detail=detail, sources=sources))
 
     identities: List[CaseReportIdentity] = []
     for match in _IDENTITY_BLOCK_RE.finditer(text or ""):

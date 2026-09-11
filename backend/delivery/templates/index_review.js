@@ -257,12 +257,12 @@
       if (!ready) message = 'Preparing review storage…';
       else if (failure) message = failure + (backupOK ? ' Browser recovery copy available.' : '');
       else if (busy) message = 'Saving review…';
-      else if (writable && !dirty) message = 'Saved to ' + FILE_NAME + (backupOK ? ' · Browser backup saved' : ' · Browser backup unavailable');
+      else if (writable && !dirty) message = 'Saved to ' + directoryHandle.name + '/' + FILE_NAME + (backupOK ? ' · Browser backup saved' : ' · Browser backup unavailable');
       else if (writable) message = 'Saving review…';
       else if (!supported) message = 'File autosave is unavailable in this browser. Open this delivery in desktop Edge or Chrome.';
       else message = directoryHandle ? 'Reconnect your review folder to resume autosave.' : 'Enable autosave to keep your review in the delivery folder.';
       if (!writable && dirty) message += backupOK ? ' Changes saved in this browser only.' : ' Changes are not saved; keep this page open.';
-      return { message, connected: writable, remembered: !!directoryHandle, supported, busy: busy || !ready, error: !!failure || (dirty && !writable), dirty, backupOK, ready };
+      return { message, folderName: directoryHandle ? directoryHandle.name : '', connected: writable, remembered: !!directoryHandle, supported, busy: busy || !ready, error: !!failure || (dirty && !writable), dirty, backupOK, ready };
     }
     async function init() {
       try {

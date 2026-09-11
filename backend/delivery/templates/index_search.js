@@ -1,12 +1,12 @@
   // ═══════════════════════════════════════════════════════════════════════
   // Search: the index page's keyword (BM25) and meaning (embedding) search.
   // A Jinja include that lands inside the page's IIFE; it uses CALLS, esc,
-  // and secondsToLabel from the page. The data comes from the search/
+  // and secondsToLabel from the page. The data comes from the app-assets/
   // sidecars (classic scripts, the only data channel file:// allows):
-  //   search/index.js   -> window.JCS_SEARCH   passages + BM25 postings
-  //   search/vectors.js -> window.JCS_VECTORS  int8 passage vectors
-  //   search/model.js   -> window.JCS_MODEL    ONNX model + vocab
-  //   search/runtime.js -> ort + window.JCS_ORT ONNX Runtime wasm + glue
+  //   app-assets/index.js   -> window.JCS_SEARCH   passages + BM25 postings
+  //   app-assets/vectors.js -> window.JCS_VECTORS  int8 passage vectors
+  //   app-assets/model.js   -> window.JCS_MODEL    ONNX model + vocab
+  //   app-assets/runtime.js -> ort + window.JCS_ORT ONNX Runtime wasm + glue
   // Keyword search is live as soon as index.js parses; the meaning layer
   // loads afterwards, one sidecar at a time, and is skipped where
   // WebAssembly is unavailable. The tokenizer, stemmer, and scoring rules
@@ -419,12 +419,12 @@
       }
       state.semantic = 'loading'; notify();
       try {
-        await injectScript('search/vectors.js');
+        await injectScript('app-assets/vectors.js');
         const rawV = window.JCS_VECTORS; window.JCS_VECTORS = null;
         V = { n: rawV.n, d: rawV.d, q: typed(rawV.q, Int8Array), s: typed(rawV.s, Float32Array), model: rawV.model };
-        await injectScript('search/runtime.js');
+        await injectScript('app-assets/runtime.js');
         const rawOrt = window.JCS_ORT; window.JCS_ORT = null;
-        await injectScript('search/model.js');
+        await injectScript('app-assets/model.js');
         const rawM = window.JCS_MODEL; window.JCS_MODEL = null;
         if (rawM.id !== V.model) throw new Error('vectors were built with ' + V.model + ', model is ' + rawM.id);
         const wasmBytes = bytesOf(rawOrt.wasm);
@@ -706,7 +706,7 @@
     }
 
     function init() {
-      injectScript('search/index.js').then(() => {
+      injectScript('app-assets/index.js').then(() => {
         const raw = window.JCS_SEARCH; window.JCS_SEARCH = null;
         loadLexical(raw);
         notify();
