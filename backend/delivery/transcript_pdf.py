@@ -271,7 +271,7 @@ def create_pdf(view: CallView, title_data: dict, *, include_summary: bool = True
 
     ctx = _build_cover_context(title_data, view, include_summary)
     ctx["transcript_sheets"] = _build_transcript_sheets(line_entries, LINES_PER_PAGE)
-    ctx["theme_css"] = theme_css("print", ("Fraunces", "Public Sans", "IBM Plex Mono", "Courier Prime"))
+    ctx["theme_css"] = theme_css("print", ("Source Serif 4", "Source Sans 3", "IBM Plex Mono", "Courier Prime"))
 
     cover_stats = []
     if ctx["file_duration"]:

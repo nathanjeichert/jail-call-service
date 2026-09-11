@@ -22,13 +22,13 @@
     @bottom-left {
         content: string(chapter-name);
         white-space: nowrap;
-        font-family: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-family: "Source Sans 3", "Helvetica Neue", Helvetica, Arial, sans-serif;
         font-size: 6.75pt;
         font-weight: 600;
         letter-spacing: 0.13em;
         text-transform: uppercase;
         color: #807A6E;
-        border-top: 1px solid #16140F;
+        border-top: 1px solid #15181C;
         padding: 9pt 0 0 46.5pt;
         margin-left: 0;
         vertical-align: top;
@@ -36,13 +36,13 @@
     }
     @bottom-center {
         content: "Privileged & Confidential";
-        font-family: "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-family: "Source Sans 3", "Helvetica Neue", Helvetica, Arial, sans-serif;
         font-size: 6.75pt;
         font-weight: 600;
         letter-spacing: 0.13em;
         text-transform: uppercase;
         color: #807A6E;
-        border-top: 1px solid #16140F;
+        border-top: 1px solid #15181C;
         padding: 9pt 0 0;
         vertical-align: top;
         text-align: center;
@@ -51,8 +51,8 @@
         content: counter(page, decimal-leading-zero) " / " counter(pages, decimal-leading-zero);
         font-family: "IBM Plex Mono", Menlo, monospace;
         font-size: 7.5pt;
-        color: #16140F;
-        border-top: 1px solid #16140F;
+        color: #15181C;
+        border-top: 1px solid #15181C;
         padding: 9pt 40.5pt 0 0;
         vertical-align: top;
         text-align: right;
@@ -73,7 +73,7 @@
    reaches the page edge. */
 .pagedjs_page {
     background-image:
-        linear-gradient(90deg, #16140F 0%, #16140F 9.75pt, transparent 9.75pt, transparent 100%);
+        linear-gradient(90deg, #15181C 0%, #15181C 9.75pt, transparent 9.75pt, transparent 100%);
     background-repeat: no-repeat;
     background-size: 100% 100%;
     background-position: left top;
@@ -136,7 +136,7 @@ a { color: inherit; text-decoration: none; }
     font-size: 42pt;
     line-height: 1.04;
     letter-spacing: -0.005em;
-    font-variation-settings: "opsz" 110;
+    font-variation-settings: "opsz" 60;
     overflow-wrap: break-word;
 }
 .rc-cap h1 .v {
@@ -170,7 +170,7 @@ a { color: inherit; text-decoration: none; }
     text-align: center;
 }
 .rc-stats .cell:first-child { border-left: none; }
-.rc-stats .n { font-size: 28.5pt; font-variation-settings: "opsz" 90; }.rc-stats .n.sig { color: var(--signal-ink); }
+.rc-stats .n { font-size: 28.5pt; font-variation-settings: "opsz" 36; }.rc-stats .n.sig { color: var(--signal-ink); }
 .rc-stats .lbl { margin-top: 6pt; font-size: 6.75pt; }
 
 .rc-facts {
@@ -247,7 +247,7 @@ section.chapter .band { padding-top: 3pt; }
     font-size: 25.5pt;
     line-height: 1;
     font-variant-numeric: tabular-nums;
-    font-variation-settings: "opsz" 80;
+    font-variation-settings: "opsz" 32;
     white-space: nowrap;
 }
 .ag-hero .n small { font-size: 0.5em; font-weight: 500; color: var(--ink-3); }
@@ -335,7 +335,7 @@ section.chapter .band { padding-top: 3pt; }
     font-size: 40.5pt;
     line-height: 0.9;
     color: var(--ink);
-    font-variation-settings: "opsz" 110;
+    font-variation-settings: "opsz" 60;
     font-variant-numeric: tabular-nums;
 }
 .fd h3 {
@@ -344,7 +344,7 @@ section.chapter .band { padding-top: 3pt; }
     font-weight: 600;
     font-size: 15.4pt;
     line-height: 1.2;
-    font-variation-settings: "opsz" 40;
+    font-variation-settings: "opsz" 18;
 }
 .fd p {
     margin: 6.75pt 0 0;
@@ -392,7 +392,7 @@ section.chapter .band { padding-top: 3pt; }
     font-size: 12pt;
     color: var(--ink);
     margin-bottom: 3.75pt;
-    font-variation-settings: "opsz" 30;
+    font-variation-settings: "opsz" 14;
 }
 
 /* ════════════════════ High-relevance call cards ════════════════════ */
@@ -442,7 +442,7 @@ section.chapter .band { padding-top: 3pt; }
     font-family: var(--serif);
     font-size: 10.1pt;
     line-height: 1.55;
-    font-variation-settings: "opsz" 18;
+    font-variation-settings: "opsz" 10;
 }
 .cc-speakers {
     margin-top: 6pt;
@@ -479,7 +479,9 @@ section.chapter .band { padding-top: 3pt; }
     padding-right: 10.5pt;
 }
 .cc-cues .q b { color: var(--ink); font-weight: 600; }
-.cc-cues .q i { font-family: var(--serif); font-variation-settings: "opsz" 18; }
+/* Quotations are roman, not italic: the quote marks and the serif face
+   already set them apart, and italic at this size reads as decoration. */
+.cc-cues .q i { font-family: var(--serif); font-style: normal; color: var(--ink); font-variation-settings: "opsz" 10; }
 .cc-cues .cite {
     font-family: var(--mono);
     font-size: 7.5pt;
@@ -713,13 +715,13 @@ section.chapter .band { padding-top: 3pt; }
         <h3>Call Volume by {{ timeline.unit_name }} <span class="m">PEAK: {{ timeline.max_count }} CALL{{ "S" if timeline.max_count != 1 else "" }}, {{ timeline.peak_label }}</span></h3>
         <div class="ag-chart">
             <svg viewBox="0 0 {{ timeline.svg.width }} {{ timeline.svg.height }}" aria-hidden="true">
-                <line x1="0" y1="{{ timeline.svg.axis_y }}" x2="{{ timeline.svg.width }}" y2="{{ timeline.svg.axis_y }}" stroke="#16140F" stroke-width="1"/>
+                <line x1="0" y1="{{ timeline.svg.axis_y }}" x2="{{ timeline.svg.width }}" y2="{{ timeline.svg.axis_y }}" stroke="#15181C" stroke-width="1"/>
                 {% if timeline.svg.grid %}
                 <line x1="0" y1="{{ timeline.svg.grid.y }}" x2="{{ timeline.svg.width }}" y2="{{ timeline.svg.grid.y }}" stroke="rgba(22,20,15,.12)" stroke-width="1" stroke-dasharray="2 3"/>
                 <text x="0" y="{{ timeline.svg.grid.y - 4 }}" font-family="IBM Plex Mono" font-size="9" fill="#807A6E">{{ timeline.svg.grid.label }}</text>
                 {% endif %}
                 {% for bar in timeline.svg.bars %}
-                <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.w }}" height="{{ bar.h }}" fill="{{ '#A8271E' if bar.peak else '#16140F' }}"/>
+                <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.w }}" height="{{ bar.h }}" fill="{{ '#B03A2E' if bar.peak else '#15181C' }}"/>
                 {% endfor %}
                 <text x="{{ timeline.svg.peak.x }}" y="{{ timeline.svg.peak.y }}" font-family="IBM Plex Mono" font-size="9.5" font-weight="600" fill="#871F18" text-anchor="middle">{{ timeline.svg.peak.count }}</text>
                 {% for label in timeline.svg.labels %}

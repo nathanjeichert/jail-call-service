@@ -1,8 +1,8 @@
 """
 PDF user guide generation via headless Chromium (pdf_render).
 
-Renders a 7-page guide in the shared "Record" design language (Fraunces /
-Public Sans / IBM Plex Mono, ink spine, one signal color), as explicit
+Renders a 7-page guide in the shared "Record" design language (Source Serif 4
+/ Source Sans 3 / IBM Plex Mono, ink spine, one signal color), as explicit
 fixed-size sheets like the transcript PDF:
 
   Page 1: Cover (case name, date, call count)

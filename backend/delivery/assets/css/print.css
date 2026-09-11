@@ -26,7 +26,7 @@
     font-size: 33pt;
     line-height: 1.08;
     letter-spacing: -0.005em;
-    font-variation-settings: "opsz" 90;
+    font-variation-settings: "opsz" 60;
     overflow-wrap: break-word;
 }
 .oxrule { margin-top: 20pt; width: 90pt; border-top: 2.25pt solid var(--ink); }
@@ -36,6 +36,8 @@
 .facts .row { display: flex; justify-content: space-between; gap: 13.5pt; padding: 6pt 1.5pt; border-bottom: 1px solid var(--rule-faint); }
 .facts .k { flex: none; font-size: 7.1pt; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); padding-top: 1.5pt; }
 .facts .w { font-size: 9.4pt; color: var(--ink); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+/* Parentheticals inside a fact value are muted, not italic. */
+.facts .w em { font-style: normal; color: var(--ink-3); }
 
 /* ── Chapter header: eyebrow, serif title on a double rule, mono meta ── */
 .chap h2 {
@@ -44,7 +46,7 @@
     font-weight: 600;
     font-size: 25.5pt;
     line-height: 1.05;
-    font-variation-settings: "opsz" 70;
+    font-variation-settings: "opsz" 32;
     padding-bottom: 12pt;
     border-bottom: 2.25pt solid var(--ink);
     position: relative;

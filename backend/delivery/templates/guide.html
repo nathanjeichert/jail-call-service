@@ -182,7 +182,6 @@ body {
     padding-top: 0.95in;
     color: var(--ink-3);
     font-size: 9pt;
-    font-style: italic;
 }
 
 /* ── Steps ── */
@@ -220,7 +219,7 @@ body {
     font-weight: 300;
     font-size: 21pt;
     line-height: 1;
-    font-variation-settings: "opsz" 110;
+    font-variation-settings: "opsz" 26;
     font-variant-numeric: tabular-nums;
 }
 
@@ -311,7 +310,7 @@ body {
 }
 
 /* ── Guide-specific overrides of the shared design layer ── */
-.cov-title { font-size: 42pt; line-height: 1.05; font-variation-settings: "opsz" 110; }
+.cov-title { font-size: 42pt; line-height: 1.05; font-variation-settings: "opsz" 60; }
 .chap h2 { font-size: 22.5pt; }
 .chap .chapmeta { padding-top: 10.5pt; }
 </style>
@@ -373,6 +372,11 @@ body {
             <h4>Keep the Folder Intact</h4>
             <p>Extract the delivery fully before use and keep the files together: the links between <span class="mono">index.html</span> and the PDFs are relative paths that resolve only when the folder structure is unchanged. To share the delivery, copy the entire folder.</p>
         </div>
+        <div class="gap"></div>
+        <div class="note-box">
+            <h4>Save Your Review</h4>
+            <p>In desktop Edge or Chrome, select <b>Enable autosave</b> and choose this extracted folder. Stars, reviewed marks, pinned notes, relevance changes, and names save to <span class="mono">case-review.json</span>, with a browser recovery copy when available. Keep that file with the delivery. If prompted on a later visit, reconnect the folder. Check the save status before closing; browser-only changes do not travel with the folder.</p>
+        </div>
     </div>
 
     <div class="foot">
@@ -419,12 +423,12 @@ body {
         <div class="step">
             <span class="n">03</span>
             <div><h4>Expand a row</h4>
-            <p>Selecting a row opens the call's summary, outside-party identity, notes, and the full transcript. The <span class="kbd">‹</span> <span class="kbd">›</span> arrows above the transcript step through search matches, or through the flagged passages when no search is active.</p></div>
+            <p>Select a row for its summary, notes, and transcript. Star calls, mark them reviewed, override relevance, or name a number with exceptions for individual calls. Changes apply to the index and charts; transcript text and PDFs stay as delivered. Select <b>Original</b> to reset relevance.</p></div>
         </div>
         <div class="step">
             <span class="n">04</span>
             <div><h4>Open the source</h4>
-            <p>Excerpts, cues, and transcript lines open the call view with the audio cued to that exact moment. Each cue also cites the transcript PDF by page and line (<span class="mono">Tr. page:line</span>), and the row buttons open the call view or the transcript PDF directly.</p></div>
+            <p>Excerpts and transcript lines open the viewer at that moment. Notes cite <span class="mono">Tr. page:line</span> and link to the PDF. Select <b>Pin note</b> to collect a note in <b>Pinned notes</b>; the index filters also apply there. Select <b>Pinned</b> to remove it.</p></div>
         </div>
         </div>
     </div>
@@ -526,7 +530,7 @@ body {
         <div class="step">
             <span class="n">01</span>
             <div><h4>Select a call</h4>
-            <p>The left panel lists every call with its date, number, and relevance. Selecting a call loads its audio and transcript. The <span class="mono">Call Index</span> link in the top band, or the browser's back button, returns to the index with its search and filters intact.</p></div>
+            <p>The left panel lists calls with their names, stars, and reviewed marks. The header controls edit this call’s review. Listening through essentially the whole recording in one visit marks it reviewed automatically; seeking to the end does not. A manual unmark takes precedence.</p></div>
         </div>
         <div class="step">
             <span class="n">02</span>

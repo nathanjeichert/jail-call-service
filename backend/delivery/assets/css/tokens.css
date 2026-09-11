@@ -2,35 +2,35 @@
    shares. Sizes live in print.css / screen.css; shared components in
    components.css. Composed by backend/delivery/theme.py. */
 :root {
-  --paper:       #F5F2EA;   /* page ground on screen; print.css makes it white */
-  --cream:       #FBF9F3;
+  --paper:       #F4F5F6;   /* page ground on screen; print.css makes it white */
+  --cream:       #FAFAFB;
   --sheet:       #FFFFFF;
-  --ink:         #16140F;
-  --ink-2:       #45413A;
-  --ink-3:       #807A6E;
-  --rule:        rgba(22, 20, 15, 0.18);
-  --rule-faint:  rgba(22, 20, 15, 0.09);
+  --ink:         #15181C;
+  --ink-2:       #3D444C;
+  --ink-3:       #767E88;
+  --rule:        rgba(21, 24, 28, 0.16);
+  --rule-faint:  rgba(21, 24, 28, 0.08);
 
   /* One signal color: HIGH relevance, cue timestamps, chart peaks, playhead. */
-  --signal:      #A8271E;
-  --signal-ink:  #871F18;
-  --signal-bg:   rgba(168, 39, 30, 0.07);
-  --med:         #8F6400;   /* MEDIUM: hollow ochre square */
+  --signal:      #B03A2E;
+  --signal-ink:  #8C2F25;
+  --signal-bg:   rgba(176, 58, 46, 0.07);
+  --med:         #8A6A12;   /* MEDIUM: hollow ochre square */
   --med-bar:     #C9A227;
-  --low:         #76796E;   /* LOW: hollow gray square */
-  --low-bar:     #B9BCB0;
-  --unrated-bar: #DAD7CC;
-  --mark:        #F4E9C8;   /* search-hit highlight */
+  --low:         #6F757D;   /* LOW: hollow gray square */
+  --low-bar:     #B4BAC1;
+  --unrated-bar: #D6DADE;
+  --mark:        #FBECB8;   /* search-hit highlight */
 
   /* Charts: one neutral volume ramp (more is darker) and the tint for every
      call that is not HIGH, so crimson keeps meaning "signal" on any chart. */
-  --tint-1:      rgba(22, 20, 15, 0.14);
-  --tint-2:      rgba(22, 20, 15, 0.28);
-  --tint-3:      rgba(22, 20, 15, 0.42);
-  --tint-4:      rgba(22, 20, 15, 0.60);
-  --chart-mute:  rgba(22, 20, 15, 0.32);
+  --tint-1:      rgba(21, 24, 28, 0.12);
+  --tint-2:      rgba(21, 24, 28, 0.26);
+  --tint-3:      rgba(21, 24, 28, 0.40);
+  --tint-4:      rgba(21, 24, 28, 0.58);
+  --chart-mute:  rgba(21, 24, 28, 0.30);
 
-  --serif: "Fraunces", Georgia, serif;
-  --sans:  "Public Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --serif: "Source Serif 4", Georgia, serif;
+  --sans:  "Source Sans 3", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --mono:  "IBM Plex Mono", Menlo, Consolas, monospace;
 }

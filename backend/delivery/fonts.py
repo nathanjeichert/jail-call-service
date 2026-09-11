@@ -3,11 +3,13 @@
 All client-facing artifacts share one type system (SIL OFL 1.1, license
 texts alongside the font files in ``delivery/assets/fonts/``):
 
-* **Fraunces** (variable, wght 100–900 + opsz 9–144, roman + italic) —
-  display serif for document titles and large numerals. The optical-size
-  axis matters: large headings use the high-contrast display cut.
-* **Public Sans** (variable, wght 100–900, roman + italic) — UI and data
-  face for tables, labels, and body copy.
+* **Source Serif 4** (variable, wght 200–900 + opsz 8–60, roman + italic) —
+  display and reading serif for document titles, summaries, and large
+  numerals. The optical-size axis matters: large headings use the display
+  cut, running text the text cut. Note the axis tops out at 60, so an
+  ``opsz`` above that is clamped.
+* **Source Sans 3** (variable, wght 200–900, roman + italic) — UI and data
+  face for tables, labels, and chrome.
 * **IBM Plex Mono** (static 400/600) — timestamps, phone numbers, and
   page:line cites.
 * **Courier Prime** (TTF) — transcript sheets only; metric-locked, the
@@ -32,17 +34,17 @@ FONTS_DIR = Path(__file__).parent / "assets" / "fonts"
 
 # (css family name, css font-weight value, style, file name)
 _FACES: List[Tuple[str, str, str, str]] = [
-    ("Fraunces", "100 900", "normal", "Fraunces-VF.woff2"),
-    ("Fraunces", "100 900", "italic", "Fraunces-Italic-VF.woff2"),
-    ("Public Sans", "100 900", "normal", "PublicSans-VF.woff2"),
-    ("Public Sans", "100 900", "italic", "PublicSans-Italic-VF.woff2"),
+    ("Source Serif 4", "200 900", "normal", "SourceSerif4-VF.woff2"),
+    ("Source Serif 4", "200 900", "italic", "SourceSerif4-Italic-VF.woff2"),
+    ("Source Sans 3", "200 900", "normal", "SourceSans3-VF.woff2"),
+    ("Source Sans 3", "200 900", "italic", "SourceSans3-Italic-VF.woff2"),
     ("IBM Plex Mono", "400", "normal", "IBMPlexMono-Regular.woff2"),
     ("IBM Plex Mono", "600", "normal", "IBMPlexMono-SemiBold.woff2"),
     ("Courier Prime", "400", "normal", "CourierPrime-Regular.ttf"),
     ("Courier Prime", "700", "normal", "CourierPrime-Bold.ttf"),
 ]
 
-DEFAULT_FAMILIES = ("Fraunces", "Public Sans", "IBM Plex Mono")
+DEFAULT_FAMILIES = ("Source Serif 4", "Source Sans 3", "IBM Plex Mono")
 
 
 def _format_for(file_name: str) -> str:

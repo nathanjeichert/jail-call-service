@@ -37,7 +37,7 @@ from .call_view import CallView
 from .templates import render_template
 from .theme import theme_css
 
-FONT_FAMILIES = ("Fraunces", "Public Sans", "IBM Plex Mono", "Courier Prime")
+FONT_FAMILIES = ("Source Serif 4", "Source Sans 3", "IBM Plex Mono", "Courier Prime")
 
 
 def _escape(s: str) -> str:
